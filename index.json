@@ -709,6 +709,107 @@
       ]
     },
     {
+      "id": "dna",
+      "name": "DNA Helix",
+      "description": "3D rotating DNA double helix structure.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/dna/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Rotation Speed",
+          "defaultValue": 1,
+          "min": 0.1,
+          "max": 3.0,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "zoom",
+          "type": "range",
+          "label": "Zoom Level",
+          "defaultValue": 1,
+          "min": 0.5,
+          "max": 2.0,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "classic",
+          "options": [
+            "classic",
+            "neon"
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/dna/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/dna/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/dna/preview.gif"
+      ]
+    },
+    {
+      "id": "fireworks",
+      "name": "Fireworks",
+      "description": "Exploding fireworks into ASCII particles.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fireworks/preview.gif",
+      "params": [
+        {
+          "key": "frequency",
+          "type": "range",
+          "label": "Frequency",
+          "defaultValue": 1,
+          "min": 0.1,
+          "max": 3.0,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "particleCount",
+          "type": "range",
+          "label": "Particle Count",
+          "defaultValue": 50,
+          "min": 10,
+          "max": 200,
+          "step": 10,
+          "integer": true
+        },
+        {
+          "key": "gravity",
+          "type": "range",
+          "label": "Gravity",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "multi",
+          "options": [
+            "multi",
+            "warm",
+            "cool"
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fireworks/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fireworks/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fireworks/preview.gif"
+      ]
+    },
+    {
       "id": "fluid",
       "name": "Fluid",
       "description": "Real-time fluid dynamics simulation with dye injection rendered in ASCII.",
@@ -786,6 +887,62 @@
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fluid/index.html",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fluid/manifest.json",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fluid/preview.gif"
+      ]
+    },
+    {
+      "id": "galaxy",
+      "name": "Spiral Galaxy",
+      "description": "Rotating ASCII spiral galaxy.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/galaxy/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Rotation Speed",
+          "defaultValue": 1,
+          "min": 0.1,
+          "max": 3.0,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "arms",
+          "type": "range",
+          "label": "Arm Count",
+          "defaultValue": 2,
+          "min": 2,
+          "max": 8,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "density",
+          "type": "range",
+          "label": "Star Density",
+          "defaultValue": 1,
+          "min": 0.5,
+          "max": 3.0,
+          "step": 0.5,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "purple",
+          "options": [
+            "purple",
+            "blue",
+            "fiery"
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/galaxy/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/galaxy/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/galaxy/preview.gif"
       ]
     },
     {
@@ -1160,6 +1317,53 @@
       ]
     },
     {
+      "id": "matrix",
+      "name": "Matrix",
+      "description": "Digital rain effect in ASCII.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/matrix/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "green",
+          "options": [
+            "green",
+            "blue",
+            "red",
+            "hacker"
+          ]
+        },
+        {
+          "key": "density",
+          "type": "range",
+          "label": "Density",
+          "defaultValue": 1,
+          "min": 0.1,
+          "max": 2.0,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/matrix/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/matrix/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/matrix/preview.gif"
+      ]
+    },
+    {
       "id": "moon",
       "name": "Moon",
       "description": "Orbital ASCII scene with star count, floaters, glow, and palette.",
@@ -1305,6 +1509,52 @@
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/nixie/index.html",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/nixie/manifest.json",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/nixie/preview.gif"
+      ]
+    },
+    {
+      "id": "ocean",
+      "name": "Ocean Waves",
+      "description": "Rolling ASCII ocean waves.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/ocean/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Wave Speed",
+          "defaultValue": 1,
+          "min": 0.1,
+          "max": 3.0,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "turbulence",
+          "type": "range",
+          "label": "Turbulence",
+          "defaultValue": 1,
+          "min": 0.1,
+          "max": 2.0,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "deepblue",
+          "options": [
+            "deepblue",
+            "sunset",
+            "stormy"
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/ocean/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/ocean/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/ocean/preview.gif"
       ]
     },
     {
@@ -2283,256 +2533,6 @@
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/windchimes/index.html",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/windchimes/manifest.json",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/windchimes/preview.gif"
-      ]
-    },
-    {
-      "id": "matrix",
-      "name": "Matrix",
-      "description": "Digital rain effect in ASCII.",
-      "author": "Luci Evol",
-      "version": "1.0.0",
-      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/matrix/preview.gif",
-      "params": [
-        {
-          "key": "speed",
-          "type": "range",
-          "label": "Speed",
-          "defaultValue": 1,
-          "min": 0.2,
-          "max": 4,
-          "step": 0.1,
-          "integer": false
-        },
-        {
-          "key": "palette",
-          "type": "select",
-          "label": "Palette",
-          "defaultValue": "green",
-          "options": [
-            "green",
-            "blue",
-            "red",
-            "hacker"
-          ]
-        },
-        {
-          "key": "density",
-          "type": "range",
-          "label": "Density",
-          "defaultValue": 1,
-          "min": 0.1,
-          "max": 2.0,
-          "step": 0.1,
-          "integer": false
-        }
-      ],
-      "files": [
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/matrix/index.html",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/matrix/manifest.json",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/matrix/preview.gif"
-      ]
-    },
-    {
-      "id": "fireworks",
-      "name": "Fireworks",
-      "description": "Exploding fireworks into ASCII particles.",
-      "author": "Luci Evol",
-      "version": "1.0.0",
-      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fireworks/preview.gif",
-      "params": [
-        {
-          "key": "frequency",
-          "type": "range",
-          "label": "Frequency",
-          "defaultValue": 1,
-          "min": 0.1,
-          "max": 3.0,
-          "step": 0.1,
-          "integer": false
-        },
-        {
-          "key": "particleCount",
-          "type": "range",
-          "label": "Particle Count",
-          "defaultValue": 50,
-          "min": 10,
-          "max": 200,
-          "step": 10,
-          "integer": true
-        },
-        {
-          "key": "gravity",
-          "type": "range",
-          "label": "Gravity",
-          "defaultValue": 1,
-          "min": 0,
-          "max": 3,
-          "step": 0.1,
-          "integer": false
-        },
-        {
-          "key": "palette",
-          "type": "select",
-          "label": "Palette",
-          "defaultValue": "multi",
-          "options": [
-            "multi",
-            "warm",
-            "cool"
-          ]
-        }
-      ],
-      "files": [
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fireworks/index.html",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fireworks/manifest.json",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fireworks/preview.gif"
-      ]
-    },
-    {
-      "id": "dna",
-      "name": "DNA Helix",
-      "description": "3D rotating DNA double helix structure.",
-      "author": "Luci Evol",
-      "version": "1.0.0",
-      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/dna/preview.gif",
-      "params": [
-        {
-          "key": "speed",
-          "type": "range",
-          "label": "Rotation Speed",
-          "defaultValue": 1,
-          "min": 0.1,
-          "max": 3.0,
-          "step": 0.1,
-          "integer": false
-        },
-        {
-          "key": "zoom",
-          "type": "range",
-          "label": "Zoom Level",
-          "defaultValue": 1,
-          "min": 0.5,
-          "max": 2.0,
-          "step": 0.1,
-          "integer": false
-        },
-        {
-          "key": "palette",
-          "type": "select",
-          "label": "Palette",
-          "defaultValue": "classic",
-          "options": [
-            "classic",
-            "neon"
-          ]
-        }
-      ],
-      "files": [
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/dna/index.html",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/dna/manifest.json",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/dna/preview.gif"
-      ]
-    },
-    {
-      "id": "ocean",
-      "name": "Ocean Waves",
-      "description": "Rolling ASCII ocean waves.",
-      "author": "Luci Evol",
-      "version": "1.0.0",
-      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/ocean/preview.gif",
-      "params": [
-        {
-          "key": "speed",
-          "type": "range",
-          "label": "Wave Speed",
-          "defaultValue": 1,
-          "min": 0.1,
-          "max": 3.0,
-          "step": 0.1,
-          "integer": false
-        },
-        {
-          "key": "turbulence",
-          "type": "range",
-          "label": "Turbulence",
-          "defaultValue": 1,
-          "min": 0.1,
-          "max": 2.0,
-          "step": 0.1,
-          "integer": false
-        },
-        {
-          "key": "palette",
-          "type": "select",
-          "label": "Palette",
-          "defaultValue": "deepblue",
-          "options": [
-            "deepblue",
-            "sunset",
-            "stormy"
-          ]
-        }
-      ],
-      "files": [
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/ocean/index.html",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/ocean/manifest.json",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/ocean/preview.gif"
-      ]
-    },
-    {
-      "id": "galaxy",
-      "name": "Spiral Galaxy",
-      "description": "Rotating ASCII spiral galaxy.",
-      "author": "Luci Evol",
-      "version": "1.0.0",
-      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/galaxy/preview.gif",
-      "params": [
-        {
-          "key": "speed",
-          "type": "range",
-          "label": "Rotation Speed",
-          "defaultValue": 1,
-          "min": 0.1,
-          "max": 3.0,
-          "step": 0.1,
-          "integer": false
-        },
-        {
-          "key": "arms",
-          "type": "range",
-          "label": "Arm Count",
-          "defaultValue": 2,
-          "min": 2,
-          "max": 8,
-          "step": 1,
-          "integer": true
-        },
-        {
-          "key": "density",
-          "type": "range",
-          "label": "Star Density",
-          "defaultValue": 1,
-          "min": 0.5,
-          "max": 3.0,
-          "step": 0.5,
-          "integer": false
-        },
-        {
-          "key": "palette",
-          "type": "select",
-          "label": "Palette",
-          "defaultValue": "purple",
-          "options": [
-            "purple",
-            "blue",
-            "fiery"
-          ]
-        }
-      ],
-      "files": [
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/galaxy/index.html",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/galaxy/manifest.json",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/galaxy/preview.gif"
       ]
     }
   ]
