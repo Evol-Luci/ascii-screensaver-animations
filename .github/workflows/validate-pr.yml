@@ -1,0 +1,73 @@
+name: Validate animation PR
+
+on:
+  pull_request:
+    paths:
+      - "animations/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find changed animation folders
+        id: changed
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          FOLDERS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
+            | grep '^animations/' \
+            | awk -F/ '{print $1"/"$2}' \
+            | sort -u)
+          echo "folders<<EOF" >> $GITHUB_OUTPUT
+          echo "$FOLDERS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Validate each changed animation
+        id: validate
+        run: |
+          FAILED=0
+          MESSAGES=""
+          while IFS= read -r folder; do
+            [ -z "$folder" ] && continue
+            OUTPUT=$(python3 .github/scripts/validate_animation.py "$folder" 2>&1)
+            if [ $? -ne 0 ]; then
+              FAILED=1
+              MESSAGES="$MESSAGES\n- **$folder**: $OUTPUT"
+            fi
+          done <<< "${{ steps.changed.outputs.folders }}"
+          echo "failed=$FAILED" >> $GITHUB_OUTPUT
+          {
+            echo 'messages<<EOF'
+            printf "%b" "$MESSAGES"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Close PR with feedback on failure
+        if: steps.validate.outputs.failed == '1'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const messages = `${{ steps.validate.outputs.messages }}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## ❌ Animation validation failed\n\nThe following issues were found:\n${messages}\n\nPlease fix them and push a new commit. See [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md) for requirements.`
+            });
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              state: 'closed'
+            });
+
+      - name: Fail the workflow if validation failed
+        if: steps.validate.outputs.failed == '1'
+        run: exit 1
