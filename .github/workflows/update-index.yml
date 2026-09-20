@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -19,10 +20,47 @@ jobs:
       - name: Regenerate index.json
         run: python3 .github/scripts/generate_index.py
 
-      - name: Commit updated index.json
+      - name: Commit and push directly (works if this app has a ruleset bypass)
+        id: direct_push
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add index.json
-          git diff --cached --quiet || git commit -m "chore: regenerate index.json [skip ci]"
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          git commit -m "chore: regenerate index.json [skip ci]"
           git push
+
+      # main requires a passing PR and this app has no ruleset bypass
+      # configured, so a direct push is rejected — fall back to a PR
+      # instead of failing silently. Note: because this uses the default
+      # GITHUB_TOKEN, opening this PR does NOT trigger the "validate"
+      # workflow on it (GitHub doesn't cascade workflow runs from
+      # GITHUB_TOKEN-authored events) — and main's ruleset requires that
+      # check with no bypass, so this PR will need a human to manually
+      # re-run/trigger validation and merge it. See CONTRIBUTING.md.
+      - name: Fall back to opening a PR
+        if: steps.direct_push.outcome == 'failure'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="automated/update-index-$(date +%s)"
+          git checkout -b "$BRANCH"
+          git add index.json
+          git commit -m "chore: regenerate index.json"
+          git push origin "$BRANCH"
+          gh pr create --title "chore: regenerate index.json" \
+            --body "Automated — direct push to main was rejected (branch ruleset). This PR needs a maintainer to manually trigger/re-run the \`validate\` check and merge it, since GITHUB_TOKEN-authored PRs don't auto-trigger other workflows. See CONTRIBUTING.md / AGENTS-equivalent notes for the actual fix (a scoped ruleset bypass for this app)." \
+            --base main --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail loudly if the direct push failed
+        if: steps.direct_push.outcome == 'failure'
+        run: |
+          echo "::error::Direct push to main was rejected — opened a PR instead, but it needs manual attention (see job summary). This will keep happening until this app has a ruleset bypass for main, or someone reviews/merges these PRs by hand."
+          exit 1
