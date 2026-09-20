@@ -2,8 +2,6 @@ name: Validate animation PR
 
 on:
   pull_request:
-    paths:
-      - "animations/**"
 
 jobs:
   validate:
