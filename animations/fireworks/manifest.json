@@ -1,0 +1,51 @@
+{
+  "id": "fireworks",
+  "name": "Fireworks",
+  "description": "Exploding fireworks into ASCII particles.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "frequency",
+      "type": "range",
+      "label": "Frequency",
+      "defaultValue": 1,
+      "min": 0.1,
+      "max": 3.0,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "particleCount",
+      "type": "range",
+      "label": "Particle Count",
+      "defaultValue": 50,
+      "min": 10,
+      "max": 200,
+      "step": 10,
+      "integer": true
+    },
+    {
+      "key": "gravity",
+      "type": "range",
+      "label": "Gravity",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "multi",
+      "options": [
+        "multi",
+        "warm",
+        "cool"
+      ]
+    }
+  ]
+}

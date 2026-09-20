@@ -1,0 +1,41 @@
+{
+  "id": "ocean",
+  "name": "Ocean Waves",
+  "description": "Rolling ASCII ocean waves.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Wave Speed",
+      "defaultValue": 1,
+      "min": 0.1,
+      "max": 3.0,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "turbulence",
+      "type": "range",
+      "label": "Turbulence",
+      "defaultValue": 1,
+      "min": 0.1,
+      "max": 2.0,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "deepblue",
+      "options": [
+        "deepblue",
+        "sunset",
+        "stormy"
+      ]
+    }
+  ]
+}
