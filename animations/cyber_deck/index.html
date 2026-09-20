@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Cyber Deck</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a12; overflow: hidden; width: 100vw; height: 100vh; }
+    body.screensaver-mode { cursor: none; }
+    #scene { display: block; opacity: 0; transition: opacity 2s ease-in; }
+    .credits-popup {
+      position: fixed; bottom: 32px; right: 32px;
+      background: rgba(10,10,18,0.92); border: 1px solid rgba(150,170,200,0.4);
+      border-radius: 8px; padding: 20px 24px;
+      font-family: 'JetBrains Mono','Courier New',monospace;
+      font-size: 12px; color: #a8b8d0; max-width: 280px;
+      opacity: 0; transition: opacity 2s ease-in-out; z-index: 100; line-height: 1.6;
+    }
+    .credits-popup.visible { opacity: 1; }
+    .credits-popup h2 { font-size: 14px; font-weight: 700; color: #c8d8f0;
+      letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+    .credits-popup .credits-label { font-size: 10px; color: #7888a0;
+      text-transform: uppercase; letter-spacing: 1px; margin: 10px 0 4px; }
+    .credits-popup hr { border: none; border-top: 1px solid rgba(150,170,200,0.3); margin: 12px 0; }
+    .credits-popup a { color: #a8c0e8; text-decoration: none; }
+  </style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+// --- per-animation params ---
+const P_SPEED = parseFloat(_params.get('speed') || '1');
+const P_STYLE = _params.get('terminalStyle') || 'amber';
+const P_CORRUPT = parseFloat(_params.get('corruption') || '0.2');
+const P_BOOT_CYCLE = parseInt(_params.get('bootCycle') || '1', 10);
+const P_SCROLL = parseFloat(_params.get('scrollSpeed') || '8');
+
+if (SCREENSAVER_MODE) {
+  document.body.classList.add('screensaver-mode');
+  const credits = document.createElement('div');
+  credits.className = 'credits-popup';
+  credits.innerHTML = `
+    <h2>ASCII Cyber Deck</h2>
+    <p class="credits-label">Animation</p>
+    <p>A fictional 1998 hacker terminal that never finishes booting.</p>
+    <hr>
+    <p class="credits-label">Screensaver Framework</p>
+    <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+    <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>`;
+  document.body.appendChild(credits);
+  setTimeout(() => credits.classList.add('visible'), 500);
+  setTimeout(() => credits.classList.remove('visible'), 30500);
+  setTimeout(() => credits.remove(), 32500);
+
+  let armed = false;
+  setTimeout(() => { armed = true; }, 1500);
+  const dismiss = () => {
+    if (!armed) return;
+    try { window.close(); } catch (e) {}
+    document.body.innerHTML = '';
+    document.body.style.background = '#000';
+  };
+  window.addEventListener('keydown', dismiss);
+  window.addEventListener('mousedown', dismiss);
+  window.addEventListener('mousemove', (() => {
+    let lastX = -1, lastY = -1, moveCount = 0;
+    return (e) => {
+      if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+      if (e.clientX === lastX && e.clientY === lastY) return;
+      lastX = e.clientX; lastY = e.clientY;
+      if (++moveCount > 10) dismiss();
+    };
+  })());
+}
+
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d');
+
+// --- Font measure & grid ---
+const FONT_SIZE = 15;
+let CHAR_W = 9, CHAR_H = 18, cols = 0, rows = 0;
+function measureFont() {
+  ctx.font = `${FONT_SIZE}px 'JetBrains Mono','Courier New',monospace`;
+  CHAR_W = ctx.measureText('M').width;
+  CHAR_H = FONT_SIZE * 1.25;
+}
+function resize() {
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  measureFont();
+  cols = Math.floor(canvas.width / CHAR_W);
+  rows = Math.floor(canvas.height / CHAR_H);
+}
+window.addEventListener('resize', resize);
+
+// --- Line generators & state machine ---
+const STYLES = { amber: '255,176,0', green: '64,255,128', blue: '120,180,255' };
+const COL = STYLES[P_STYLE] || STYLES.amber;
+const GARBLE = '¥§▒#@&%';
+let lines = [];           // {text, born}  newest last
+let state = 'BOOT', stateLeft = 12, frozen = false;
+function dots(label, val) { const w = 40; return label + '.'.repeat(Math.max(1, w - label.length - val.length)) + val; }
+function bootLine() {
+  const seq = [['BIOS CHECK','PASS'],['CPU','486DX'],['MEMORY MAP','OK'],
+    ['LOAD NETWORK STACK','OK'],['MOUNT /SYS','OK'],['MOUNT /USR','OK'],['INIT DRIVERS','OK']];
+  const [l, v] = seq[(Math.random() * seq.length) | 0]; return dots(l, v);
+}
+function hexLine() {
+  let s = '0x' + ((Math.random() * 0xffff) | 0).toString(16).padStart(4, '0').toUpperCase() + '  ';
+  for (let i = 0; i < 8; i++) s += ((Math.random() * 256) | 0).toString(16).padStart(2, '0').toUpperCase() + ' ';
+  return s;
+}
+const DIAG = ['+----------+      +----------+', '| CPU 486  |======| MEM 16M  |',
+  '| [##][##] |      | ▓▓▓▓░░░░ |', '+----------+      +----------+'];
+function panicBlock() { return ['*** KERNEL PANIC ***', 'segfault at 0x00000000 ip 0xC0FFEE',
+  'Kernel offset disabled', 'Rebooting in 3...']; }
+function corrupt(text) {
+  if (Math.random() > P_CORRUPT) return text;
+  const a = text.split('');
+  for (let i = 0; i < a.length; i++) if (Math.random() < P_CORRUPT * 0.3) a[i] = GARBLE[(Math.random() * GARBLE.length) | 0];
+  return a.join('');
+}
+function nextLines() {
+  if (frozen) return [];
+  if (state === 'PANIC') { return null; } // handled in update
+  stateLeft--;
+  if (stateLeft <= 0) {
+    const r = Math.random();
+    state = r < 0.45 ? 'BOOT' : r < 0.8 ? 'HEX' : 'DIAG';
+    stateLeft = 6 + ((Math.random() * 10) | 0);
+    if (Math.random() < P_CORRUPT * 0.25) state = 'PANIC';
+  }
+  if (state === 'BOOT') return [corrupt(bootLine())];
+  if (state === 'HEX')  return [corrupt(hexLine())];
+  if (state === 'DIAG') return DIAG.slice();
+  return [];
+}
+
+// --- Update — scroll cadence, panic/reboot ---
+let acc = 0, maxLines = 0;
+function update(dt) {
+  maxLines = Math.max(10, rows + 2);
+  if (state === 'PANIC') {
+    if (!lines._panicked) { panicBlock().forEach(t => lines.push({ text: t })); lines._panicked = true; }
+    acc += dt * P_SPEED;
+    if (acc > 2.5) { if (P_BOOT_CYCLE) { lines = []; state = 'BOOT'; stateLeft = 8; acc = 0; } else { frozen = true; } }
+    return;
+  }
+  acc += dt * P_SPEED * P_SCROLL;
+  while (acc >= 1) {
+    acc -= 1;
+    const out = nextLines();
+    if (out) out.forEach(t => lines.push({ text: t }));
+    while (lines.length > maxLines) lines.shift();
+  }
+}
+
+// --- Render — left-aligned, age-dimmed, cursor ---
+let blink = 0;
+function render(dt) {
+  ctx.fillStyle = '#0a0a12'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = `${FONT_SIZE}px 'JetBrains Mono','Courier New',monospace`;
+  ctx.textBaseline = 'top';
+  const n = lines.length;
+  for (let i = 0; i < n; i++) {
+    const age = i / n;                        // 0 oldest (top), ~1 newest
+    const a = 0.25 + 0.75 * age;
+    ctx.fillStyle = `rgba(${COL},${a})`;
+    ctx.fillText(lines[i].text, CHAR_W, (i + 1) * CHAR_H);
+  }
+  blink += dt;
+  if ((blink % 1) < 0.5 && n) {
+    const last = lines[n - 1].text.length;
+    ctx.fillStyle = `rgba(${COL},0.9)`;
+    ctx.fillText('█', CHAR_W + last * CHAR_W, n * CHAR_H);
+  }
+}
+
+// --- Main loop ---
+let lastTime = 0;
+function loop() {
+  const now = performance.now();
+  const dt = lastTime ? Math.min(0.1, (now - lastTime) / 1000) : 0;
+  lastTime = now;
+  update(dt);
+  render(dt);
+  requestAnimationFrame(loop);
+}
+
+function startAnimation() {
+  canvas.style.opacity = '1';
+  document.fonts.ready.then(() => {
+    resize();
+    loop();
+  });
+}
+
+if (START_AT > 0)        setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START)  setTimeout(startAnimation, 4000);
+else                     setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

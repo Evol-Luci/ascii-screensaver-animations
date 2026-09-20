@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Terrarium</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #terrarium-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(8, 14, 10, 0.92);
+            border: 1px solid rgba(80, 160, 110, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #7ab090;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #40c080;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #305838;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(80, 160, 110, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #40c080; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="terrarium-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED          = parseFloat(_params.get('speed')        || '1');
+const P_PALETTE        = _params.get('palette')                 || 'mossy';
+const P_PLANT_DENSITY  = Math.max(1, Math.min(5, parseInt(_params.get('plantDensity') || '3', 10)));
+const P_CONDENSATION   = parseFloat(_params.get('condensation') || '1.0');
+const P_GROWTH_CYCLE   = _params.get('growthCycle')             || 'loop';
+const P_CYCLE_TIME     = parseFloat(_params.get('cycleTime')    || '8');
+const P_SEASON_TIME    = parseFloat(_params.get('seasonTime')   || '24');
+const P_FAUNA_RATE     = parseFloat(_params.get('faunaRate')    || '1');
+const P_PREDATOR_RATE  = parseFloat(_params.get('predatorRate') || '1');
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Terrarium</h2>
+        <p class="credits-label">Animation</p>
+        <p>Miniature branching plants ·<br>condensation glass droplets ·<br>overhead light beam · drifting spores.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('terrarium-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 16;
+let CHAR_W = 9.6, CHAR_H = 20;
+let cols = 0, rows = 0;
+let W = 0, H = 0;
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+    cols = Math.floor(W / CHAR_W);
+    rows = Math.floor(H / CHAR_H);
+    computeTerrariumGeometry();
+    generateSoilPattern();
+    if (plants.length) spawnPlants();
+    if (condensationDroplets.length) spawnCondensationDroplets();
+    for (const r of rainDrops) {
+        r.col = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, r.col));
+        r.y   = Math.min(soilTopRow - 1,   Math.max(glassTopRow + 1,  r.y));
+    }
+    for (const s of seeds) {
+        s.col = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, s.col));
+        s.y   = Math.min(soilTopRow,        Math.max(glassTopRow + 1,  s.y));
+    }
+    for (const l of litter) {
+        l.col = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, l.col));
+        l.row = Math.min(glassBottomRow - 1, Math.max(soilTopRow, l.row));
+    }
+    // prune mycelium cells that fell outside the new soil band
+    for (const key of [...mycelium.keys()]) {
+        const ci = key.indexOf(',');
+        const c = parseInt(key), r = parseInt(key.slice(ci + 1));
+        if (c <= glassLeftCol || c >= glassRightCol || r < soilTopRow || r >= glassBottomRow) mycelium.delete(key);
+    }
+    for (const m of mushrooms) {
+        m.col = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, m.col));
+        m.row = Math.min(glassBottomRow - 1, Math.max(soilTopRow, m.row));
+    }
+    for (const d of detritivores) {
+        d.x = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, d.x));
+        d.y = Math.min(glassBottomRow - 1, Math.max(soilTopRow, d.y));
+    }
+    for (const g of grazers) {
+        g.x = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, g.x));
+        g.y = Math.min(glassBottomRow - 1, Math.max(glassTopRow + 1, g.y));
+        if (g.plant && plants.indexOf(g.plant) < 0) { g.plant = null; g.state = 'SEEK'; g.y = soilTopRow; }
+    }
+    if (centipede) for (const seg of centipede.body) {
+        seg.x = Math.min(glassRightCol + 1, Math.max(glassLeftCol - 1, seg.x));
+        seg.y = Math.min(glassBottomRow - 1, Math.max(soilTopRow - 0.5, seg.y));
+    }
+    if (nest) {
+        nest.col = Math.min(glassRightCol - 2, Math.max(glassLeftCol + 2, nest.col));
+        nest.row = soilTopRow;
+        for (const a of ants) {
+            a.x = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, a.x));
+            a.y = soilTopRow;
+        }
+        pheromone.clear();   // trail coordinates no longer match the new soil band
+    }
+}
+window.addEventListener('resize', resize);
+
+// ─── Terrarium glass geometry ───────────────────────────────────────────────────
+let glassLeftCol = 0, glassRightCol = 0, glassTopRow = 0, glassBottomRow = 0;
+let soilTopRow = 0;
+
+function computeTerrariumGeometry() {
+    const marginColsX = Math.max(4, Math.floor(cols * 0.12));
+    const marginRowsY = Math.max(3, Math.floor(rows * 0.08));
+    glassLeftCol    = marginColsX;
+    glassRightCol   = cols - marginColsX;
+    glassTopRow     = marginRowsY;
+    glassBottomRow  = rows - marginRowsY;
+    soilTopRow      = glassBottomRow - Math.max(3, Math.floor((glassBottomRow - glassTopRow) * 0.22));
+}
+
+// ─── Glass outline ──────────────────────────────────────────────────────────────
+const GLASS_COLOR = 'rgba(140, 190, 210, 0.35)';
+const GLASS_EDGE_GLOW = 'rgba(180, 220, 230, 0.12)';
+
+function drawGlassOutline() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = GLASS_COLOR;
+
+    ctx.fillText('╭', glassLeftCol * CHAR_W, glassTopRow * CHAR_H);
+    ctx.fillText('╮', glassRightCol * CHAR_W, glassTopRow * CHAR_H);
+    for (let c = glassLeftCol + 1; c < glassRightCol; c++) {
+        ctx.fillText('─', c * CHAR_W, glassTopRow * CHAR_H);
+    }
+    for (let r = glassTopRow + 1; r < glassBottomRow; r++) {
+        ctx.fillText('│', glassLeftCol * CHAR_W, r * CHAR_H);
+        ctx.fillText('│', glassRightCol * CHAR_W, r * CHAR_H);
+    }
+    ctx.fillText('╰', glassLeftCol * CHAR_W, glassBottomRow * CHAR_H);
+    ctx.fillText('╯', glassRightCol * CHAR_W, glassBottomRow * CHAR_H);
+    for (let c = glassLeftCol + 1; c < glassRightCol; c++) {
+        ctx.fillText('─', c * CHAR_W, glassBottomRow * CHAR_H);
+    }
+
+    const gx0 = glassLeftCol * CHAR_W, gx1 = glassRightCol * CHAR_W;
+    const gy0 = glassTopRow * CHAR_H, gy1 = glassBottomRow * CHAR_H;
+    ctx.fillStyle = GLASS_EDGE_GLOW;
+    ctx.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
+}
+
+// ─── Soil + moss base ───────────────────────────────────────────────────────────
+let soilGlyphs = [];
+const SOIL_CHARS = ['.', ',', '·', '°', '▒'];
+const MOSS_CHARS = ['"', "'", '~', '░'];
+
+function generateSoilPattern() {
+    soilGlyphs = [];
+    for (let row = soilTopRow; row < glassBottomRow; row++) {
+        const rowNorm = (row - soilTopRow) / Math.max(1, glassBottomRow - soilTopRow);
+        for (let col = glassLeftCol + 1; col < glassRightCol; col++) {
+            if (Math.random() < 0.55) {
+                const isMossLayer = rowNorm < 0.35;
+                const char = isMossLayer
+                    ? MOSS_CHARS[Math.floor(Math.random() * MOSS_CHARS.length)]
+                    : SOIL_CHARS[Math.floor(Math.random() * SOIL_CHARS.length)];
+                soilGlyphs.push({ col, row, char, moss: isMossLayer });
+            }
+        }
+    }
+}
+
+function drawSoilAndMoss() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    const soilCol = rgbStr(lerpRGB(C._soilDry, C._soilWet, soilMoisture));
+    const mossLerp = lerpRGB(parseRGB('#3a6a3e'), parseRGB('#2a5230'), soilMoisture);
+    const mossCol = rgbStr(mossLerp);
+    for (const g of soilGlyphs) {
+        ctx.globalAlpha = g.moss ? 0.85 : 0.7;
+        ctx.fillStyle = g.moss ? mossCol : soilCol;
+        ctx.fillText(g.char, g.col * CHAR_W, g.row * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Background day/night/warmth wash ────────────────────────────────────────────
+function drawBackgroundWash() {
+    const night = (1 - lightLevel);
+    if (night > 0.01) {
+        ctx.globalAlpha = night * 0.5;
+        ctx.fillStyle = rgbStr(C._nightTint);
+        ctx.fillRect(0, 0, W, H);
+    }
+    if (warmthLevel > 0.01) {
+        ctx.globalAlpha = warmthLevel * 0.12;
+        ctx.fillStyle = rgbStr(C._warmTint);
+        ctx.fillRect(0, 0, W, H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Plant palettes ─────────────────────────────────────────────────────────────
+const PALETTES = {
+    mossy: {
+        stem:      ['#2a4a1a', '#34581f', '#3d6024'],
+        twig:      ['#4a7a2a', '#578a30', '#609038'],
+        leafDark:  ['#1e4a1e', '#225522', '#1a4018'],
+        leafMid:   ['#3a8a30', '#449438', '#4ea03e'],
+        leafLight: ['#6ec850', '#7ed860', '#8ee870'],
+        nightTint: '#0a1420', warmTint: '#3a2410',
+        soilWet: '#241a10', soilDry: '#4a3422',
+        myc: '#9aa890', mushCap: '#b8503a', mushStem: '#d8cab0',
+        litter: '#6a5238', detritivore: '#8a7a60', grazer: '#b0a85a',
+        predator: '#b03a28', ant: '#8a5a32', seed: '#d8c878',
+    },
+    tropical: {
+        stem:      ['#2a3a1a', '#34481f', '#3d5024'],
+        twig:      ['#4a6a2a', '#5a7a30', '#688838'],
+        leafDark:  ['#0a5a3a', '#0e6840', '#0a5030'],
+        leafMid:   ['#18a060', '#20b070', '#28c078'],
+        leafLight: ['#50e0a0', '#60f0b0', '#78ffc0'],
+        nightTint: '#06141c', warmTint: '#2a2810',
+        soilWet: '#1a160e', soilDry: '#3d3020',
+        myc: '#90b0a0', mushCap: '#d05060', mushStem: '#e0d8c0',
+        litter: '#5a4a30', detritivore: '#7a8a70', grazer: '#a8c060',
+        predator: '#c04040', ant: '#7a5030', seed: '#c0e890',
+    },
+    desert: {
+        stem:      ['#5a4a2a', '#6a5832', '#785f38'],
+        twig:      ['#8a7040', '#9a8048', '#a89050'],
+        leafDark:  ['#5a7a30', '#688838', '#4a6a28'],
+        leafMid:   ['#8aaa50', '#9aba58', '#a8c860'],
+        leafLight: ['#c0d880', '#d0e890', '#e0f0a0'],
+        nightTint: '#101424', warmTint: '#4a3014',
+        soilWet: '#3a2c18', soilDry: '#6a5230',
+        myc: '#c0b890', mushCap: '#c87040', mushStem: '#e8dcb8',
+        litter: '#8a6e40', detritivore: '#a89060', grazer: '#c8b060',
+        predator: '#b85028', ant: '#6a4622', seed: '#e8d088',
+    },
+    autumn: {
+        stem:      ['#4a3018', '#5a3a20', '#684228'],
+        twig:      ['#8a5020', '#9a5828', '#a86030'],
+        leafDark:  ['#8a3000', '#9a3808', '#a04010'],
+        leafMid:   ['#d06010', '#e07018', '#f08020'],
+        leafLight: ['#ffb040', '#ffc050', '#ffd060'],
+        nightTint: '#1a1018', warmTint: '#5a2c0c',
+        soilWet: '#2c1c10', soilDry: '#523622',
+        myc: '#b0a080', mushCap: '#d85820', mushStem: '#e8d4a8',
+        litter: '#7a5028', detritivore: '#9a7848', grazer: '#c89048',
+        predator: '#c84818', ant: '#6a3818', seed: '#f0c060',
+    },
+    mono: {
+        stem:      ['#3a3a3a', '#484848', '#555555'],
+        twig:      ['#666666', '#757575', '#848484'],
+        leafDark:  ['#555555', '#606060', '#4a4a4a'],
+        leafMid:   ['#888888', '#909090', '#9a9a9a'],
+        leafLight: ['#cccccc', '#d5d5d5', '#e0e0e0'],
+        nightTint: '#10141a', warmTint: '#2a2a2a',
+        soilWet: '#2a2a2a', soilDry: '#4a4a4a',
+        myc: '#9a9a9a', mushCap: '#b0b0b0', mushStem: '#d0d0d0',
+        litter: '#6a6a6a', detritivore: '#888888', grazer: '#a8a8a8',
+        predator: '#c0c0c0', ant: '#707070', seed: '#d8d8d8',
+    },
+};
+const C = PALETTES[P_PALETTE] || PALETTES.mossy;
+
+function rnd(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function coin(p = 0.5) { return Math.random() < p; }
+
+// ─── Color helpers ───────────────────────────────────────────────────────────────
+function parseRGB(s) {
+    if (s[0] === '#') {
+        const n = parseInt(s.slice(1), 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    const m = s.match(/(\d+(\.\d+)?)/g);
+    return [parseFloat(m[0]), parseFloat(m[1]), parseFloat(m[2])];
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpRGB(c1, c2, t) {
+    return [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
+}
+function rgbStr(c, a) {
+    return a === undefined
+        ? `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`
+        : `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+}
+C._nightTint = parseRGB(C.nightTint);  C._warmTint = parseRGB(C.warmTint);
+C._soilWet   = parseRGB(C.soilWet);    C._soilDry  = parseRGB(C.soilDry);
+
+// ─── Environmental coupling bus ──────────────────────────────────────────────────
+let dayPhase = 0.5, lightLevel = 1, warmthLevel = 0;
+let seasonPhase = 0.0, seasonWetness = 0.6;
+let humidity = 0.5, soilMoisture = 0.6, soilNutrients = 0.6, vitality = 0.6;
+
+function computeVitality() {
+    vitality = Math.max(0.15, Math.min(1,
+        0.15 + 0.85 * soilMoisture * soilNutrients * (0.4 + 0.6 * lightLevel) * (0.5 + 0.5 * seasonWetness)));
+    return vitality;
+}
+
+function updateEnvironment(scaledDt) {
+    if (P_CYCLE_TIME > 0) { dayPhase = (dayPhase + scaledDt / (P_CYCLE_TIME * 60000)) % 1; }
+    else dayPhase = 0.5;
+    lightLevel  = 0.5 - 0.5 * Math.cos(dayPhase * Math.PI * 2);
+    warmthLevel = Math.abs(Math.sin(dayPhase * Math.PI * 2));
+
+    if (P_SEASON_TIME > 0) {
+        seasonPhase = (seasonPhase + scaledDt / (P_SEASON_TIME * 60000)) % 1;
+        seasonWetness = 0.5 - 0.5 * Math.cos(seasonPhase * Math.PI * 2);
+    } else seasonWetness = 0.6;
+
+    updateWaterCycle(scaledDt);
+    computeVitality();
+}
+
+// Water cycle — evaporation lifts soil moisture into the air as humidity;
+// humidity condenses on the glass (glassWater); when it overflows it rains,
+// returning water to the soil. A closed loop with seasonal dry-down.
+let glassWater = 0;
+let rainActive = false;
+let rainDrops  = [];
+
+function updateWaterCycle(scaledDt) {
+    if (rainActive) return;   // during rain, the soil refill is handled in updateAndDrawRain
+    // evaporation: light pulls moisture out of the soil and into the air
+    const ev = 0.00002 * scaledDt * lightLevel * soilMoisture;
+    humidity     = Math.min(1, humidity + ev * 3);
+    soilMoisture = Math.max(0, soilMoisture - ev);
+    // dry-season draws the soil down even without sun
+    soilMoisture = Math.max(0, soilMoisture - 0.000004 * scaledDt * (1 - seasonWetness) * lightLevel);
+    // groundwater wicks the soil back toward a seasonal baseline so it never
+    // fully desertifies (keeps the system recoverable even with rain disabled)
+    const floor = 0.12 + 0.18 * seasonWetness;
+    if (soilMoisture < floor) soilMoisture += (floor - soilMoisture) * 0.00004 * scaledDt;
+    // condensation collects on the glass, proportional to humidity
+    if (P_CONDENSATION > 0) {
+        glassWater += 0.00003 * scaledDt * humidity;
+        if (glassWater > 1.0) startRain();
+    }
+    humidity     = Math.max(0, Math.min(1, humidity));
+    soilMoisture = Math.max(0, Math.min(1, soilMoisture));
+}
+
+function condensationTarget() {
+    return Math.round(8 * P_CONDENSATION * (0.3 + 0.7 * humidity));
+}
+
+function startRain() {
+    rainActive = true;
+    rainDrops  = [];
+    const span = Math.max(2, glassRightCol - glassLeftCol - 2);
+    const n    = Math.max(8, Math.round(span * 0.5));
+    for (let i = 0; i < n; i++) {
+        rainDrops.push({
+            col:   glassLeftCol + 1 + Math.random() * span,
+            y:     glassTopRow + 1 + Math.random() * Math.max(1, soilTopRow - glassTopRow - 2),
+            speed: 0.25 + Math.random() * 0.25,
+            char:  RAIN_CHARS[Math.floor(Math.random() * RAIN_CHARS.length)],
+        });
+    }
+}
+
+const RAIN_CHARS = ['│', '╿', '.', '│'];
+
+function updateAndDrawRain(scaledDt) {
+    if (!rainActive) return;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#9fc4d8';
+    for (let i = rainDrops.length - 1; i >= 0; i--) {
+        const r = rainDrops[i];
+        r.y += r.speed * (scaledDt / 16.67);
+        if (r.y >= soilTopRow) {
+            soilMoisture = Math.min(1, soilMoisture + 0.012);
+            rainDrops.splice(i, 1);
+            continue;
+        }
+        ctx.globalAlpha = 0.45 + Math.random() * 0.3;
+        ctx.fillText(r.char, r.col * CHAR_W, r.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+    if (rainDrops.length === 0) {
+        rainActive = false;
+        glassWater = 0;
+        humidity   = Math.max(0, humidity - 0.4);   // air dries out after a downpour
+    }
+}
+
+// ─── Plant generation (adapted from bonsai's generateTree/shoot/leafClump) ─────
+const LEAF_CHARS = ['*', '&', '"', "'", '`', ','];
+
+function generatePlant(originCol, originRow, maxHeightRows, padScale) {
+    const ops = [];
+
+    function put(x, y, char, color) {
+        x = Math.round(x);
+        y = Math.round(y);
+        if (x <= glassLeftCol || x >= glassRightCol || y <= glassTopRow || y > originRow) return;
+        ops.push({ x, y, char, color, key: `${x},${y}` });
+    }
+
+    function pad(cx, cy, w, h) {
+        for (let dy = -(h + 1); dy <= (h + 1); dy++) {
+            for (let dx = -(w + 1); dx <= (w + 1); dx++) {
+                const norm = (dx / w) * (dx / w) * 0.75 + (dy / h) * (dy / h) * 1.6;
+                if (norm > 1.2) continue;
+                const isEdge = norm > 0.80;
+                if (!coin(isEdge ? 0.5 : 0.85)) continue;
+                const col = Math.random() < 0.12
+                    ? rnd(C.leafLight)
+                    : Math.random() < 0.55 ? rnd(C.leafMid) : rnd(C.leafDark);
+                put(cx + dx, cy + dy, rnd(LEAF_CHARS), col);
+            }
+        }
+    }
+
+    function leafClump(cx, cy, padSz) {
+        const w = Math.max(2, padSz + 1 + Math.floor(Math.random() * 2));
+        const h = Math.max(1, Math.floor(padSz / 2) + 1);
+        pad(cx, cy, w, h);
+        if (padSz >= 2 && coin(0.6)) {
+            const ox = Math.round((Math.random() - 0.5) * w * 0.7);
+            pad(cx + ox, cy - 1, Math.max(1, w - 1), h);
+        }
+    }
+
+    function shoot(x, y, dx, life, depth, padSz) {
+        const origLife = life;
+        while (life > 0) {
+            life--;
+            const prog = 1 - life / origLife;
+            const mx = coin(prog < 0.6 ? 0.3 : 0.55) ? dx : 0;
+            const my = -1;
+            const ch = mx === 0 ? '|' : (mx < 0 ? '/' : '\\');
+            const col = depth === 0 ? (prog < 0.4 ? rnd(C.stem) : rnd(C.twig)) : rnd(C.twig);
+            put(x, y, ch, col);
+            x += mx;
+            y += my;
+
+            if (depth === 0 && life > 2 && coin(0.22)) {
+                const subLife = Math.max(2, Math.floor(life * 0.5));
+                shoot(x, y, coin() ? -1 : 1, subLife, 1, Math.max(1, padSz - 1));
+            }
+        }
+        leafClump(x, y, padSz);
+    }
+
+    const trunkH = Math.max(3, Math.min(7, maxHeightRows));
+    let sx = originCol, sy = originRow;
+    for (let i = 0; i < trunkH; i++) {
+        const wob = coin(0.15) ? (coin() ? -1 : 1) : 0;
+        put(sx, sy, wob === 0 ? '|' : (wob < 0 ? '/' : '\\'), rnd(C.stem));
+        if (i > 1 && i % 2 === 0 && coin(0.5)) {
+            const branchPad = Math.max(1, Math.round(padScale * 2));
+            shoot(sx, sy, coin() ? -1 : 1, 2 + Math.floor(Math.random() * 2), 0, branchPad);
+        }
+        sx += wob;
+        sy -= 1;
+    }
+
+    leafClump(sx, sy, Math.max(1, Math.round(padScale * 2.5)));
+
+    return ops;
+}
+
+// ─── Litter store (dead plant matter; shared substrate for fungi/fauna) ─────────
+const LITTER_CHARS = ['≈', '~', '*', '.'];
+const LITTER_CAP   = 120;
+let litter = [];          // {col,row,char,mass}
+let fertileCol = null;    // last spot a plant died — biases next germination
+
+function addLitter(col, mass) {
+    if (litter.length >= LITTER_CAP) return;
+    litter.push({
+        col:  Math.round(col),
+        row:  soilTopRow + Math.floor(Math.random() * 2),
+        char: rnd(LITTER_CHARS),
+        mass,
+    });
+}
+
+function drawLitter() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = C.litter;
+    for (const l of litter) {
+        ctx.globalAlpha = 0.25 + 0.55 * Math.min(1, l.mass);
+        ctx.fillText(l.char, l.col * CHAR_W, l.row * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── PlantInstance: env-driven life cycle ──────────────────────────────────────
+// SPROUT → GROWING → MATURE → (SEEDING ↔ MATURE) → WILTING → litter
+const LEAF_SET = new Set(LEAF_CHARS);
+
+class PlantInstance {
+    constructor(originCol, maxHeightRows, padScale, slotIdx) {
+        this.originCol     = originCol;
+        this.maxHeightRows = maxHeightRows;
+        this.padScale      = padScale;
+        this.slotIdx       = slotIdx;
+        this.lifespan      = 70000 + Math.random() * 60000;   // ms (scaled) of MATURE life
+        this.start();
+    }
+
+    start() {
+        this.drawOps      = generatePlant(this.originCol, soilTopRow, this.maxHeightRows, this.padScale);
+        this.drawn        = new Map();
+        this.phase        = 'SPROUT';
+        this.growProgress = 0;
+        this.revealed     = 0;
+        this.health       = 1;
+        this.age          = 0;
+        this.wiltStress   = 0;
+        this.fadeAlpha    = 1;
+        this.seedTimer    = 6000 + Math.random() * 8000;
+        this.dead         = false;
+    }
+
+    // reveal drawOps up to floor(growProgress * len)
+    revealTo(progress) {
+        const target = Math.floor(Math.max(0, Math.min(1, progress)) * this.drawOps.length);
+        while (this.revealed < target) {
+            const op = this.drawOps[this.revealed++];
+            this.drawn.set(op.key, { char: op.char, color: op.color });
+        }
+    }
+
+    mass() { return Math.min(1.4, this.drawOps.length / 70); }
+
+    update(scaledDt) {
+        const f = scaledDt / 16.67;
+        this.age += scaledDt;
+
+        if (this.phase === 'SPROUT') {
+            this.revealTo(0.06);                       // just the base of the stem
+            if (vitality > 0.3) this.phase = 'GROWING';
+            return;
+        }
+
+        if (this.phase === 'GROWING') {
+            this.growProgress += 0.003 * P_SPEED * vitality * f;
+            this.revealTo(this.growProgress);
+            soilNutrients = Math.max(0, soilNutrients - 0.0000015 * scaledDt);  // growth draws nutrients
+            if (this.growProgress >= 1) { this.revealTo(1); this.phase = 'MATURE'; }
+            return;
+        }
+
+        if (this.phase === 'MATURE') {
+            if (P_GROWTH_CYCLE === 'static') return;   // calm mode: never seed or wilt
+            // seeding when conditions are good and there's room
+            this.seedTimer -= scaledDt;
+            if (this.seedTimer <= 0) {
+                this.seedTimer = 9000 + Math.random() * 9000;
+                if (vitality > 0.45 && plants.length < plantTarget() + 2) {
+                    this.phase = 'SEEDING';
+                    return;
+                }
+            }
+            // wilting pressure: sustained low vitality, old age, or grazed to death
+            if (vitality < 0.25) this.wiltStress += scaledDt; else this.wiltStress = Math.max(0, this.wiltStress - scaledDt * 0.5);
+            if (this.wiltStress > 22000 || this.age > this.lifespan || this.health <= 0) {
+                this.phase = 'WILTING';
+            }
+            return;
+        }
+
+        if (this.phase === 'SEEDING') {
+            spawnSeed(this.originCol, soilTopRow - this.maxHeightRows);
+            this.phase = 'MATURE';
+            return;
+        }
+
+        if (this.phase === 'WILTING') {
+            this.fadeAlpha -= 0.004 * P_SPEED * f;
+            // strip leaf glyphs first so it visibly browns/thins
+            if (coin(0.3 * f)) {
+                for (const [key, v] of this.drawn) {
+                    if (LEAF_SET.has(v.char)) { this.drawn.delete(key); break; }
+                }
+            }
+            if (this.fadeAlpha <= 0) {
+                addLitter(this.originCol, this.mass());
+                soilNutrients = Math.min(1, soilNutrients + 0.02 * this.mass());  // some returns immediately
+                fertileCol = this.originCol;
+                this.dead = true;
+            }
+            return;
+        }
+    }
+
+    draw() {
+        ctx.globalAlpha = this.phase === 'WILTING' ? Math.max(0, this.fadeAlpha) : 1;
+        this.drawn.forEach(({ char, color }, key) => {
+            const comma = key.indexOf(',');
+            ctx.fillStyle = color;
+            ctx.fillText(char, parseInt(key) * CHAR_W, parseInt(key.slice(comma + 1)) * CHAR_H);
+        });
+        ctx.globalAlpha = 1;
+    }
+}
+
+// ─── Plant population management ────────────────────────────────────────────────
+let plants = [];
+
+function plantTarget() { return P_PLANT_DENSITY; }
+
+function slotGeometry(i) {
+    const interiorWidth = glassRightCol - glassLeftCol - 2;
+    const slotWidth = interiorWidth / P_PLANT_DENSITY;
+    const slotStart = glassLeftCol + 1 + i * slotWidth;
+    return { slotStart, slotWidth };
+}
+
+function makePlantInSlot(i, partialGrow) {
+    const usableHeight  = Math.max(3, soilTopRow - glassTopRow - 1);
+    const maxHeightRows = Math.max(3, Math.min(7, usableHeight));
+    const { slotStart, slotWidth } = slotGeometry(i);
+    const originCol  = Math.round(slotStart + slotWidth * (0.3 + Math.random() * 0.4));
+    const heightRows = Math.max(3, Math.round(maxHeightRows * (0.6 + Math.random() * 0.6)));
+    const padScale   = 0.7 + Math.random() * 0.8;
+    const plant = new PlantInstance(originCol, heightRows, padScale, i);
+    if (partialGrow) {
+        plant.phase = 'MATURE';
+        plant.growProgress = 1;
+        plant.revealTo(1);
+        plant.age = Math.random() * plant.lifespan * 0.5;
+    }
+    return plant;
+}
+
+function freeSlots() {
+    const taken = new Set(plants.map(p => p.slotIdx));
+    const free = [];
+    for (let i = 0; i < P_PLANT_DENSITY; i++) if (!taken.has(i)) free.push(i);
+    return free;
+}
+
+function spawnPlants() {
+    plants = [];
+    for (let i = 0; i < P_PLANT_DENSITY; i++) plants.push(makePlantInSlot(i, true));
+}
+
+function updatePlants(scaledDt) {
+    for (const p of plants) p.update(scaledDt);
+    // remove the dead
+    for (let i = plants.length - 1; i >= 0; i--) if (plants[i].dead) plants.splice(i, 1);
+    // maintain population: germinate into a free slot, biased to where one died.
+    // Lower the count, higher the per-frame sprout chance (stability floor).
+    if (plants.length < plantTarget()) {
+        const free = freeSlots();
+        if (free.length) {
+            const deficit = plantTarget() - plants.length;
+            const chance = (0.004 + 0.004 * deficit) * (scaledDt / 16.67) * (0.4 + 0.6 * vitality);
+            if (Math.random() < chance) {
+                let slot = free[Math.floor(Math.random() * free.length)];
+                if (fertileCol !== null) {
+                    // prefer the slot containing the last death site
+                    for (const s of free) {
+                        const g = slotGeometry(s);
+                        if (fertileCol >= g.slotStart && fertileCol < g.slotStart + g.slotWidth) { slot = s; break; }
+                    }
+                    fertileCol = null;
+                }
+                plants.push(makePlantInSlot(slot, false));
+            }
+        }
+    }
+}
+
+function drawPlants() {
+    for (const p of plants) p.draw();
+}
+
+// ─── Seeds: drift from a SEEDING plant, germinate in a free slot ─────────────────
+const SEED_CHARS = ['•', ','];
+const SEED_CAP   = 8;
+let seeds = [];
+
+function spawnSeed(col, topRow) {
+    if (seeds.length >= SEED_CAP) return;
+    seeds.push({
+        col:   col + (Math.random() - 0.5) * 4,
+        y:     Math.max(glassTopRow + 1, topRow),
+        vx:    (Math.random() - 0.5) * 0.03,
+        vy:    0.02 + Math.random() * 0.03,
+        char:  rnd(SEED_CHARS),
+        settled: false,
+    });
+}
+
+function updateAndDrawSeeds(scaledDt) {
+    const f = scaledDt / 16.67;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = C.seed;
+    for (let i = seeds.length - 1; i >= 0; i--) {
+        const s = seeds[i];
+        s.col += s.vx * f;
+        s.y   += s.vy * f;
+        if (s.y >= soilTopRow) {
+            // landed: germinate into a free slot if room, else become tiny litter
+            const free = freeSlots();
+            if (free.length && plants.length < plantTarget() + 1) {
+                let slot = free[0];
+                for (const sl of free) {
+                    const g = slotGeometry(sl);
+                    if (s.col >= g.slotStart && s.col < g.slotStart + g.slotWidth) { slot = sl; break; }
+                }
+                plants.push(makePlantInSlot(slot, false));
+            } else {
+                addLitter(s.col, 0.15);
+            }
+            seeds.splice(i, 1);
+            continue;
+        }
+        ctx.globalAlpha = 0.8;
+        ctx.fillText(s.char, s.col * CHAR_W, s.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Fungi: mycelium network + fruiting mushrooms (the decomposers) ─────────────
+// Mycelium threads spread through the soil over litter, decompose it into
+// soilNutrients (closing the nutrient loop), and periodically fruit mushrooms
+// that puff spores then wither back into litter.
+const MYC_CAP   = 200;
+const MUSH_CAP  = 5;
+const MUSH_CAPS = ['∩', '╦', '╤'];
+let mycelium    = new Map();   // "col,row" -> strength 0..1
+let mushrooms   = [];          // {col,row,phase,h,maxH,age,fade,sporeTimer}
+let mushSpawnTimer = 3000;
+
+function mycKey(col, row) { return col + ',' + row; }
+
+function litterNear(col, row) {
+    let n = 0;
+    for (const l of litter) if (Math.abs(l.col - col) <= 2 && Math.abs(l.row - row) <= 1) n += l.mass;
+    return n;
+}
+
+function myceliumNear(col, row) {
+    let s = 0;
+    for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++) {
+        const v = mycelium.get(mycKey(col + dc, row + dr));
+        if (v) s += v;
+    }
+    return s;
+}
+
+function updateMycelium(scaledDt) {
+    const f = scaledDt / 16.67;
+    // seed a starter thread under a litter piece when the network is empty
+    if (mycelium.size === 0 && litter.length) {
+        const l = litter[Math.floor(Math.random() * litter.length)];
+        mycelium.set(mycKey(l.col, Math.min(glassBottomRow - 1, Math.max(soilTopRow, l.row))), 0.4);
+    }
+    const additions = [];
+    for (const [key, str] of mycelium) {
+        const ci = key.indexOf(',');
+        const c = parseInt(key), r = parseInt(key.slice(ci + 1));
+        const near = litterNear(c, r);
+        let ns = str + (near > 0 ? 0.0006 * scaledDt : -0.0004 * scaledDt);
+        ns = Math.max(0, Math.min(1, ns));
+        mycelium.set(key, ns);
+        // frontier spread toward litter
+        if (mycelium.size + additions.length < MYC_CAP && near > 0 && Math.random() < 0.02 * f * str) {
+            const nc = c + (Math.floor(Math.random() * 3) - 1);
+            const nr = r + (Math.floor(Math.random() * 3) - 1);
+            if (nr >= soilTopRow && nr < glassBottomRow && nc > glassLeftCol && nc < glassRightCol) {
+                const nk = mycKey(nc, nr);
+                if (!mycelium.has(nk)) additions.push(nk);
+            }
+        }
+    }
+    for (const k of additions) mycelium.set(k, 0.25);
+    // prune receded threads
+    for (const [key, str] of mycelium) if (str <= 0) mycelium.delete(key);
+}
+
+function decompose(scaledDt) {
+    const decompRate = 0.00004;
+    for (let i = litter.length - 1; i >= 0; i--) {
+        const l = litter[i];
+        const mn = Math.min(2, myceliumNear(l.col, l.row));
+        const rate = decompRate * scaledDt * (0.5 + mn);
+        l.mass -= rate;
+        soilNutrients = Math.min(1, soilNutrients + rate * 0.6);
+        if (l.mass <= 0) litter.splice(i, 1);
+    }
+    // background mineralization floor — nutrients never fully exhaust
+    const nfloor = 0.1;
+    if (soilNutrients < nfloor) soilNutrients += (nfloor - soilNutrients) * 0.00003 * scaledDt;
+}
+
+function tryFruitMushroom() {
+    if (mushrooms.length >= MUSH_CAP) return;
+    let pick = null;
+    for (const [key, str] of mycelium) if (str > 0.4 && Math.random() < 0.3) { pick = key; break; }
+    if (!pick) return;
+    const ci = pick.indexOf(',');
+    const col = parseInt(pick), row = parseInt(pick.slice(ci + 1));
+    mushrooms.push({ col, row, phase: 'GROW', h: 0, maxH: 1 + Math.floor(Math.random() * 2),
+        age: 0, fade: 1, sporeTimer: 2000 + Math.random() * 2000 });
+}
+
+function updateMushrooms(scaledDt) {
+    mushSpawnTimer -= scaledDt;
+    if (mushSpawnTimer <= 0) {
+        mushSpawnTimer = 4000 + Math.random() * 5000;
+        if (vitality > 0.3 && litter.length > 0) tryFruitMushroom();
+    }
+    for (let i = mushrooms.length - 1; i >= 0; i--) {
+        const m = mushrooms[i];
+        m.age += scaledDt;
+        if (m.phase === 'GROW') {
+            m.h += 0.0008 * scaledDt;
+            if (m.h >= m.maxH) { m.h = m.maxH; m.phase = 'MATURE'; }
+        } else if (m.phase === 'MATURE') {
+            m.sporeTimer -= scaledDt;
+            if (m.sporeTimer <= 0) { m.sporeTimer = 2500 + Math.random() * 2500; puffSpore(m.col, m.row - m.maxH); }
+            if (m.age > 20000 || vitality < 0.25 || litter.length === 0) m.phase = 'WITHER';
+        } else if (m.phase === 'WITHER') {
+            m.fade -= 0.0006 * scaledDt;
+            if (m.fade <= 0) { addLitter(m.col, 0.3); mushrooms.splice(i, 1); }
+        }
+    }
+}
+
+function puffSpore(col, row) {
+    if (spores.length >= MAX_SPORES) return;
+    spores.push({
+        x: col, y: Math.max(glassTopRow + 1, row),
+        vx: (Math.random() - 0.5) * 0.02, vy: -0.006 - Math.random() * 0.008,
+        age: 0, maxAge: 500 + Math.random() * 500,
+        char: SPORE_CHARS[Math.floor(Math.random() * SPORE_CHARS.length)],
+    });
+}
+
+function updateFungi(scaledDt) {
+    updateMycelium(scaledDt);
+    decompose(scaledDt);
+    updateMushrooms(scaledDt);
+}
+
+function drawMycelium() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = C.myc;
+    for (const [key, str] of mycelium) {
+        const ci = key.indexOf(',');
+        ctx.globalAlpha = 0.08 + 0.22 * str;
+        ctx.fillText('·', parseInt(key) * CHAR_W, parseInt(key.slice(ci + 1)) * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function drawMushrooms() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    for (const m of mushrooms) {
+        const capRow = Math.round(m.row - m.h);
+        ctx.globalAlpha = Math.max(0, m.fade);
+        ctx.fillStyle = C.mushStem;
+        for (let r = capRow + 1; r <= m.row; r++) ctx.fillText('|', m.col * CHAR_W, r * CHAR_H);
+        ctx.fillStyle = C.mushCap;
+        ctx.fillText(MUSH_CAPS[m.col % MUSH_CAPS.length], m.col * CHAR_W, capRow * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Overhead light beam ────────────────────────────────────────────────────────
+function drawLightBeam() {
+    const topY    = glassTopRow * CHAR_H;
+    const botY    = soilTopRow * CHAR_H;
+    const centerX = ((glassLeftCol + glassRightCol) / 2) * CHAR_W;
+    const topHalfWidth = (glassRightCol - glassLeftCol) * CHAR_W * 0.32;
+    const botHalfWidth = topHalfWidth * 0.7;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(centerX - topHalfWidth, topY);
+    ctx.lineTo(centerX + topHalfWidth, topY);
+    ctx.lineTo(centerX + botHalfWidth, botY);
+    ctx.lineTo(centerX - botHalfWidth, botY);
+    ctx.closePath();
+    ctx.clip();
+
+    // Beam intensity follows the day/night light level; tints amber at dawn/dusk.
+    const beam = 0.12 + 0.88 * lightLevel;
+    const br = 255, bg = Math.round(250 - warmthLevel * 60), bb = Math.round(220 - warmthLevel * 110);
+    const grad = ctx.createLinearGradient(0, topY, 0, botY);
+    grad.addColorStop(0,   `rgba(${br}, ${bg}, ${bb}, ${0.16 * beam})`);
+    grad.addColorStop(0.6, `rgba(${br}, ${bg}, ${bb}, ${0.05 * beam})`);
+    grad.addColorStop(1,   `rgba(${br}, ${bg}, ${bb}, 0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(centerX - topHalfWidth, topY, topHalfWidth * 2, botY - topY);
+    ctx.restore();
+}
+
+// ─── Drifting spores ─────────────────────────────────────────────────────────────
+const MAX_SPORES = 6;
+const SPORE_CHARS = ['.', '`', "'"];
+let spores = [];
+let sporeSpawnTimer = 0;
+
+function trySpawnSpore() {
+    if (spores.length >= MAX_SPORES) return;
+    spores.push({
+        x: glassLeftCol + 2 + Math.random() * (glassRightCol - glassLeftCol - 4),
+        y: glassTopRow + 1 + Math.random() * (soilTopRow - glassTopRow - 1),
+        vx: (Math.random() - 0.5) * 0.01,
+        vy: -0.004 - Math.random() * 0.006,
+        age: 0,
+        maxAge: 600 + Math.random() * 600,
+        char: SPORE_CHARS[Math.floor(Math.random() * SPORE_CHARS.length)],
+    });
+}
+
+function spawnSporeIfDue(scaledDt) {
+    sporeSpawnTimer -= scaledDt;
+    if (sporeSpawnTimer <= 0) {
+        sporeSpawnTimer = 4000 + Math.random() * 6000;
+        trySpawnSpore();
+    }
+}
+
+function updateAndDrawSpores(scaledDt) {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (let i = spores.length - 1; i >= 0; i--) {
+        const s = spores[i];
+        s.age += scaledDt;
+        if (s.age >= s.maxAge || s.y < glassTopRow) { spores.splice(i, 1); continue; }
+        s.x += s.vx * (scaledDt / 16.67);
+        s.y += s.vy * (scaledDt / 16.67);
+        const ageNorm = s.age / s.maxAge;
+        const alpha = Math.sin(ageNorm * Math.PI) * 0.5;
+        ctx.globalAlpha = Math.max(0, alpha);
+        ctx.fillStyle = '#e8f0d8';
+        ctx.fillText(s.char, s.x * CHAR_W, s.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Condensation droplets ──────────────────────────────────────────────────────
+const DROPLET_CHARS = ['°', '.', "'", ':'];
+let condensationDroplets = [];
+
+function spawnCondensationDroplets() {
+    condensationDroplets = [];
+    const count = condensationTarget();
+    for (let i = 0; i < count; i++) {
+        condensationDroplets.push(makeDroplet(true));
+    }
+}
+
+function makeDroplet(randomizeY) {
+    const isLeftWall = coin(0.5);
+    const inset = 1 + Math.floor(Math.random() * 2);
+    const pathCol = isLeftWall ? glassLeftCol + inset : glassRightCol - inset;
+    return {
+        pathCol,
+        isLeftWall,
+        y: randomizeY
+            ? glassTopRow + Math.random() * (glassBottomRow - glassTopRow)
+            : glassTopRow + 0.5,
+        speed: 0.015 + Math.random() * 0.025,
+        glintChar: DROPLET_CHARS[Math.floor(Math.random() * DROPLET_CHARS.length)],
+        alpha: 0.4 + Math.random() * 0.4,
+    };
+}
+
+function updateAndDrawCondensation(scaledDt) {
+    // converge droplet count toward the humidity-driven target (one step/frame)
+    const target = condensationTarget();
+    if (condensationDroplets.length < target)      condensationDroplets.push(makeDroplet(true));
+    else if (condensationDroplets.length > target) condensationDroplets.pop();
+
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (let i = 0; i < condensationDroplets.length; i++) {
+        const d = condensationDroplets[i];
+        d.y += d.speed * (scaledDt / 16.67);
+        if (d.y >= glassBottomRow) {
+            condensationDroplets[i] = makeDroplet(false);
+            continue;
+        }
+        ctx.globalAlpha = d.alpha;
+        ctx.fillStyle = '#cfe8f0';
+        ctx.fillText(d.glintChar, d.pathCol * CHAR_W, d.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Detritivores (tier 1): isopods + springtails grazing the litter ────────────
+// Nocturnal soil-surface foragers. They eat litter and nibble mushrooms,
+// assisting decomposition, and are prey for the centipede (Task 7).
+const DETRITIVORE_GLYPHS = ['∞', 'o', '°'];
+let detritivores = [];
+
+function detritivoreTarget() {
+    if (P_FAUNA_RATE <= 0) return 0;
+    return Math.max(2, Math.round(6 * P_FAUNA_RATE));
+}
+
+function spawnDetritivore(x) {
+    const col = x !== undefined ? x : glassLeftCol + 1 + Math.random() * (glassRightCol - glassLeftCol - 2);
+    detritivores.push({
+        x: Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, col)),
+        y: soilTopRow + Math.random() * 0.6,
+        dir: coin() ? 1 : -1,
+        state: 'WANDER', target: null,
+        age: 0, maxAge: 60000 + Math.random() * 60000,
+        glyph: rnd(DETRITIVORE_GLYPHS),
+    });
+}
+
+// Shared death helper — splice a creature and drop a speck of litter.
+// Reused by the predator (Task 7).
+function killCreature(arr, i, litterMass) {
+    const c = arr[i];
+    addLitter(c.x, litterMass);
+    arr.splice(i, 1);
+}
+
+function nearestFood(x, y, radius) {
+    let best = null, bestD = radius * radius;
+    for (const l of litter) {
+        const dx = l.col - x, dy = l.row - y, d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = { kind: 'litter', obj: l }; }
+    }
+    for (const m of mushrooms) {
+        const dx = m.col - x, dy = m.row - y, d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = { kind: 'mush', obj: m }; }
+    }
+    return best;
+}
+
+function updateDetritivores(scaledDt) {
+    const f = scaledDt / 16.67;
+    const target = detritivoreTarget();
+    // reproduction when food is plentiful; otherwise slow respawn from the edge
+    if (detritivores.length < target) {
+        const chance = (litter.length > 4 ? 0.02 : 0.006) * f;
+        if (Math.random() < chance) {
+            if (detritivores.length && litter.length > 4) {
+                const p = detritivores[Math.floor(Math.random() * detritivores.length)];
+                spawnDetritivore(p.x + (Math.random() - 0.5) * 3);
+            } else {
+                spawnDetritivore(coin() ? glassLeftCol + 1 : glassRightCol - 1);
+            }
+        }
+    }
+    // stability floor: never below 2 while fauna enabled
+    while (P_FAUNA_RATE > 0 && detritivores.length < Math.min(2, target)) spawnDetritivore();
+
+    const speedScale = 0.6 + 0.8 * (1 - lightLevel);   // nocturnal: faster in the dark
+    for (let i = detritivores.length - 1; i >= 0; i--) {
+        const d = detritivores[i];
+        d.age += scaledDt;
+        if (d.age > d.maxAge) { killCreature(detritivores, i, 0.1); continue; }
+
+        if (d.state === 'WANDER') {
+            const food = nearestFood(d.x, d.y, 8);
+            if (food) { d.state = 'FEED'; d.target = food; }
+            else {
+                d.x += d.dir * 0.03 * speedScale * f;
+                if (Math.random() < 0.02 * f) d.dir *= -1;
+            }
+        } else if (d.state === 'FEED') {
+            const o = d.target.obj;
+            const gone = d.target.kind === 'litter' ? litter.indexOf(o) < 0 : mushrooms.indexOf(o) < 0;
+            if (gone) { d.state = 'WANDER'; d.target = null; }
+            else {
+                const dx = o.col - d.x;
+                if (Math.abs(dx) > 0.4) d.x += Math.sign(dx) * 0.04 * speedScale * f;
+                else if (d.target.kind === 'litter') {
+                    o.mass -= 0.004 * scaledDt;
+                    soilNutrients = Math.min(1, soilNutrients + 0.000002 * scaledDt);
+                    if (o.mass <= 0) { const idx = litter.indexOf(o); if (idx >= 0) litter.splice(idx, 1); d.state = 'WANDER'; d.target = null; }
+                } else {
+                    o.age += 20 * scaledDt;            // nibbling hastens the mushroom's wither
+                    d.state = 'WANDER'; d.target = null;
+                }
+            }
+        }
+        d.x = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, d.x));
+    }
+}
+
+function drawDetritivores() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = C.detritivore;
+    for (const d of detritivores) {
+        ctx.globalAlpha = d.state === 'FEED' ? 0.95 : 0.8;
+        ctx.fillText(d.glyph, d.x * CHAR_W, d.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Grazers (tier 2): snails/caterpillars climbing plants to eat leaves ────────
+// Diurnal. They climb a plant's stem, strip leaf glyphs, and drain its health;
+// over-grazing pushes a plant into WILTING (Task 3). Prey for the centipede.
+const SNAIL_GLYPHS = ['@', '6'];
+let grazers = [];
+
+function grazerTarget() {
+    if (P_FAUNA_RATE <= 0) return 0;
+    return Math.max(1, Math.round(3 * P_FAUNA_RATE));
+}
+
+function spawnGrazer(x) {
+    const col = x !== undefined ? x : glassLeftCol + 1 + Math.random() * (glassRightCol - glassLeftCol - 2);
+    grazers.push({
+        x: Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, col)),
+        y: soilTopRow,
+        plant: null, state: 'SEEK', dir: coin() ? 1 : -1,
+        age: 0, maxAge: 70000 + Math.random() * 50000,
+        glyph: rnd(SNAIL_GLYPHS), eatTimer: 0,
+    });
+}
+
+function plantLeafCells(p) {
+    const cells = [];
+    for (const [key, v] of p.drawn) if (LEAF_SET.has(v.char)) cells.push(key);
+    return cells;
+}
+
+function nearestPlant(x) {
+    let best = null, bd = 1e9;
+    for (const p of plants) {
+        if (p.phase === 'SPROUT') continue;
+        const d = Math.abs(p.originCol - x);
+        if (d < bd) { bd = d; best = p; }
+    }
+    return best;
+}
+
+function updateGrazers(scaledDt) {
+    const f = scaledDt / 16.67;
+    const target = grazerTarget();
+    const active = lightLevel > 0.35;                  // diurnal
+    const speedScale = 0.4 + 1.0 * lightLevel;
+    // reproduction scaled by available leaf biomass
+    if (grazers.length < target) {
+        const biomass = plants.reduce((s, p) => s + plantLeafCells(p).length, 0);
+        const chance = (biomass > 30 ? 0.012 : 0.004) * f;
+        if (Math.random() < chance) {
+            if (grazers.length && biomass > 30) {
+                const g = grazers[Math.floor(Math.random() * grazers.length)];
+                spawnGrazer(g.x + (Math.random() - 0.5) * 3);
+            } else spawnGrazer(coin() ? glassLeftCol + 1 : glassRightCol - 1);
+        }
+    }
+    while (P_FAUNA_RATE > 0 && grazers.length < Math.min(1, target)) spawnGrazer();
+
+    for (let i = grazers.length - 1; i >= 0; i--) {
+        const g = grazers[i];
+        g.age += scaledDt;
+        if (g.age > g.maxAge) { killCreature(grazers, i, 0.1); continue; }
+        // host plant gone → drop to soil and re-seek
+        if (g.plant && (g.plant.dead || plants.indexOf(g.plant) < 0)) { g.plant = null; g.state = 'SEEK'; g.y = soilTopRow; }
+
+        if (!active) {                                 // rest at night
+            if (g.y < soilTopRow) g.y += 0.02 * f;
+            continue;
+        }
+
+        if (g.state === 'SEEK') {
+            const p = nearestPlant(g.x);
+            if (!p) { g.x += g.dir * 0.03 * speedScale * f; if (Math.random() < 0.02 * f) g.dir *= -1; }
+            else {
+                const dx = p.originCol - g.x;
+                if (Math.abs(dx) > 0.6) g.x += Math.sign(dx) * 0.05 * speedScale * f;
+                else { g.plant = p; g.state = 'CLIMB'; g.x = p.originCol; }
+            }
+        } else if (g.state === 'CLIMB') {
+            const leaves = plantLeafCells(g.plant);
+            if (!leaves.length) { g.plant = null; g.state = 'SEEK'; g.y = soilTopRow; continue; }
+            const key = leaves[0];
+            const ci = key.indexOf(',');
+            const lc = parseInt(key), lr = parseInt(key.slice(ci + 1));
+            if (g.y > lr + 0.5) { g.y -= 0.06 * speedScale * f; g.x += Math.sign(lc - g.x) * 0.02 * f; }
+            else g.state = 'EAT';
+        } else if (g.state === 'EAT') {
+            g.eatTimer -= scaledDt;
+            if (g.eatTimer <= 0) {
+                g.eatTimer = 600 + Math.random() * 600;
+                const leaves = plantLeafCells(g.plant);
+                if (leaves.length) {
+                    g.plant.drawn.delete(leaves[Math.floor(Math.random() * leaves.length)]);
+                    g.plant.health = Math.max(0, g.plant.health - 0.04);
+                    if (g.plant.health <= 0 && g.plant.phase !== 'WILTING' && P_GROWTH_CYCLE !== 'static') g.plant.phase = 'WILTING';
+                } else { g.plant = null; g.state = 'SEEK'; g.y = soilTopRow; }
+            }
+        }
+        g.x = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, g.x));
+    }
+}
+
+function drawGrazers() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = C.grazer;
+    for (const g of grazers) {
+        ctx.globalAlpha = g.state === 'EAT' ? 0.95 : 0.85;
+        ctx.fillText(g.glyph, g.x * CHAR_W, g.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Predator (tier 3): roaming centipede ───────────────────────────────────────
+// Enters from a side, snakes across the soil hunting detritivores/grazers. Catches
+// are rare (per-encounter probability) and capped per pass, so prey populations
+// always recover via their own reproduction floors. Always exits on a duration
+// timer and reschedules — the centipede itself never dies. P_PREDATOR_RATE<=0 off.
+const PRED_HEAD = ['≈', '⇒', 'ϟ'];
+const PRED_BODY = ['#', '=', 'x', ':'];
+let centipede = null;
+let predatorTimer = 0;
+
+function schedulePredator() {
+    if (P_PREDATOR_RATE <= 0) { predatorTimer = Infinity; return; }
+    const base = 70000 / P_PREDATOR_RATE;
+    predatorTimer = base * (0.6 + Math.random() * 0.8) / Math.max(0.0001, P_SPEED);
+}
+
+function startPredator() {
+    const fromLeft = coin();
+    const segs = 6 + Math.floor(Math.random() * 4);
+    const startX = fromLeft ? glassLeftCol + 0.5 : glassRightCol - 0.5;
+    const y = soilTopRow + Math.random() * Math.max(0.5, (glassBottomRow - 1 - soilTopRow) * 0.5);
+    const body = [];
+    for (let s = 0; s < segs; s++) body.push({ x: startX - (fromLeft ? s * 0.6 : -s * 0.6), y });
+    centipede = {
+        x: startX, y, dir: fromLeft ? 1 : -1,
+        body, segs,
+        life: 22000 + Math.random() * 12000,   // ms of scaled time before it leaves
+        struck: 0,                              // catches this pass
+        maxStrikes: 2,
+        glyph: rnd(PRED_HEAD),
+    };
+}
+
+function nearestPrey(x, y, radius) {
+    let best = null, bestD = radius * radius;
+    for (let i = 0; i < detritivores.length; i++) {
+        const c = detritivores[i], dx = c.x - x, dy = c.y - y, d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = { arr: detritivores, i }; }
+    }
+    for (let i = 0; i < grazers.length; i++) {
+        const c = grazers[i], dx = c.x - x, dy = c.y - y, d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = { arr: grazers, i }; }
+    }
+    return best;
+}
+
+function updatePredator(scaledDt) {
+    // gate: only spawn once the scene has plants/soil and there is prey to hunt
+    if (!centipede) {
+        predatorTimer -= scaledDt;
+        if (predatorTimer <= 0 && P_PREDATOR_RATE > 0 && (detritivores.length + grazers.length) > 0) startPredator();
+        return;
+    }
+    const f = scaledDt / 16.67;
+    const c = centipede;
+    c.life -= scaledDt;
+
+    // steer toward nearest prey; otherwise keep crossing in the entry direction
+    const prey = nearestPrey(c.x, c.y, 14);
+    if (prey && c.life > 4000) {
+        const t = prey.arr[prey.i];
+        const dx = t.x - c.x, dy = t.y - c.y;
+        const len = Math.hypot(dx, dy) || 1;
+        c.x += (dx / len) * 0.07 * f;
+        c.y += (dy / len) * 0.05 * f;
+        c.dir = dx >= 0 ? 1 : -1;
+        // overlap → rare catch, capped per pass
+        if (len < 0.7 && c.struck < c.maxStrikes && Math.random() < 0.2 * f) {
+            killCreature(prey.arr, prey.i, 0.12);
+            c.struck++;
+        }
+    } else {
+        // exiting or no prey: head for the nearest side edge
+        c.x += c.dir * 0.06 * f;
+        const restY = soilTopRow + 0.3;
+        c.y += Math.sign(restY - c.y) * 0.02 * f;
+    }
+
+    c.x = Math.min(glassRightCol + 1, Math.max(glassLeftCol - 1, c.x));
+    c.y = Math.min(glassBottomRow - 1, Math.max(soilTopRow - 0.5, c.y));
+
+    // body follows the head, each segment trailing the one ahead
+    c.body[0].x = c.x; c.body[0].y = c.y;
+    for (let s = 1; s < c.body.length; s++) {
+        const lead = c.body[s - 1], seg = c.body[s];
+        const dx = lead.x - seg.x, dy = lead.y - seg.y, dist = Math.hypot(dx, dy) || 1;
+        if (dist > 0.6) { seg.x += (dx / dist) * (dist - 0.6); seg.y += (dy / dist) * (dist - 0.6); }
+    }
+
+    // leave when its time is up or it has wandered off the edge
+    const off = c.x <= glassLeftCol - 0.5 || c.x >= glassRightCol + 0.5;
+    if (c.life <= 0 || (off && c.life < 8000)) { centipede = null; schedulePredator(); }
+}
+
+function drawPredator() {
+    if (!centipede) return;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = C.predator;
+    const c = centipede;
+    for (let s = c.body.length - 1; s >= 0; s--) {
+        const seg = c.body[s];
+        ctx.globalAlpha = s === 0 ? 0.95 : 0.55 + 0.4 * (1 - s / c.body.length);
+        const ch = s === 0 ? c.glyph : PRED_BODY[s % PRED_BODY.length];
+        ctx.fillText(ch, seg.x * CHAR_W, seg.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Ant colony — nest, foraging, pheromone trails ───────────────────────────────
+// A nest on the soil surface sends out ants that forage litter/seeds, carry a crumb
+// home along a fading pheromone trail, and feed the soil. Light cleanup coupling.
+// P_FAUNA_RATE<=0 disables the whole colony.
+const NEST_GLYPH = '◉';
+const ANT_GLYPHS = ['a', '·'];
+let nest = null;
+let ants = [];
+const pheromone = new Map();
+
+function pkey(c, r) { return Math.round(c) + ',' + Math.round(r); }
+
+function antTarget() {
+    if (P_FAUNA_RATE <= 0) return 0;
+    return Math.round(8 * P_FAUNA_RATE);
+}
+
+function placeNest() {
+    if (P_FAUNA_RATE <= 0) { nest = null; return; }
+    const col = Math.round(glassLeftCol + 2 + Math.random() * Math.max(1, glassRightCol - glassLeftCol - 4));
+    nest = { col, row: soilTopRow };
+}
+
+function spawnAnts() {
+    ants = [];
+    if (!nest) return;
+    const n = antTarget();
+    for (let i = 0; i < n; i++) {
+        ants.push({ x: nest.col, y: nest.row, state: 'FORAGE', carry: 0, dir: coin() ? 1 : -1, glyph: rnd(ANT_GLYPHS) });
+    }
+}
+
+function antFood(x, radius) {
+    let best = null, bd = radius * radius;
+    for (const l of litter) {
+        const dx = l.col - x, d = dx * dx;
+        if (d < bd) { bd = d; best = { kind: 'litter', obj: l }; }
+    }
+    for (const s of seeds) {
+        if (!s.settled) continue;
+        const dx = s.col - x, d = dx * dx;
+        if (d < bd) { bd = d; best = { kind: 'seed', obj: s }; }
+    }
+    return best;
+}
+
+function updateAnts(scaledDt) {
+    const f = scaledDt / 16.67;
+    // pheromone evaporates everywhere, pruned when faint
+    const decay = 0.0006 * scaledDt;
+    for (const [k, v] of pheromone) {
+        const nv = v - decay;
+        if (nv <= 0.02) pheromone.delete(k); else pheromone.set(k, nv);
+    }
+    if (!nest) return;
+
+    for (const a of ants) {
+        if (a.state === 'FORAGE') {
+            const food = antFood(a.x, 7);
+            if (food) {
+                const o = food.obj;
+                const tx = food.kind === 'litter' ? o.col : o.col;
+                const dx = tx - a.x;
+                if (Math.abs(dx) > 0.5) {
+                    a.x += Math.sign(dx) * 0.05 * f;
+                } else {
+                    // pick up a crumb
+                    if (food.kind === 'litter') {
+                        o.mass -= 0.3;
+                        if (o.mass <= 0) { const idx = litter.indexOf(o); if (idx >= 0) litter.splice(idx, 1); }
+                    } else {
+                        const idx = seeds.indexOf(o); if (idx >= 0) seeds.splice(idx, 1);
+                    }
+                    a.carry = 1; a.state = 'RETURN';
+                }
+            } else {
+                // wander, biased toward stronger neighbouring pheromone (trail following)
+                const lp = pheromone.get(pkey(a.x - 1, a.y)) || 0;
+                const rp = pheromone.get(pkey(a.x + 1, a.y)) || 0;
+                if (rp > lp + 0.05) a.dir = 1;
+                else if (lp > rp + 0.05) a.dir = -1;
+                else if (Math.random() < 0.03 * f) a.dir *= -1;
+                a.x += a.dir * 0.035 * f;
+            }
+        } else { // RETURN
+            const dx = nest.col - a.x;
+            // lay a trail home
+            const k = pkey(a.x, a.y);
+            pheromone.set(k, Math.min(1, (pheromone.get(k) || 0) + 0.06 * f));
+            if (Math.abs(dx) > 0.5) {
+                a.x += Math.sign(dx) * 0.05 * f;
+            } else {
+                if (a.carry) soilNutrients = Math.min(1, soilNutrients + 0.0006);
+                a.carry = 0; a.state = 'FORAGE';
+                a.dir = coin() ? 1 : -1;
+            }
+        }
+        a.x = Math.min(glassRightCol - 1, Math.max(glassLeftCol + 1, a.x));
+        a.y = soilTopRow;
+    }
+}
+
+function drawNestAndPheromone() {
+    if (!nest) return;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    // faint trail dots
+    ctx.fillStyle = C.ant;
+    for (const [k, v] of pheromone) {
+        const ci = k.indexOf(',');
+        const c = parseInt(k), r = parseInt(k.slice(ci + 1));
+        ctx.globalAlpha = 0.12 + 0.35 * v;
+        ctx.fillText('·', c * CHAR_W, r * CHAR_H);
+    }
+    // the nest mound
+    ctx.globalAlpha = 0.9;
+    ctx.fillText(NEST_GLYPH, nest.col * CHAR_W, nest.row * CHAR_H);
+    ctx.globalAlpha = 1;
+}
+
+function drawAnts() {
+    if (!nest) return;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = C.ant;
+    for (const a of ants) {
+        ctx.globalAlpha = a.carry ? 1 : 0.8;
+        ctx.fillText(a.glyph, a.x * CHAR_W, a.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Render loop ─────────────────────────────────────────────────────────────────
+let lastTimestamp = 0;
+
+function render(t) {
+    const dt = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
+    lastTimestamp = t;
+    const scaledDt = dt * P_SPEED;
+
+    updateEnvironment(scaledDt);
+
+    updateFungi(scaledDt);
+
+    ctx.clearRect(0, 0, W, H);
+    drawBackgroundWash();
+    drawSoilAndMoss();
+    drawMycelium();
+    drawLitter();
+    updateAnts(scaledDt);
+    drawNestAndPheromone();
+    drawMushrooms();
+    drawLightBeam();
+    updatePlants(scaledDt);
+    drawPlants();
+    updateDetritivores(scaledDt);
+    drawDetritivores();
+    drawAnts();
+    updateGrazers(scaledDt);
+    drawGrazers();
+    updatePredator(scaledDt);
+    drawPredator();
+    updateAndDrawSeeds(scaledDt);
+    updateAndDrawSpores(scaledDt);
+    spawnSporeIfDue(scaledDt);
+    drawGlassOutline();
+    updateAndDrawCondensation(scaledDt);
+    updateAndDrawRain(scaledDt);
+    requestAnimationFrame(render);
+}
+
+// ─── Entry point ───────────────────────────────────────────────────────────────
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        generateSoilPattern();
+        spawnPlants();
+        spawnCondensationDroplets();
+        for (let i = 0; i < detritivoreTarget(); i++) spawnDetritivore();
+        for (let i = 0; i < grazerTarget(); i++) spawnGrazer();
+        schedulePredator();
+        placeNest();
+        spawnAnts();
+        requestAnimationFrame(render);
+    });
+}
+
+if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(startAnimation, 4000);
+else setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

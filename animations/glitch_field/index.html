@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Glitch Field</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a12; overflow: hidden; width: 100vw; height: 100vh; }
+    body.screensaver-mode { cursor: none; }
+    #scene { display: block; opacity: 0; transition: opacity 2s ease-in; }
+    .credits-popup {
+      position: fixed; bottom: 32px; right: 32px;
+      background: rgba(10,10,18,0.92); border: 1px solid rgba(150,170,200,0.4);
+      border-radius: 8px; padding: 20px 24px;
+      font-family: 'JetBrains Mono','Courier New',monospace;
+      font-size: 12px; color: #a8b8d0; max-width: 280px;
+      opacity: 0; transition: opacity 2s ease-in-out; z-index: 100; line-height: 1.6;
+    }
+    .credits-popup.visible { opacity: 1; }
+    .credits-popup h2 { font-size: 14px; font-weight: 700; color: #c8d8f0;
+      letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+    .credits-popup .credits-label { font-size: 10px; color: #7888a0;
+      text-transform: uppercase; letter-spacing: 1px; margin: 10px 0 4px; }
+    .credits-popup hr { border: none; border-top: 1px solid rgba(150,170,200,0.3); margin: 12px 0; }
+    .credits-popup a { color: #a8c0e8; text-decoration: none; }
+  </style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+// --- per-animation params ---
+const P_SPEED = parseFloat(_params.get('speed') || '1');
+const P_PALETTE = _params.get('palette') || 'terminal';
+const P_DENSITY = parseFloat(_params.get('density') || '0.8');
+const P_CORRUPT_RATE = parseFloat(_params.get('corruptionRate') || '0.2');
+const P_SCAN_BANDS = parseInt(_params.get('scanBands') || '3', 10);
+const P_CHAOS = parseFloat(_params.get('chaos') || '1');
+
+if (SCREENSAVER_MODE) {
+  document.body.classList.add('screensaver-mode');
+  const credits = document.createElement('div');
+  credits.className = 'credits-popup';
+  credits.innerHTML = `
+    <h2>ASCII Glitch Field</h2>
+    <p class="credits-label">Animation</p>
+    <p>A broken digital reality — a character grid torn by drifting corruption bands.</p>
+    <hr>
+    <p class="credits-label">Screensaver Framework</p>
+    <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+    <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>`;
+  document.body.appendChild(credits);
+  setTimeout(() => credits.classList.add('visible'), 500);
+  setTimeout(() => credits.classList.remove('visible'), 30500);
+  setTimeout(() => credits.remove(), 32500);
+
+  let armed = false;
+  setTimeout(() => { armed = true; }, 1500);
+  const dismiss = () => {
+    if (!armed) return;
+    try { window.close(); } catch (e) {}
+    document.body.innerHTML = '';
+    document.body.style.background = '#000';
+  };
+  window.addEventListener('keydown', dismiss);
+  window.addEventListener('mousedown', dismiss);
+  window.addEventListener('mousemove', (() => {
+    let lastX = -1, lastY = -1, moveCount = 0;
+    return (e) => {
+      if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+      if (e.clientX === lastX && e.clientY === lastY) return;
+      lastX = e.clientX; lastY = e.clientY;
+      if (++moveCount > 10) dismiss();
+    };
+  })());
+}
+
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d');
+
+// --- Font measure & grid ---
+const FONT_SIZE = 15;
+let CHAR_W = 9, CHAR_H = 18, cols = 0, rows = 0;
+function measureFont() {
+  ctx.font = `${FONT_SIZE}px 'JetBrains Mono','Courier New',monospace`;
+  CHAR_W = ctx.measureText('M').width;
+  CHAR_H = FONT_SIZE * 1.25;
+}
+function resize() {
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  measureFont();
+  cols = Math.floor(canvas.width / CHAR_W);
+  rows = Math.floor(canvas.height / CHAR_H);
+  allocGrid();
+}
+window.addEventListener('resize', resize);
+
+// --- Inline ValueNoise + helpers ---
+const Easing = {
+  smoothstep: t => t * t * (3 - 2 * t),
+};
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+class ValueNoise {
+  constructor(seed = 1) {
+    this._seed = seed;
+    this._perm = new Uint8Array(256);
+    let s = seed;
+    for (let i = 0; i < 256; i++) this._perm[i] = i;
+    for (let i = 255; i > 0; i--) {
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      const j = s % (i + 1);
+      [this._perm[i], this._perm[j]] = [this._perm[j], this._perm[i]];
+    }
+  }
+  _hash(i) {
+    return this._perm[i & 255] / 255;
+  }
+  noise1D(x) {
+    const i0 = Math.floor(x), t = x - i0;
+    const a = this._hash(i0), b = this._hash(i0 + 1);
+    return lerp(a, b, Easing.smoothstep(t)) * 2 - 1;
+  }
+  noise2D(x, y) {
+    const n1 = this.noise1D(x + y * 57.0);
+    const n2 = this.noise1D(x * 1.3 - y * 0.7 + 11.0);
+    return (n1 + n2) / 2;
+  }
+}
+
+// --- Grid allocation ---
+const GLYPHS = "01░▒▓█#@%&/\\<>=+*";
+let cells, corruption;
+const noise = new ValueNoise(7);
+
+function allocGrid() {
+  cells = new Uint16Array(cols * rows);
+  corruption = new Float32Array(cols * rows);
+  for (let i = 0; i < cells.length; i++) cells[i] = (Math.random() * GLYPHS.length) | 0;
+}
+
+// --- Palettes & update ---
+const PALETTES = {
+  terminal: { base: '64,255,128' }, amber: { base: '255,176,0' },
+  vapor: { base: '255,80,200' },    mono: { base: '170,170,170' },
+};
+const PAL = PALETTES[P_PALETTE] || PALETTES.terminal;
+
+let tSec = 0;
+function update(dt) {
+  tSec += dt * P_SPEED;
+  for (let b = 0; b < P_SCAN_BANDS; b++) {
+    const bandY = ((Math.sin(tSec * 0.3 + b * 2.1) * 0.5 + 0.5) * rows) | 0;
+    const half = 2 + ((noise.noise1D(tSec + b) + 1) * 2) | 0;
+    for (let y = Math.max(0, bandY - half); y < Math.min(rows, bandY + half); y++)
+      for (let x = 0; x < cols; x++) {
+        const idx = y * cols + x;
+        corruption[idx] = Math.min(1, corruption[idx] + P_CORRUPT_RATE * P_CHAOS * dt * 6);
+        if (Math.random() < P_CORRUPT_RATE * P_CHAOS * dt * 4)
+          cells[idx] = (Math.random() * GLYPHS.length) | 0;
+      }
+  }
+  for (let i = 0; i < corruption.length; i++) corruption[i] *= 0.96;
+}
+
+// --- Render ---
+function render() {
+  ctx.fillStyle = '#0a0a12'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = `${FONT_SIZE}px 'JetBrains Mono','Courier New',monospace`;
+  ctx.textBaseline = 'top';
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const idx = y * cols + x;
+      const lit = noise.noise2D(x * 0.15, y * 0.15 + tSec * 0.2) * 0.5 + 0.5 < P_DENSITY;
+      if (!lit && corruption[idx] < 0.05) continue;
+      const c = corruption[idx];
+      if (c > 0.6 && Math.random() < 0.15 * P_CHAOS) continue;
+      const ch = GLYPHS[cells[idx]];
+      const px = x * CHAR_W + c * P_CHAOS * 6 * Math.sign(Math.sin(tSec * 7 + y));
+      const py = y * CHAR_H;
+      if (c > 0.4) {
+        ctx.fillStyle = `rgba(255,40,40,${0.5 * c})`; ctx.fillText(ch, px - 2 * c * P_CHAOS, py);
+        ctx.fillStyle = `rgba(40,120,255,${0.5 * c})`; ctx.fillText(ch, px + 2 * c * P_CHAOS, py);
+      }
+      const a = 0.4 + 0.6 * c;
+      ctx.fillStyle = `rgba(${PAL.base},${a})`;
+      ctx.fillText(ch, px, py);
+    }
+  }
+}
+
+// --- Main loop ---
+let lastTime = 0;
+function loop() {
+  const now = performance.now();
+  const dt = lastTime ? Math.min(0.1, (now - lastTime) / 1000) : 0;
+  lastTime = now;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+function startAnimation() {
+  canvas.style.opacity = '1';
+  document.fonts.ready.then(() => {
+    resize();
+    loop();
+  });
+}
+
+if (START_AT > 0)        setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START)  setTimeout(startAnimation, 4000);
+else                     setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

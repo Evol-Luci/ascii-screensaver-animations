@@ -1,0 +1,82 @@
+{
+  "id": "boids",
+  "name": "Boids Flock",
+  "description": "Classic boid flocking \u2014 separation, alignment, cohesion \u2014 with an optional predator that scatters the flock.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "birds",
+      "options": [
+        "birds",
+        "fish",
+        "abstract",
+        "mono"
+      ]
+    },
+    {
+      "key": "flockSize",
+      "type": "range",
+      "label": "Flock Size",
+      "defaultValue": 60,
+      "min": 20,
+      "max": 150,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "cohesion",
+      "type": "range",
+      "label": "Cohesion",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "separation",
+      "type": "range",
+      "label": "Separation",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "predator",
+      "type": "select",
+      "label": "Predator",
+      "defaultValue": 0,
+      "options": [
+        0,
+        1
+      ]
+    },
+    {
+      "key": "predatorSpeed",
+      "type": "range",
+      "label": "Predator Speed",
+      "defaultValue": 1.35,
+      "min": 0.5,
+      "max": 3,
+      "step": 0.05,
+      "integer": false
+    }
+  ]
+}

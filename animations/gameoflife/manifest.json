@@ -1,0 +1,63 @@
+{
+  "id": "gameoflife",
+  "name": "Game of Life",
+  "description": "Conway cells rendered as growing and wilting garden glyphs.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "spring",
+      "options": [
+        "spring",
+        "autumn",
+        "neon",
+        "mono"
+      ]
+    },
+    {
+      "key": "cellSize",
+      "type": "range",
+      "label": "Cell Size",
+      "defaultValue": 16,
+      "min": 8,
+      "max": 32,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "density",
+      "type": "range",
+      "label": "Density",
+      "defaultValue": 0.35,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "integer": false
+    },
+    {
+      "key": "reseedMode",
+      "type": "select",
+      "label": "Reseed Mode",
+      "defaultValue": "mixed",
+      "options": [
+        "random",
+        "classic",
+        "mixed"
+      ]
+    }
+  ]
+}

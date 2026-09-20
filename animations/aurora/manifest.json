@@ -1,0 +1,63 @@
+{
+  "id": "aurora",
+  "name": "Aurora",
+  "description": "Procedural aurora borealis ribbons with twinkling star field.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.jpg",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "aurora",
+      "options": [
+        "aurora",
+        "northern",
+        "southern",
+        "neon",
+        "mono"
+      ]
+    },
+    {
+      "key": "bands",
+      "type": "range",
+      "label": "Bands",
+      "defaultValue": 3,
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "brightness",
+      "type": "range",
+      "label": "Brightness",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 2,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "stars",
+      "type": "range",
+      "label": "Stars",
+      "defaultValue": 150,
+      "min": 0,
+      "max": 400,
+      "step": 10,
+      "integer": true
+    }
+  ]
+}

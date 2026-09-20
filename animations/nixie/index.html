@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nixie Clock</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    body.screensaver-mode { cursor: none; }
+
+    #nixie-canvas {
+      display: block;
+      opacity: 0;
+      transition: opacity 3s ease-in;
+    }
+
+    .credits-popup {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      background: rgba(6, 4, 2, 0.94);
+      border: 1px solid rgba(120, 70, 10, 0.35);
+      border-radius: 8px;
+      padding: 20px 24px;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 12px;
+      color: #9a7040;
+      max-width: 290px;
+      opacity: 0;
+      transition: opacity 2s ease-in-out;
+      z-index: 100;
+      line-height: 1.6;
+    }
+    .credits-popup.visible { opacity: 1; }
+    .credits-popup h2 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ccaa60;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .credits-popup .credits-label {
+      font-size: 10px;
+      color: '#604820';
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    .credits-popup hr {
+      border: none;
+      border-top: 1px solid rgba(120, 70, 10, 0.25);
+      margin: 10px 0;
+    }
+    .credits-popup a { color: #886030; text-decoration: none; }
+  </style>
+</head>
+<body>
+<canvas id="nixie-canvas"></canvas>
+<script>
+'use strict';
+
+// ─── Parameters ──────────────────────────────────────────────────────────────
+const _p             = new URLSearchParams(location.search);
+const SCREENSAVER    = _p.has('screensaver');
+const P_GLOW         = _p.get('glowColor')        || 'amber';
+const P_FLICKER      = parseFloat(_p.get('flickerIntensity') || '1');
+const P_POISON       = parseFloat(_p.get('poisoningSpeed')   || '1.5');
+const P_SHOW_SECS    = parseInt(_p.get('showSeconds')        || '1', 10);
+const P_TUBE_STYLE   = _p.get('tubeStyle')        || 'classic';
+const P_TUBE_COLONS  = parseInt(_p.get('tubeColons')         || '0', 10);
+
+// ─── Palettes ─────────────────────────────────────────────────────────────────
+const PALETTES = {
+  amber: {
+    bright:     '#ffd870',
+    core:       '#ffaa00',
+    outer:      '#cc5500',
+    ghostRgb:   '110,55,0',
+    tubeBg:     [26, 14, 3],
+    ambientRgb: '255,95,0',
+    bg:         '#070402',
+    border:     'rgba(100,60,10,0.4)',
+  },
+  red: {
+    bright:     '#ff9988',
+    core:       '#ff2222',
+    outer:      '#aa0000',
+    ghostRgb:   '110,0,0',
+    tubeBg:     [26, 4, 4],
+    ambientRgb: '230,0,0',
+    bg:         '#060202',
+    border:     'rgba(100,10,10,0.4)',
+  },
+  green: {
+    bright:     '#88ffcc',
+    core:       '#00ff66',
+    outer:      '#008833',
+    ghostRgb:   '0,90,25',
+    tubeBg:     [4, 22, 9],
+    ambientRgb: '0,200,80',
+    bg:         '#020602',
+    border:     'rgba(10,80,20,0.4)',
+  },
+  blue: {
+    bright:     '#99ddff',
+    core:       '#22aaff',
+    outer:      '#0044cc',
+    ghostRgb:   '0,44,110',
+    tubeBg:     [4, 10, 30],
+    ambientRgb: '0,90,255',
+    bg:         '#020406',
+    border:     'rgba(10,30,100,0.4)',
+  },
+  white: {
+    bright:     '#ffffff',
+    core:       '#ddeeff',
+    outer:      '#7788aa',
+    ghostRgb:   '70,80,100',
+    tubeBg:     [10, 12, 18],
+    ambientRgb: '160,180,255',
+    bg:         '#050507',
+    border:     'rgba(50,60,80,0.4)',
+  },
+  purple: {
+    bright:     '#ee99ff',
+    core:       '#cc44ff',
+    outer:      '#7700bb',
+    ghostRgb:   '80,0,110',
+    tubeBg:     [14, 4, 22],
+    ambientRgb: '160,0,255',
+    bg:         '#040206',
+    border:     'rgba(60,10,90,0.4)',
+  },
+};
+
+const PAL = PALETTES[P_GLOW] || PALETTES.amber;
+
+// ─── Screensaver mode ─────────────────────────────────────────────────────────
+if (SCREENSAVER) {
+  document.body.classList.add('screensaver-mode');
+
+  const credits = document.createElement('div');
+  credits.className = 'credits-popup';
+  credits.innerHTML = `
+    <h2>Nixie Clock</h2>
+    <p class="credits-label">Animation</p>
+    <p>Vintage nixie tube clock with cathode<br>poisoning cycling &amp; neon glow bloom.</p>
+    <hr>
+    <p class="credits-label">Inspired By</p>
+    <p><a href="https://github.com/joeparadiso/nixie-tube-clock" tabindex="-1">joeparadiso/nixie-tube-clock</a></p>
+    <hr>
+    <p class="credits-label">Screensaver Framework</p>
+    <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+    <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+  `;
+  document.body.appendChild(credits);
+  setTimeout(() => credits.classList.add('visible'), 500);
+  setTimeout(() => credits.classList.remove('visible'), 30500);
+  setTimeout(() => credits.remove(), 32500);
+
+  let armed = false;
+  setTimeout(() => { armed = true; }, 1500);
+  const dismiss = () => {
+    if (!armed) return;
+    try { window.close(); } catch (e) {}
+    document.body.innerHTML = '';
+    document.body.style.background = '#000';
+  };
+  window.addEventListener('keydown', dismiss);
+  window.addEventListener('mousedown', dismiss);
+  window.addEventListener('mousemove', (() => {
+    let lx = -1, ly = -1, n = 0;
+    return e => {
+      if (lx === -1) { lx = e.clientX; ly = e.clientY; return; }
+      if (e.clientX === lx && e.clientY === ly) return;
+      lx = e.clientX; ly = e.clientY;
+      if (++n > 10) dismiss();
+    };
+  })());
+}
+
+// ─── Canvas ───────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('nixie-canvas');
+const ctx    = canvas.getContext('2d');
+document.body.style.background = PAL.bg;
+
+let W, H;
+let tubeW, tubeH, tubeR, gap, colonW, fontSize;
+let elements = [];
+
+const TUBE_ASPECT = ({ classic: 0.54, slim: 0.40, wide: 0.70 })[P_TUBE_STYLE] || 0.54;
+const NUM_TUBES   = P_SHOW_SECS ? 6 : 4;
+
+function buildLayout() {
+  const colonCount = P_SHOW_SECS ? 2 : 1;
+
+  // Derive tube size so the full clock fits within 92% of screen width
+  const colonFactor  = P_TUBE_COLONS ? 1.0 : 0.40;
+  const numElements  = NUM_TUBES + colonCount;
+  const widthInTubeW = NUM_TUBES + colonCount * colonFactor + (numElements - 1) * 0.18;
+  tubeH    = Math.min(H * 0.55, (W * 0.92) / (widthInTubeW * TUBE_ASPECT));
+  tubeW    = tubeH * TUBE_ASPECT;
+  tubeR    = tubeW * 0.20;
+  gap      = tubeW * 0.18;
+  colonW   = tubeW * colonFactor;
+  fontSize = tubeH * 0.58;
+
+  // Sequence: H1 H2 : M1 M2 [: S1 S2]
+  const seq = P_SHOW_SECS
+    ? ['t','t',':','t','t',':','t','t']
+    : ['t','t',':','t','t'];
+
+  // Total width
+  let totalW = 0;
+  for (let i = 0; i < seq.length; i++) {
+    if (i > 0) totalW += gap;
+    totalW += seq[i] === ':' ? colonW : tubeW;
+  }
+
+  let x       = (W - totalW) / 2;
+  const y     = (H - tubeH) / 2;
+  let tubeIdx = 0;
+  elements    = [];
+
+  for (let i = 0; i < seq.length; i++) {
+    if (i > 0) x += gap;
+    if (seq[i] === ':') {
+      elements.push({ type: 'colon', x, y, w: colonW, h: tubeH });
+      x += colonW;
+    } else {
+      elements.push({ type: 'tube', x, y, w: tubeW, h: tubeH, index: tubeIdx++ });
+      x += tubeW;
+    }
+  }
+}
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  buildLayout();
+}
+window.addEventListener('resize', resize);
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const displayDigit = new Array(NUM_TUBES).fill(0);
+const targetDigit  = new Array(NUM_TUBES).fill(0);
+
+// Cathode poisoning per tube
+const poisonActive = new Array(NUM_TUBES).fill(false);
+const poisonSeq    = Array.from({ length: NUM_TUBES }, () => []);
+const poisonShown  = new Array(NUM_TUBES).fill(0);
+const poisonTimer  = new Array(NUM_TUBES).fill(0);
+// Each digit in the poison sequence stays visible for this long (ms)
+const POISON_STEP  = 48 / Math.max(0.3, P_POISON);
+
+// Flicker per tube
+const flickAlpha   = new Array(NUM_TUBES).fill(1);
+const flickTarget  = new Array(NUM_TUBES).fill(1);
+const flickRemain  = new Array(NUM_TUBES).fill(0);
+const flickNext    = new Array(NUM_TUBES).fill(0)
+  .map(() => 1000 + Math.random() * 5000);
+
+let lastCalSec = -1;
+
+function getDigits() {
+  const now = new Date();
+  const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+  return P_SHOW_SECS
+    ? [Math.floor(h / 10), h % 10, Math.floor(m / 10), m % 10, Math.floor(s / 10), s % 10]
+    : [Math.floor(h / 10), h % 10, Math.floor(m / 10), m % 10];
+}
+
+function startPoison(i, from, to) {
+  // Build a rapid spin: a few loops then land exactly on `to`
+  const seq = [];
+  let d = from;
+  // One full rotation from `from`, then keep going until we hit `to`
+  for (let k = 0; k < 12; k++) {
+    d = (d + 1) % 10;
+    seq.push(d);
+    if (k >= 9 && d === to) break;
+  }
+  // Ensure we land on target even if loop ran out
+  while (seq[seq.length - 1] !== to) {
+    d = (d + 1) % 10;
+    seq.push(d);
+  }
+  poisonSeq[i]    = seq;
+  poisonShown[i]  = seq[0];
+  poisonTimer[i]  = 0;
+  poisonActive[i] = true;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,     y + h - r, r);
+  ctx.lineTo(x,     y + r);
+  ctx.arcTo(x,     y,     x + r, y,          r);
+  ctx.closePath();
+}
+
+// ─── Draw tube ────────────────────────────────────────────────────────────────
+function drawTube(x, y, w, h, digit, alpha, showGhosts = true) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const [tr, tg, tb] = PAL.tubeBg;
+
+  ctx.save();
+
+  // Ambient glow radiating from tube onto background
+  ctx.globalAlpha = alpha * 0.85;
+  const aGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 2.4);
+  aGlow.addColorStop(0,   `rgba(${PAL.ambientRgb},0.14)`);
+  aGlow.addColorStop(0.4, `rgba(${PAL.ambientRgb},0.04)`);
+  aGlow.addColorStop(1,   `rgba(${PAL.ambientRgb},0)`);
+  ctx.fillStyle = aGlow;
+  ctx.fillRect(cx - w * 2.5, cy - w * 2.5, w * 5, w * 5);
+
+  // Tube body with subtle left/right shadow to suggest cylinder depth
+  ctx.globalAlpha = 1;
+  const bodyGrad = ctx.createLinearGradient(x, y, x + w, y);
+  bodyGrad.addColorStop(0,    `rgba(${tr - 6},${tg - 4},${tb - 1},0.99)`);
+  bodyGrad.addColorStop(0.15, `rgba(${tr},${tg},${tb},0.98)`);
+  bodyGrad.addColorStop(0.85, `rgba(${tr},${tg},${tb},0.98)`);
+  bodyGrad.addColorStop(1,    `rgba(${tr - 6},${tg - 4},${tb - 1},0.99)`);
+
+  roundRect(x, y, w, h, tubeR);
+  ctx.fillStyle = bodyGrad;
+  ctx.fill();
+  ctx.strokeStyle = PAL.border;
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+
+  // Clip everything inside the tube
+  ctx.clip();
+
+  ctx.font         = `300 ${fontSize}px 'JetBrains Mono', 'Courier New', monospace`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  const dy = fontSize * 0.04; // slight optical vertical nudge
+
+  // ── Ghost digits: all inactive cathodes barely visible ──
+  if (showGhosts) {
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur  = 0;
+    ctx.globalAlpha = 0.05;
+    ctx.fillStyle   = `rgb(${PAL.ghostRgb})`;
+    for (let d = 0; d <= 9; d++) {
+      if (d !== digit) ctx.fillText(d, cx, cy + dy);
+    }
+  }
+
+  // ── Active digit — 4 glow passes for authentic neon bloom ──
+
+  // Pass 1: wide diffuse outer bloom
+  ctx.globalAlpha = alpha * 0.20;
+  ctx.shadowColor = PAL.outer;
+  ctx.shadowBlur  = 40;
+  ctx.fillStyle   = PAL.core;
+  ctx.fillText(digit, cx, cy + dy);
+
+  // Pass 2: medium halo
+  ctx.globalAlpha = alpha * 0.50;
+  ctx.shadowBlur  = 20;
+  ctx.fillText(digit, cx, cy + dy);
+
+  // Pass 3: tight inner glow
+  ctx.globalAlpha = alpha * 0.82;
+  ctx.shadowBlur  = 8;
+  ctx.fillStyle   = PAL.core;
+  ctx.fillText(digit, cx, cy + dy);
+
+  // Pass 4: crisp bright cathode wire
+  ctx.globalAlpha = alpha;
+  ctx.shadowBlur  = 3;
+  ctx.shadowColor = PAL.bright;
+  ctx.fillStyle   = PAL.bright;
+  ctx.fillText(digit, cx, cy + dy);
+
+  ctx.restore();
+
+  // ── Glass highlight — applied outside clip ──
+  ctx.save();
+  // Left-side vertical sheen
+  const sheen = ctx.createLinearGradient(x, y, x + w * 0.48, y);
+  sheen.addColorStop(0,   'rgba(255,255,255,0.075)');
+  sheen.addColorStop(0.5, 'rgba(255,255,255,0.018)');
+  sheen.addColorStop(1,   'rgba(255,255,255,0)');
+  roundRect(x, y, w, h, tubeR);
+  ctx.fillStyle = sheen;
+  ctx.fill();
+
+  // Top edge rim highlight
+  const rim = ctx.createLinearGradient(x, y, x, y + h * 0.08);
+  rim.addColorStop(0,   'rgba(255,255,255,0.06)');
+  rim.addColorStop(1,   'rgba(255,255,255,0)');
+  roundRect(x, y, w, h, tubeR);
+  ctx.fillStyle = rim;
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ─── Draw colon ───────────────────────────────────────────────────────────────
+function drawColon(x, y, w, h, now) {
+  const cx   = x + w / 2;
+  const dotR = Math.max(3.5, w * 0.14);
+  const y1   = y + h * 0.34;
+  const y2   = y + h * 0.66;
+
+  // Smooth 1Hz pulse
+  const pulse = (Math.sin(now * Math.PI * 0.002) + 1) * 0.5;
+  const alpha = 0.35 + pulse * 0.65;
+
+  ctx.save();
+
+  for (const dy of [y1, y2]) {
+    // Ambient glow
+    ctx.globalAlpha = alpha * 0.55;
+    const ag = ctx.createRadialGradient(cx, dy, 0, cx, dy, dotR * 5);
+    ag.addColorStop(0,   `rgba(${PAL.ambientRgb},0.18)`);
+    ag.addColorStop(1,   `rgba(${PAL.ambientRgb},0)`);
+    ctx.fillStyle = ag;
+    ctx.fillRect(cx - dotR * 5, dy - dotR * 5, dotR * 10, dotR * 10);
+
+    // Glow halo
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = PAL.outer;
+    ctx.shadowBlur  = 14;
+    ctx.fillStyle   = PAL.core;
+    ctx.beginPath();
+    ctx.arc(cx, dy, dotR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bright dot center
+    ctx.shadowBlur  = 4;
+    ctx.shadowColor = PAL.bright;
+    ctx.fillStyle   = PAL.bright;
+    ctx.beginPath();
+    ctx.arc(cx, dy, dotR * 0.52, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update(now, dt) {
+  // Detect second boundary and update target digits
+  const calSec = new Date().getSeconds();
+  if (calSec !== lastCalSec) {
+    lastCalSec = calSec;
+    const digits = getDigits();
+    for (let i = 0; i < NUM_TUBES; i++) {
+      if (digits[i] !== targetDigit[i] && !poisonActive[i]) {
+        startPoison(i, displayDigit[i], digits[i]);
+        targetDigit[i] = digits[i];
+      }
+    }
+  }
+
+  // Advance cathode poisoning sequences
+  for (let i = 0; i < NUM_TUBES; i++) {
+    if (!poisonActive[i]) continue;
+    poisonTimer[i] += dt;
+    while (poisonTimer[i] >= POISON_STEP && poisonActive[i]) {
+      poisonTimer[i] -= POISON_STEP;
+      poisonSeq[i].shift();
+      if (poisonSeq[i].length === 0) {
+        poisonActive[i]  = false;
+        displayDigit[i]  = targetDigit[i];
+      } else {
+        poisonShown[i] = poisonSeq[i][0];
+      }
+    }
+  }
+
+  // Per-tube flicker
+  if (P_FLICKER > 0) {
+    for (let i = 0; i < NUM_TUBES; i++) {
+      if (now >= flickNext[i]) {
+        // Dip alpha briefly
+        flickTarget[i] = 0.25 + Math.random() * 0.55;
+        flickRemain[i] = 25 + Math.random() * 90;
+        // Schedule next, inversely proportional to intensity
+        flickNext[i] = now + (3500 + Math.random() * 7000) / P_FLICKER;
+      }
+      if (flickRemain[i] > 0) {
+        flickRemain[i] -= dt;
+        if (flickRemain[i] <= 0) flickTarget[i] = 1;
+      }
+      // Smooth lerp toward target
+      flickAlpha[i] += (flickTarget[i] - flickAlpha[i]) * 0.30;
+    }
+  }
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw(now) {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = PAL.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Vignette to frame the clock
+  const vig = ctx.createRadialGradient(W / 2, H / 2, H * 0.18, W / 2, H / 2, H * 0.85);
+  vig.addColorStop(0,   'rgba(0,0,0,0)');
+  vig.addColorStop(1,   'rgba(0,0,0,0.60)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
+
+  for (const el of elements) {
+    if (el.type === 'colon') {
+      if (P_TUBE_COLONS) {
+        const pulse = (Math.sin(now * Math.PI * 0.002) + 1) * 0.5;
+        drawTube(el.x, el.y, el.w, el.h, ':', 0.65 + pulse * 0.35, false);
+      } else {
+        drawColon(el.x, el.y, el.w, el.h, now);
+      }
+    } else {
+      const i = el.index;
+      const d = poisonActive[i] ? poisonShown[i] : displayDigit[i];
+      drawTube(el.x, el.y, el.w, el.h, d, flickAlpha[i]);
+    }
+  }
+}
+
+// ─── Loop ─────────────────────────────────────────────────────────────────────
+let lastTs = 0;
+
+function frame(now) {
+  const dt = Math.min(now - lastTs, 100);
+  lastTs = now;
+  update(now, dt);
+  draw(now);
+  requestAnimationFrame(frame);
+}
+
+function start() {
+  resize();
+  // Seed display with current time — no flash of zeros
+  const digits = getDigits();
+  for (let i = 0; i < NUM_TUBES; i++) {
+    displayDigit[i] = digits[i];
+    targetDigit[i]  = digits[i];
+  }
+  lastTs = performance.now();
+  requestAnimationFrame(frame);
+  setTimeout(() => { canvas.style.opacity = '1'; }, 120);
+}
+
+// Wait for font before first paint so digit sizing is accurate
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(start);
+} else {
+  setTimeout(start, 250);
+}
+</script>
+</body>
+</html>

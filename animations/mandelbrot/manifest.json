@@ -1,0 +1,64 @@
+{
+  "id": "mandelbrot",
+  "name": "Mandelbrot",
+  "description": "Zooming ASCII fractal with auto-jumping boundary regions.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "classic",
+      "options": [
+        "classic",
+        "fire",
+        "ocean",
+        "neon",
+        "mono"
+      ]
+    },
+    {
+      "key": "maxIter",
+      "type": "range",
+      "label": "Max Iter",
+      "defaultValue": 64,
+      "min": 16,
+      "max": 256,
+      "step": 16,
+      "integer": true
+    },
+    {
+      "key": "charset",
+      "type": "select",
+      "label": "Charset",
+      "defaultValue": "classic",
+      "options": [
+        "classic",
+        "blocks",
+        "dots"
+      ]
+    },
+    {
+      "key": "autoJump",
+      "type": "select",
+      "label": "Auto Jump",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
+    }
+  ]
+}

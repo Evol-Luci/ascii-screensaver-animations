@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Sand Mandala</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #sandmandala-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(12, 8, 18, 0.92);
+            border: 1px solid rgba(180, 130, 60, 0.4);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #c0a070;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #e0a830;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #806030;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(180, 130, 60, 0.3);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #e0a830; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="sandmandala-canvas"></canvas>
+<script>
+// Screensaver mode
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED          = parseFloat(_params.get('speed') || '1');
+const P_PALETTE        = _params.get('palette') || 'tibetan';
+const P_SYMMETRY       = Math.max(4, parseInt(_params.get('symmetry') || '8', 10));
+const P_HOLD_TIME      = Math.max(0, parseInt(_params.get('holdTime') || '300', 10));
+const P_DISSOLVE_STYLE = _params.get('dissolveStyle') || 'wind';
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Sand Mandala</h2>
+        <p class="credits-label">Animation</p>
+        <p>Procedural N-fold radial sand<br>mandala build, hold, dissolve,<br>and rebuild cycle.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// Canvas
+const canvas = document.getElementById('sandmandala-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 15;
+let CHAR_W = 9.0, CHAR_H = 18.75;
+let cols = 0, rows = 0;
+let W = 0, H = 0;
+let CENTER_COL = 0, CENTER_ROW = 0, RADIUS_CHARS = 0;
+let needsRecenter = false;
+
+function resize() {
+    canvas.width = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width || 9.0;
+    CHAR_H = FONT_SIZE * 1.25;
+    cols = Math.floor(W / CHAR_W);
+    rows = Math.floor(H / CHAR_H);
+    CENTER_COL = cols / 2;
+    CENTER_ROW = rows / 2;
+    const aspect = CHAR_H / CHAR_W;
+    RADIUS_CHARS = Math.min(CENTER_COL * 0.85, (CENTER_ROW * 0.85) * aspect);
+    needsRecenter = true;
+}
+window.addEventListener('resize', resize);
+
+// Background
+function drawBackground() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0a0a12';
+    ctx.fillRect(0, 0, W, H);
+    const grad = ctx.createRadialGradient(
+        CENTER_COL * CHAR_W, CENTER_ROW * CHAR_H, 0,
+        CENTER_COL * CHAR_W, CENTER_ROW * CHAR_H, RADIUS_CHARS * CHAR_W * 1.3
+    );
+    grad.addColorStop(0, 'rgba(20,16,10,0.55)');
+    grad.addColorStop(0.7, 'rgba(12,10,8,0.30)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+}
+
+function drawGuideRing() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = '#a08850';
+    const aspect = CHAR_W / CHAR_H;
+    const steps = 240;
+    for (let i = 0; i < steps; i++) {
+        const a = (i / steps) * Math.PI * 2;
+        const col = Math.round(CENTER_COL + Math.cos(a) * RADIUS_CHARS);
+        const row = Math.round(CENTER_ROW + Math.sin(a) * RADIUS_CHARS * aspect);
+        ctx.fillText('.', col * CHAR_W, row * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// Generator / palettes
+const GRAIN_CHAR_TIERS = ['.', ',', '+', 'x', 'o', '*', '#', '@'];
+const PALETTES = {
+    tibetan: ['#d4a020', '#c88830', '#b8602a', '#a83820', '#8a2840', '#5c2858', '#3a2868', '#241850'],
+    desert:  ['#e8c878', '#dcab5c', '#cf8a4a', '#bf6b3a', '#a8502e', '#8a3a24', '#6b2a1c', '#4a1c14'],
+    ocean:   ['#bfe8e0', '#8fd0c8', '#5cb0b0', '#3a8898', '#2a6888', '#1f4868', '#163450', '#0e2038'],
+    jewel:   ['#ffd700', '#e0a020', '#c81860', '#9020a0', '#5028b0', '#2050c0', '#1098a0', '#18a050'],
+    mono:    ['#e8e8e8', '#c8c8c8', '#a8a8a8', '#909090', '#787878', '#606060', '#484848', '#303030'],
+};
+const ACTIVE_PALETTE = PALETTES[P_PALETTE] || PALETTES.tibetan;
+
+function rnd(min, max) { return min + Math.random() * (max - min); }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function generateWedgeGrains(symmetry) {
+    const halfWedge = Math.PI / symmetry;
+    const grains = [];
+    const ringCount = 5 + Math.floor(Math.random() * 4);
+    const maxR = RADIUS_CHARS;
+
+    grains.push({ col: 0, row: 0, charTier: GRAIN_CHAR_TIERS.length - 1 });
+
+    for (let ring = 0; ring < ringCount; ring++) {
+        const ringR = ((ring + 1) / ringCount) * maxR;
+        const ringThickness = (maxR / ringCount) * 0.8;
+        const motif = pick(['dots', 'petals', 'ticks', 'arc']);
+        const density = rnd(0.3, 1.0);
+        const tier = Math.min(GRAIN_CHAR_TIERS.length - 1, Math.floor((ring / Math.max(1, ringCount - 1)) * GRAIN_CHAR_TIERS.length));
+
+        if (motif === 'arc') {
+            const steps = Math.max(4, Math.floor((ringR * halfWedge * 2) / 0.6));
+            for (let i = 0; i <= steps; i++) {
+                const a = -halfWedge * 0.9 + (i / steps) * halfWedge * 1.8;
+                const r = ringR + rnd(-ringThickness * 0.15, ringThickness * 0.15);
+                grains.push({ col: Math.cos(a) * r, row: Math.sin(a) * r, charTier: tier });
+            }
+        } else if (motif === 'petals') {
+            const petalCount = 1 + Math.floor(Math.random() * 2);
+            for (let p = 0; p < petalCount; p++) {
+                const pct = petalCount === 1 ? 0.5 : p / (petalCount - 1);
+                const centerA = -halfWedge * 0.55 + pct * halfWedge * 1.1;
+                for (let i = 0; i < 12; i++) {
+                    const t = i / 11;
+                    const a = centerA + (t - 0.5) * halfWedge * 0.55;
+                    const r = ringR + Math.sin(t * Math.PI) * ringThickness * 0.5;
+                    grains.push({ col: Math.cos(a) * r, row: Math.sin(a) * r, charTier: tier });
+                }
+            }
+        } else if (motif === 'ticks') {
+            const tickCount = 2 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < tickCount; i++) {
+                const pct = tickCount === 1 ? 0.5 : i / (tickCount - 1);
+                const a = -halfWedge * 0.85 + pct * halfWedge * 1.7;
+                for (let d = -2; d <= 2; d++) {
+                    const r = ringR + d * (ringThickness / 5);
+                    if (r > 0) grains.push({ col: Math.cos(a) * r, row: Math.sin(a) * r, charTier: tier });
+                }
+            }
+        } else {
+            const dotCount = Math.floor(density * 14) + 2;
+            for (let i = 0; i < dotCount; i++) {
+                const a = rnd(-halfWedge * 0.92, halfWedge * 0.92);
+                const r = ringR + rnd(-ringThickness * 0.4, ringThickness * 0.4);
+                if (r > 0) grains.push({ col: Math.cos(a) * r, row: Math.sin(a) * r, charTier: tier });
+            }
+        }
+    }
+
+    grains.sort((a, b) => Math.hypot(a.col, a.row) - Math.hypot(b.col, b.row));
+    return grains;
+}
+
+function mirrorWedgeToFullMandala(wedgeGrains, symmetry) {
+    const full = [];
+    const foldAngle = (Math.PI * 2) / symmetry;
+    const mirrored = wedgeGrains.concat(
+        wedgeGrains.map(g => ({ col: g.col, row: -g.row, charTier: g.charTier }))
+    );
+
+    for (let fold = 0; fold < symmetry; fold++) {
+        const a = fold * foldAngle;
+        const cosA = Math.cos(a), sinA = Math.sin(a);
+        for (const g of mirrored) {
+            full.push({
+                col: g.col * cosA - g.row * sinA,
+                row: g.col * sinA + g.row * cosA,
+                charTier: g.charTier,
+            });
+        }
+    }
+    full.sort((a, b) => Math.hypot(a.col, a.row) - Math.hypot(b.col, b.row));
+    return full;
+}
+
+function generateMandalaGrains(symmetry) {
+    return mirrorWedgeToFullMandala(generateWedgeGrains(symmetry), symmetry);
+}
+
+// State machine
+const STATE = { BUILD: 'BUILD', HOLD: 'HOLD', DISSOLVE: 'DISSOLVE' };
+
+let phase = STATE.BUILD;
+let currentGrains = [];
+let placedGrains = [];
+let buildIdx = 0;
+let holdFrames = 0;
+let dissolveComplete = false;
+let sweepAngle = 0;
+let started = false;
+
+const GRAINS_PER_FRAME = Math.max(1, Math.round(6 * Math.max(0.05, P_SPEED)));
+
+function cloneGrain(g) {
+    return { col: g.col, row: g.row, charTier: g.charTier };
+}
+
+function startBuildPhase() {
+    currentGrains = generateMandalaGrains(P_SYMMETRY);
+    placedGrains = [];
+    buildIdx = 0;
+    holdFrames = 0;
+    dissolveComplete = false;
+    sweepAngle = 0;
+    needsRecenter = false;
+    phase = STATE.BUILD;
+}
+
+function updateBuildPhase() {
+    for (let i = 0; i < GRAINS_PER_FRAME && buildIdx < currentGrains.length; i++, buildIdx++) {
+        placedGrains.push(cloneGrain(currentGrains[buildIdx]));
+    }
+    if (buildIdx >= currentGrains.length) {
+        phase = STATE.HOLD;
+        holdFrames = 0;
+    }
+}
+
+function updateHoldPhase() {
+    holdFrames++;
+    if (holdFrames >= P_HOLD_TIME) {
+        startDissolvePhase();
+    }
+}
+
+function startDissolvePhase() {
+    phase = STATE.DISSOLVE;
+    dissolveComplete = false;
+    sweepAngle = 0;
+    const aspect = CHAR_W / CHAR_H;
+
+    for (const g of placedGrains) {
+        g.dAlpha = 1.0;
+        if (P_DISSOLVE_STYLE === 'sweep') {
+            g.dDelay = Math.atan2(g.row, g.col);
+            if (g.dDelay < 0) g.dDelay += Math.PI * 2;
+        } else if (P_DISSOLVE_STYLE === 'wind') {
+            const dist = Math.max(1, Math.hypot(g.col, g.row * aspect));
+            const windAngle = Math.atan2(g.row, g.col) + rnd(-0.4, 0.4);
+            const speed = rnd(0.15, 0.5) * (1 + 1 / dist * 10);
+            g.dVX = Math.cos(windAngle) * speed;
+            g.dVY = Math.sin(windAngle) * speed;
+            g.dDelay = rnd(0, 60);
+        } else {
+            g.dDelay = rnd(0.01, 0.04);
+        }
+    }
+}
+
+function updateDissolvePhase() {
+    const scaledSpeed = Math.max(0.05, P_SPEED);
+    let aliveCount = 0;
+
+    if (P_DISSOLVE_STYLE === 'sweep') {
+        sweepAngle += 0.04 * scaledSpeed;
+        for (const g of placedGrains) {
+            if (sweepAngle > g.dDelay) {
+                g.dAlpha -= 0.08 * scaledSpeed;
+            }
+            if (g.dAlpha > 0) aliveCount++;
+        }
+        if (aliveCount === 0 || sweepAngle > Math.PI * 2 + 1) dissolveComplete = true;
+    } else if (P_DISSOLVE_STYLE === 'wind') {
+        for (const g of placedGrains) {
+            if (g.dDelay > 0) {
+                g.dDelay -= scaledSpeed;
+                aliveCount++;
+                continue;
+            }
+            g.col += g.dVX * scaledSpeed;
+            g.row += g.dVY * scaledSpeed;
+            g.dAlpha -= 0.015 * scaledSpeed;
+            if (g.dAlpha > 0) aliveCount++;
+        }
+        dissolveComplete = aliveCount === 0;
+    } else {
+        for (const g of placedGrains) {
+            g.dAlpha -= g.dDelay * scaledSpeed;
+            if (g.dAlpha > 0) aliveCount++;
+        }
+        dissolveComplete = aliveCount === 0;
+    }
+
+    if (dissolveComplete) {
+        startBuildPhase();
+    }
+}
+
+function drawGrains() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    const aspect = CHAR_W / CHAR_H;
+    for (let i = 0; i < placedGrains.length; i++) {
+        const g = placedGrains[i];
+        const a = g.dAlpha === undefined ? 1 : Math.max(0, g.dAlpha);
+        if (a <= 0) continue;
+        ctx.globalAlpha = 0.9 * a;
+        ctx.fillStyle = ACTIVE_PALETTE[g.charTier];
+        const col = CENTER_COL + g.col;
+        const row = CENTER_ROW + g.row * aspect;
+        ctx.fillText(GRAIN_CHAR_TIERS[g.charTier], col * CHAR_W, row * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function render() {
+    drawBackground();
+    drawGuideRing();
+
+    if (needsRecenter && phase === STATE.HOLD) {
+        startDissolvePhase();
+    }
+
+    if (phase === STATE.BUILD) updateBuildPhase();
+    else if (phase === STATE.HOLD) updateHoldPhase();
+    else if (phase === STATE.DISSOLVE) updateDissolvePhase();
+
+    drawGrains();
+    requestAnimationFrame(render);
+}
+
+function startAnimation() {
+    if (started) return;
+    started = true;
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        startBuildPhase();
+        requestAnimationFrame(render);
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Game of Life Garden</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #gol-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(10, 14, 10, 0.92);
+            border: 1px solid rgba(60, 160, 90, 0.4);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #8fcf9a;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #4cd06a;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #4f7a58;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(60, 160, 90, 0.3);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #4cd06a; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="gol-canvas"></canvas>
+<script>
+// Screensaver mode
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED      = parseFloat(_params.get('speed')      || '1');
+const P_PALETTE    = _params.get('palette')                || 'spring';
+const P_CELLSIZE   = Math.max(4, parseInt(_params.get('cellSize') || '16', 10));
+const P_DENSITY    = Math.max(0, Math.min(1, parseFloat(_params.get('density') || '0.35')));
+const P_RESEEDMODE = _params.get('reseedMode')              || 'mixed';
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>Game of Life Garden</h2>
+        <p class="credits-label">Animation</p>
+        <p>Conway's Game of Life rendered as<br>growing/wilting garden glyphs.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// Canvas / grid
+const canvas = document.getElementById('gol-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 15;
+const CELL = P_CELLSIZE;
+let cols = 0, rows = 0;
+let alive = null;
+let nextAlive = null;
+let age = null;
+let wilting = null;
+
+function idx(x, y) { return y * cols + x; }
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    cols = Math.max(1, Math.floor(canvas.width / CELL));
+    rows = Math.max(1, Math.floor(canvas.height / CELL));
+    const sz = cols * rows;
+    alive = new Uint8Array(sz);
+    nextAlive = new Uint8Array(sz);
+    age = new Uint16Array(sz);
+    wilting = new Uint8Array(sz);
+    lastHash = -1;
+    stagnantFrames = 0;
+}
+
+window.addEventListener('resize', () => {
+    resize();
+    reseed();
+});
+
+function seedRandom(density) {
+    for (let i = 0; i < alive.length; i++) {
+        alive[i] = Math.random() < density ? 1 : 0;
+        age[i] = alive[i] ? 1 : 0;
+        wilting[i] = 0;
+    }
+}
+
+// Palettes / growth rendering
+const PALETTES = {
+    spring: [
+        { t: 0.00, r: 40,  g: 90,  b: 50  },
+        { t: 0.25, r: 70,  g: 150, b: 70  },
+        { t: 0.55, r: 110, g: 200, b: 90  },
+        { t: 0.80, r: 220, g: 230, b: 120 },
+        { t: 1.00, r: 255, g: 245, b: 180 },
+    ],
+    autumn: [
+        { t: 0.00, r: 90,  g: 60,  b: 20  },
+        { t: 0.25, r: 150, g: 90,  b: 20  },
+        { t: 0.55, r: 200, g: 120, b: 30  },
+        { t: 0.80, r: 230, g: 160, b: 40  },
+        { t: 1.00, r: 255, g: 200, b: 80  },
+    ],
+    neon: [
+        { t: 0.00, r: 20,  g: 200, b: 180 },
+        { t: 0.25, r: 40,  g: 230, b: 140 },
+        { t: 0.55, r: 120, g: 255, b: 80  },
+        { t: 0.80, r: 220, g: 255, b: 60  },
+        { t: 1.00, r: 255, g: 80,  b: 220 },
+    ],
+    mono: [
+        { t: 0.00, r: 70,  g: 70,  b: 70  },
+        { t: 0.30, r: 120, g: 120, b: 120 },
+        { t: 0.60, r: 180, g: 180, b: 180 },
+        { t: 1.00, r: 240, g: 240, b: 240 },
+    ],
+};
+
+function buildColorLUT(paletteName) {
+    const segs = PALETTES[paletteName] || PALETTES.spring;
+    const lut = new Array(256);
+    for (let i = 0; i < 256; i++) {
+        const t = i / 255;
+        let lo = segs[0], hi = segs[segs.length - 1];
+        for (let s = 0; s < segs.length - 1; s++) {
+            if (t >= segs[s].t && t <= segs[s + 1].t) {
+                lo = segs[s];
+                hi = segs[s + 1];
+                break;
+            }
+        }
+        const span = (hi.t - lo.t) || 1;
+        const m = (t - lo.t) / span;
+        const r = Math.round(lo.r + m * (hi.r - lo.r));
+        const g = Math.round(lo.g + m * (hi.g - lo.g));
+        const b = Math.round(lo.b + m * (hi.b - lo.b));
+        lut[i] = `rgb(${r},${g},${b})`;
+    }
+    return lut;
+}
+
+const COLOR_LUT = buildColorLUT(P_PALETTE);
+const GROWTH_GLYPHS = ['.', 'o', '*', ';'];
+const WILT_COUNTDOWN_START = 6;
+
+function glyphForCell(i) {
+    if (wilting[i] > 0) return GROWTH_GLYPHS[3];
+    const a = age[i];
+    if (a <= 2) return GROWTH_GLYPHS[0];
+    if (a <= 6) return GROWTH_GLYPHS[1];
+    return GROWTH_GLYPHS[2];
+}
+
+function colorForCell(i) {
+    const a = wilting[i] > 0 ? Math.max(0, age[i] - wilting[i] * 2) : age[i];
+    const bucket = Math.max(0, Math.min(255, Math.round((Math.min(a, 30) / 30) * 255)));
+    return COLOR_LUT[bucket];
+}
+
+// Reseeding
+const CLASSIC_PATTERNS = {
+    glider: [[1,0],[2,1],[0,2],[1,2],[2,2]],
+    pulsar: [
+        [2,0],[3,0],[4,0],[8,0],[9,0],[10,0],
+        [0,2],[5,2],[7,2],[12,2],
+        [0,3],[5,3],[7,3],[12,3],
+        [0,4],[5,4],[7,4],[12,4],
+        [2,5],[3,5],[4,5],[8,5],[9,5],[10,5],
+        [2,7],[3,7],[4,7],[8,7],[9,7],[10,7],
+        [0,8],[5,8],[7,8],[12,8],
+        [0,9],[5,9],[7,9],[12,9],
+        [0,10],[5,10],[7,10],[12,10],
+        [2,12],[3,12],[4,12],[8,12],[9,12],[10,12],
+    ],
+};
+
+function stampPattern(pattern, originX, originY) {
+    for (const [dx, dy] of pattern) {
+        const x = (originX + dx + cols) % cols;
+        const y = (originY + dy + rows) % rows;
+        const i = idx(x, y);
+        alive[i] = 1;
+        age[i] = 1;
+        wilting[i] = 0;
+    }
+}
+
+function stampRandomClassicPatterns(count) {
+    const names = Object.keys(CLASSIC_PATTERNS);
+    for (let k = 0; k < count; k++) {
+        const name = names[Math.floor(Math.random() * names.length)];
+        stampPattern(
+            CLASSIC_PATTERNS[name],
+            Math.floor(Math.random() * cols),
+            Math.floor(Math.random() * rows)
+        );
+    }
+}
+
+let lastHash = -1;
+let stagnantFrames = 0;
+const STAGNATION_LIMIT = 60;
+
+function gridHash() {
+    let h = 0;
+    for (let i = 0; i < alive.length; i++) {
+        if (alive[i]) h = (h * 31 + i) % 2147483647;
+    }
+    return h;
+}
+
+function isExtinct() {
+    for (let i = 0; i < alive.length; i++) {
+        if (alive[i]) return false;
+    }
+    return true;
+}
+
+function clearGrid() {
+    alive.fill(0);
+    nextAlive.fill(0);
+    age.fill(0);
+    wilting.fill(0);
+}
+
+function reseed() {
+    const mode = P_RESEEDMODE === 'random' || P_RESEEDMODE === 'classic'
+        ? P_RESEEDMODE
+        : (Math.random() < 0.5 ? 'random' : 'classic');
+
+    if (mode === 'random') {
+        seedRandom(P_DENSITY);
+    } else {
+        clearGrid();
+        const patternCount = Math.max(3, Math.round((cols * rows) / 600));
+        stampRandomClassicPatterns(patternCount);
+    }
+
+    lastHash = -1;
+    stagnantFrames = 0;
+}
+
+function checkStagnation() {
+    if (isExtinct()) {
+        reseed();
+        return;
+    }
+    const h = gridHash();
+    if (h === lastHash) {
+        stagnantFrames++;
+        if (stagnantFrames >= STAGNATION_LIMIT) {
+            reseed();
+        }
+    } else {
+        stagnantFrames = 0;
+        lastHash = h;
+    }
+}
+
+// Life simulation
+function countNeighbors(x, y) {
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = (x + dx + cols) % cols;
+            const ny = (y + dy + rows) % rows;
+            n += alive[idx(nx, ny)];
+        }
+    }
+    return n;
+}
+
+function tick() {
+    nextAlive.fill(0);
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+            const i = idx(x, y);
+            const n = countNeighbors(x, y);
+            const wasAlive = alive[i] === 1;
+            const willLive = wasAlive ? (n === 2 || n === 3) : (n === 3);
+            nextAlive[i] = willLive ? 1 : 0;
+            if (willLive) {
+                age[i] = wasAlive ? Math.min(65535, age[i] + 1) : 1;
+                wilting[i] = 0;
+            } else if (wasAlive) {
+                wilting[i] = WILT_COUNTDOWN_START;
+            } else if (wilting[i] > 0) {
+                wilting[i]--;
+                if (wilting[i] === 0) age[i] = 0;
+            }
+        }
+    }
+    const tmp = alive;
+    alive = nextAlive;
+    nextAlive = tmp;
+    checkStagnation();
+}
+
+const BASE_TICK_MS = 150;
+const TICK_INTERVAL_MS = BASE_TICK_MS / Math.max(0.05, P_SPEED);
+let lastTickTime = 0;
+let started = false;
+
+function renderFrame() {
+    ctx.fillStyle = '#0a0a12';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+            const i = idx(x, y);
+            if (alive[i] === 1 || wilting[i] > 0) {
+                ctx.fillStyle = colorForCell(i);
+                ctx.fillText(glyphForCell(i), x * CELL, y * CELL);
+            }
+        }
+    }
+}
+
+function loop(t) {
+    if (t - lastTickTime >= TICK_INTERVAL_MS) {
+        lastTickTime = t;
+        tick();
+        renderFrame();
+    }
+    requestAnimationFrame(loop);
+}
+
+function startAnimation() {
+    if (started) return;
+    started = true;
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        reseed();
+        ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+        ctx.textBaseline = 'top';
+        lastTickTime = performance.now() - TICK_INTERVAL_MS;
+        renderFrame();
+        requestAnimationFrame(loop);
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

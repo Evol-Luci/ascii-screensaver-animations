@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Boids</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #boids-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(8, 10, 16, 0.92);
+            border: 1px solid rgba(80, 140, 200, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #88a8c8;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #50a0e0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #507090;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(80, 140, 200, 0.3);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #50a0e0; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="boids-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED      = parseFloat(_params.get('speed')      || '1');
+const P_PALETTE    = _params.get('palette') || 'birds';
+const P_FLOCK_SIZE = Math.max(20, Math.min(150, parseInt(_params.get('flockSize') || '60', 10)));
+const P_COHESION   = parseFloat(_params.get('cohesion')   || '1.0');
+const P_SEPARATION = parseFloat(_params.get('separation') || '1.0');
+const P_PREDATOR   = _params.get('predator') === '1';
+const P_PREDATOR_SPEED = parseFloat(_params.get('predatorSpeed') || '1.35');
+
+// ─── Palettes ──────────────────────────────────────────────────────────────────
+// Each palette defines a low-speed → high-speed color gradient (lo/hi as [r,g,b])
+// plus a glyph and predator color. headingColor() linearly interpolates lo→hi by
+// normalized speed (0..1 of MAX_SPEED).
+const PALETTES = {
+    birds: {
+        lo: [70, 110, 160], hi: [200, 220, 255],
+        glyph: '>', predator: '#ff4040',
+    },
+    fish: {
+        lo: [20, 90, 110], hi: [80, 220, 200],
+        glyph: '>', predator: '#ff8030',
+    },
+    abstract: {
+        lo: [120, 40, 160], hi: [255, 120, 220],
+        glyph: '>', predator: '#ffe040',
+    },
+    mono: {
+        lo: [120, 120, 120], hi: [230, 230, 230],
+        glyph: '>', predator: '#ffffff',
+    },
+};
+const ACTIVE_PALETTE = PALETTES[P_PALETTE] || PALETTES.birds;
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Boids</h2>
+        <p class="credits-label">Animation</p>
+        <p>Classic boid flocking —<br>separation, alignment,<br>cohesion on SOA buffers.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('boids-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 15;
+let CHAR_W = 9.0, CHAR_H = 18.75;
+let cols = 0, rows = 0;
+let W = 0, H = 0;
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+    cols = Math.floor(W / CHAR_W);
+    rows = Math.floor(H / CHAR_H);
+}
+window.addEventListener('resize', resize);
+
+// ─── Boid simulation constants ─────────────────────────────────────────────────
+// NOTE: the design spec's param table (cohesion, separation) does not include an
+// `alignment` param even though alignment is one of the three classic boid rules.
+// ALIGNMENT_WEIGHT is therefore a fixed internal constant, not a URL/config param —
+// this matches the spec's table exactly rather than adding an undocumented param.
+const ALIGNMENT_WEIGHT   = 1.2;  // stronger heading consensus
+const SEPARATION_RADIUS  = 1.6 * CHAR_H;  // tighter — boids tolerate closer packing
+const ALIGNMENT_RADIUS   = 6.0 * CHAR_H;  // wider — heading spreads across larger groups
+const COHESION_RADIUS    = 7.0 * CHAR_H;  // wider — pulls distant stragglers back in
+const MAX_SPEED          = 2.6;
+const MAX_FORCE          = 0.10;
+const WANDER_NOISE       = 0.018; // per-frame random nudge — breaks up lockstep perfection
+const INERTIA            = 0.82;  // fraction of old speed preserved each frame (0=instant, 1=frozen)
+const MAX_TURN_RATE      = 0.07;  // max radians a boid can rotate per frame (~4° at 60fps)
+
+// ─── SOA agent buffers ──────────────────────────────────────────────────────────
+const bX   = new Float32Array(P_FLOCK_SIZE);
+const bY   = new Float32Array(P_FLOCK_SIZE);
+const bVX  = new Float32Array(P_FLOCK_SIZE);
+const bVY  = new Float32Array(P_FLOCK_SIZE);
+const bLag = new Float32Array(P_FLOCK_SIZE); // per-boid response lag (0.7–1.0)
+
+function initFlock() {
+    for (let i = 0; i < P_FLOCK_SIZE; i++) {
+        bX[i]   = Math.random() * W;
+        bY[i]   = Math.random() * H;
+        const angle = Math.random() * Math.PI * 2;
+        const spd   = MAX_SPEED * (0.4 + Math.random() * 0.6);
+        bVX[i]  = Math.cos(angle) * spd;
+        bVY[i]  = Math.sin(angle) * spd;
+        bLag[i] = 0.7 + Math.random() * 0.3; // each boid reacts at its own rate
+    }
+}
+
+// Toroidal shortest-path delta — returns the signed distance along one axis
+// accounting for wrap-around (picks whichever route is shorter).
+function torusDelta(a, b, size) {
+    let d = a - b;
+    if (d >  size * 0.5) d -= size;
+    if (d < -size * 0.5) d += size;
+    return d;
+}
+
+// ─── Predator agent (optional) ─────────────────────────────────────────────────
+const PREDATOR_SPEED          = MAX_SPEED * P_PREDATOR_SPEED;
+const PREDATOR_CHASE_FORCE    = 0.18;  // how hard it steers toward prey
+const PREDATOR_WANDER_FORCE   = 0.03;  // gentle wander nudge so path feels organic
+const PREDATOR_FLEE_RADIUS    = 6.0 * CHAR_H;
+const PREDATOR_FLEE_FORCE     = 0.22;
+const PREDATOR_CONSUME_RADIUS   = 1.0 * CHAR_H; // distance at which a boid is eaten
+const PREDATOR_WAKE_FORCE       = 0.20; // pushes boids out of the predator's rear arc
+const PREDATOR_HUNGER_TIMEOUT   = 250; // frames without a kill before escape burst fires
+
+let predX = 0, predY = 0, predVX = 0, predVY = 0;
+let predHungerTimer = 0; // counts frames since last successful consume
+
+function initPredator() {
+    if (!P_PREDATOR) return;
+    predX = Math.random() * W;
+    predY = Math.random() * H;
+    const angle = Math.random() * Math.PI * 2;
+    predVX = Math.cos(angle) * PREDATOR_SPEED;
+    predVY = Math.sin(angle) * PREDATOR_SPEED;
+}
+
+// Predator hunts the center of the nearest local cluster.
+// If the flock splits, a global centroid causes the predator to chase empty space.
+// Instead, we find the nearest boid, then average the positions of all nearby
+// boids to find the true center of that specific group.
+function stepPredator(scaledDt) {
+    if (!P_PREDATOR) return;
+    const stepScale = scaledDt / 16.67;
+
+    // 1. Find nearest boid
+    let nearestDist = Infinity;
+    let nearestIdx = -1;
+    for (let i = 0; i < P_FLOCK_SIZE; i++) {
+        const dx = torusDelta(bX[i], predX, W);
+        const dy = torusDelta(bY[i], predY, H);
+        const dist = dx * dx + dy * dy; // squared dist is fine for comparison
+        if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestIdx = i;
+        }
+    }
+
+    let targetX = predX, targetY = predY;
+    if (nearestIdx >= 0) {
+        // 2. Compute centroid of the local cluster (boids within ~2x cohesion radius)
+        const CLUSTER_RADIUS = COHESION_RADIUS * 2.0;
+        let sumDX = 0, sumDY = 0;
+        let clusterCount = 0;
+        const refX = bX[nearestIdx], refY = bY[nearestIdx];
+        
+        for (let i = 0; i < P_FLOCK_SIZE; i++) {
+            const dx = torusDelta(bX[i], refX, W);
+            const dy = torusDelta(bY[i], refY, H);
+            if (dx * dx + dy * dy < CLUSTER_RADIUS * CLUSTER_RADIUS) {
+                sumDX += dx;
+                sumDY += dy;
+                clusterCount++;
+            }
+        }
+        targetX = (refX + sumDX / clusterCount + W) % W;
+        targetY = (refY + sumDY / clusterCount + H) % H;
+    }
+
+    // Steer toward the local cluster centroid
+    const cdx = torusDelta(targetX, predX, W);
+    const cdy = torusDelta(targetY, predY, H);
+    const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+
+    let fx = 0, fy = 0;
+    if (cdist > 0) {
+        fx = (cdx / cdist) * PREDATOR_CHASE_FORCE;
+        fy = (cdy / cdist) * PREDATOR_CHASE_FORCE;
+    }
+
+    // Small random nudge so path feels organic rather than laser-straight
+    fx += (Math.random() - 0.5) * PREDATOR_WANDER_FORCE;
+    fy += (Math.random() - 0.5) * PREDATOR_WANDER_FORCE;
+
+    predVX += fx * stepScale;
+    predVY += fy * stepScale;
+
+    // ── Hunger / stuck failsafe ────────────────────────────────────────────────
+    // If the predator hasn't eaten in PREDATOR_HUNGER_TIMEOUT frames it's almost
+    // certainly trapped inside a ring. Snap to a fully random heading so it
+    // punches clean through the encirclement instead of orbiting forever.
+    predHungerTimer++;
+    if (predHungerTimer >= PREDATOR_HUNGER_TIMEOUT) {
+        const escapeAngle = Math.random() * Math.PI * 2;
+        predVX = Math.cos(escapeAngle) * PREDATOR_SPEED;
+        predVY = Math.sin(escapeAngle) * PREDATOR_SPEED;
+        predHungerTimer = 0;
+    }
+
+    const [lvx, lvy] = limitVec(predVX, predVY, PREDATOR_SPEED);
+    predVX = lvx;
+    predVY = lvy;
+
+    predX = (predX + predVX * stepScale + W) % W;
+    predY = (predY + predVY * stepScale + H) % H;
+}
+
+// Teleport boid i to a random screen edge with a velocity pointing inward.
+// Called on init (via initFlock) and whenever the predator consumes a boid.
+function respawnBoid(i) {
+    const edge = Math.floor(Math.random() * 4); // 0=top 1=right 2=bottom 3=left
+    // Inward base angles: top→down, right→left, bottom→up, left→right
+    const baseAngles = [Math.PI / 2, Math.PI, -Math.PI / 2, 0];
+    const angle = baseAngles[edge] + (Math.random() - 0.5) * (Math.PI * 0.5);
+    switch (edge) {
+        case 0: bX[i] = Math.random() * W; bY[i] = 1;     break;
+        case 1: bX[i] = W - 1;             bY[i] = Math.random() * H; break;
+        case 2: bX[i] = Math.random() * W; bY[i] = H - 1; break;
+        case 3: bX[i] = 1;                 bY[i] = Math.random() * H; break;
+    }
+    const spd = MAX_SPEED * (0.5 + Math.random() * 0.5);
+    bVX[i]  = Math.cos(angle) * spd;
+    bVY[i]  = Math.sin(angle) * spd;
+    bLag[i] = 0.7 + Math.random() * 0.3;
+}
+
+// Check whether the predator is within consume range of any boid.
+// Consumes at most one per frame (the closest within range) so the flock
+// shrinks one-at-a-time rather than being wiped out in a single pass.
+// The consumed boid is immediately respawned from a random edge.
+function checkConsume() {
+    if (!P_PREDATOR) return;
+    let closestDist = Infinity, closestIdx = -1;
+    for (let i = 0; i < P_FLOCK_SIZE; i++) {
+        const dx = torusDelta(bX[i], predX, W);
+        const dy = torusDelta(bY[i], predY, H);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < closestDist) { closestDist = dist; closestIdx = i; }
+    }
+    if (closestIdx >= 0 && closestDist < PREDATOR_CONSUME_RADIUS) {
+        respawnBoid(closestIdx);
+        predHungerTimer = 0; // successful eat — reset the stuck-detection timer
+        // Bump the predator off its current heading so it doesn't
+        // immediately loop back and consume the freshly respawned boid.
+        predVX += (Math.random() - 0.5) * PREDATOR_SPEED * 0.6;
+        predVY += (Math.random() - 0.5) * PREDATOR_SPEED * 0.6;
+    }
+}
+
+function drawPredator() {
+    if (!P_PREDATOR) return;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+
+    const angle = Math.atan2(predVY, predVX);
+    ctx.save();
+    ctx.translate(predX, predY);
+    ctx.rotate(angle);
+    ctx.fillStyle = ACTIVE_PALETTE.predator;
+    ctx.fillText('▶', 0, 0);
+    ctx.restore();
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+}
+
+
+function limitVec(x, y, max) {
+    const mag = Math.sqrt(x * x + y * y);
+    if (mag > max && mag > 0) {
+        const s = max / mag;
+        return [x * s, y * s];
+    }
+    return [x, y];
+}
+
+// One O(n²) neighbor pass per frame using toroidal (shortest-path) distances.
+// n <= 150 keeps this cheap (<=22500 checks).
+function stepFlock(scaledDt) {
+    const stepScale = scaledDt / 16.67;
+
+    for (let i = 0; i < P_FLOCK_SIZE; i++) {
+        let sepX = 0, sepY = 0, sepCount = 0;
+        let aliX = 0, aliY = 0, aliCount = 0;
+        let cohDX = 0, cohDY = 0, cohCount = 0;
+
+        for (let j = 0; j < P_FLOCK_SIZE; j++) {
+            if (j === i) continue;
+            // Toroidal shortest-path distance
+            const dx = torusDelta(bX[i], bX[j], W);
+            const dy = torusDelta(bY[i], bY[j], H);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist === 0 || dist > COHESION_RADIUS) continue;
+
+            if (dist < SEPARATION_RADIUS) {
+                sepX += dx / dist;
+                sepY += dy / dist;
+                sepCount++;
+            }
+            if (dist < ALIGNMENT_RADIUS) {
+                aliX += bVX[j];
+                aliY += bVY[j];
+                aliCount++;
+            }
+            if (dist < COHESION_RADIUS) {
+                // Accumulate offset vectors rather than absolute positions
+                // so cohesion steers correctly across the wrap boundary.
+                cohDX += dx;
+                cohDY += dy;
+                cohCount++;
+            }
+        }
+
+        let fx = 0, fy = 0;
+
+        if (sepCount > 0) {
+            let [sx, sy] = limitVec(sepX / sepCount, sepY / sepCount, MAX_FORCE);
+            fx += sx * P_SEPARATION;
+            fy += sy * P_SEPARATION;
+        }
+        if (aliCount > 0) {
+            const avgVX = aliX / aliCount, avgVY = aliY / aliCount;
+            let [ax, ay] = limitVec(avgVX - bVX[i], avgVY - bVY[i], MAX_FORCE);
+            fx += ax * ALIGNMENT_WEIGHT;
+            fy += ay * ALIGNMENT_WEIGHT;
+        }
+        if (cohCount > 0) {
+            // Steer toward the average offset (negate: toward neighbors, not away)
+            let [cx, cy] = limitVec(-cohDX / cohCount, -cohDY / cohCount, MAX_FORCE);
+            fx += cx * P_COHESION;
+            fy += cy * P_COHESION;
+        }
+
+        // Predator avoidance — radial flee + wake bias
+        if (P_PREDATOR) {
+            const pdx = torusDelta(bX[i], predX, W);
+            const pdy = torusDelta(bY[i], predY, H);
+            const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+            if (pdist > 0 && pdist < PREDATOR_FLEE_RADIUS) {
+                // Radial flee: push directly away from predator
+                const fleeStrength = (1 - pdist / PREDATOR_FLEE_RADIUS) * PREDATOR_FLEE_FORCE;
+                fx += (pdx / pdist) * fleeStrength;
+                fy += (pdy / pdist) * fleeStrength;
+
+                // Wake bias: boids in the predator's rear hemisphere get pushed
+                // forward in its travel direction so they can't orbit behind it.
+                // dot < 0  =>  boid is behind the predator's heading vector.
+                const predSpd = Math.sqrt(predVX * predVX + predVY * predVY);
+                if (predSpd > 0) {
+                    const phx = predVX / predSpd; // predator heading unit vector
+                    const phy = predVY / predSpd;
+                    const dot = pdx * phx + pdy * phy; // pred→boid projected onto heading
+                    if (dot < 0) {
+                        // Scale by how directly behind: fully behind = -1, beside = 0
+                        const wakeStrength = (-dot / pdist) * PREDATOR_WAKE_FORCE;
+                        fx += phx * wakeStrength;
+                        fy += phy * wakeStrength;
+                    }
+                }
+            }
+        }
+
+        // Per-boid wander noise — breaks up the too-perfect lockstep feeling
+        fx += (Math.random() - 0.5) * WANDER_NOISE;
+        fy += (Math.random() - 0.5) * WANDER_NOISE;
+
+        // ── Inertia + rotational dampening ────────────────────────────────────────────
+        // Desired velocity if we applied forces directly (unclamped).
+        const dvx = fx * stepScale * bLag[i];
+        const dvy = fy * stepScale * bLag[i];
+        const desiredVX = bVX[i] + dvx;
+        const desiredVY = bVY[i] + dvy;
+
+        const curSpd = Math.sqrt(bVX[i] * bVX[i] + bVY[i] * bVY[i]);
+        if (curSpd < 0.001) {
+            // Boid is nearly stopped — just apply force directly to avoid atan2 instability
+            bVX[i] = desiredVX;
+            bVY[i] = desiredVY;
+        } else {
+            // Rotational dampening: clamp angular change to MAX_TURN_RATE per frame
+            const curAngle     = Math.atan2(bVY[i], bVX[i]);
+            const desiredAngle = Math.atan2(desiredVY, desiredVX);
+            let   dAngle       = desiredAngle - curAngle;
+            // Wrap delta to [-π, π] so we always turn the short way
+            if (dAngle >  Math.PI) dAngle -= 2 * Math.PI;
+            if (dAngle < -Math.PI) dAngle += 2 * Math.PI;
+            const maxTurn = MAX_TURN_RATE * stepScale;
+            dAngle = Math.max(-maxTurn, Math.min(maxTurn, dAngle));
+            const newAngle = curAngle + dAngle;
+
+            // Inertia: speed eases toward desired speed rather than snapping
+            const desiredSpd = Math.sqrt(desiredVX * desiredVX + desiredVY * desiredVY);
+            const newSpd     = curSpd + (desiredSpd - curSpd) * (1 - INERTIA);
+
+            bVX[i] = Math.cos(newAngle) * newSpd;
+            bVY[i] = Math.sin(newAngle) * newSpd;
+        }
+
+        // Hard speed cap after inertia/dampening
+        const [lvx, lvy] = limitVec(bVX[i], bVY[i], MAX_SPEED);
+        bVX[i] = lvx;
+        bVY[i] = lvy;
+
+        // Seamless torus wrap
+        bX[i] = (bX[i] + bVX[i] * stepScale + W) % W;
+        bY[i] = (bY[i] + bVY[i] * stepScale + H) % H;
+    }
+}
+
+// ─── Glyph rendering ────────────────────────────────────────────────────────────
+// A boid is drawn as a '>' glyph (a stand-in V/triangle shape that reads clearly
+// at 15px monospace) rotated via canvas transform to align with its heading.
+function headingColor(vx, vy) {
+    const speed = Math.sqrt(vx * vx + vy * vy);
+    const t = Math.max(0, Math.min(1, speed / MAX_SPEED));
+    const [lr, lg, lb] = ACTIVE_PALETTE.lo;
+    const [hr, hg, hb] = ACTIVE_PALETTE.hi;
+    const r = Math.round(lr + t * (hr - lr));
+    const g = Math.round(lg + t * (hg - lg));
+    const b = Math.round(lb + t * (hb - lb));
+    return `rgb(${r},${g},${b})`;
+}
+
+function drawFlock() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+
+    for (let i = 0; i < P_FLOCK_SIZE; i++) {
+        const angle = Math.atan2(bVY[i], bVX[i]);
+        ctx.save();
+        ctx.translate(bX[i], bY[i]);
+        ctx.rotate(angle);
+        ctx.fillStyle = headingColor(bVX[i], bVY[i]);
+        ctx.fillText(ACTIVE_PALETTE.glyph, 0, 0);
+        ctx.restore();
+    }
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+}
+
+// ─── Render loop ───────────────────────────────────────────────────────────────
+let lastTimestamp = 0;
+
+function render(t) {
+    const dt       = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
+    lastTimestamp  = t;
+    const scaledDt = dt * P_SPEED;
+
+    ctx.clearRect(0, 0, W, H);
+    stepPredator(scaledDt);
+    checkConsume();
+    stepFlock(scaledDt);
+    drawFlock();
+    drawPredator();
+
+    requestAnimationFrame(render);
+}
+
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        initFlock();
+        initPredator();
+        requestAnimationFrame(render);
+    });
+}
+
+if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(startAnimation, 4000);
+else setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

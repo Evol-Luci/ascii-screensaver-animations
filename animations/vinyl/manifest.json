@@ -1,0 +1,53 @@
+{
+  "id": "vinyl",
+  "name": "Vinyl Spin",
+  "description": "Spinning turntable with a rotating groove sheen, procedural radial label, tracking tonearm, and lamplit dust motes.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "vinylBlack",
+      "options": [
+        "vinylBlack",
+        "red",
+        "blue",
+        "gold",
+        "mono"
+      ]
+    },
+    {
+      "key": "dustDensity",
+      "type": "range",
+      "label": "Dust Density",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "lampGlow",
+      "type": "range",
+      "label": "Lamp Glow",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    }
+  ]
+}

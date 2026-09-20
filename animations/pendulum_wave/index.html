@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Pendulum Wave</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a12; overflow: hidden; width: 100vw; height: 100vh; }
+    body.screensaver-mode { cursor: none; }
+    #scene { display: block; opacity: 0; transition: opacity 2s ease-in; }
+    .credits-popup {
+      position: fixed; bottom: 32px; right: 32px;
+      background: rgba(10,10,18,0.92); border: 1px solid rgba(150,170,200,0.4);
+      border-radius: 8px; padding: 20px 24px;
+      font-family: 'JetBrains Mono','Courier New',monospace;
+      font-size: 12px; color: #a8b8d0; max-width: 280px;
+      opacity: 0; transition: opacity 2s ease-in-out; z-index: 100; line-height: 1.6;
+    }
+    .credits-popup.visible { opacity: 1; }
+    .credits-popup h2 { font-size: 14px; font-weight: 700; color: #c8d8f0;
+      letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+    .credits-popup .credits-label { font-size: 10px; color: #7888a0;
+      text-transform: uppercase; letter-spacing: 1px; margin: 10px 0 4px; }
+    .credits-popup hr { border: none; border-top: 1px solid rgba(150,170,200,0.3); margin: 12px 0; }
+    .credits-popup a { color: #a8c0e8; text-decoration: none; }
+  </style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+// --- per-animation params ---
+const P_SPEED  = parseFloat(_params.get('speed') || '0.25');
+const P_PALETTE = _params.get('palette') || 'spectrum';
+const P_COUNT  = parseInt(_params.get('pendulumCount') || '18', 10);
+const P_CYCLE_TIME = parseFloat(_params.get('cycleTime') || '8');
+const P_SWING_ANGLE = parseFloat(_params.get('swingAngle') || '0.4');
+
+if (SCREENSAVER_MODE) {
+  document.body.classList.add('screensaver-mode');
+  const credits = document.createElement('div');
+  credits.className = 'credits-popup';
+  credits.innerHTML = `
+    <h2>ASCII Pendulum Wave</h2>
+    <p class="credits-label">Animation</p>
+    <p>Pendulums of progressively shorter period swinging in and out of phase.</p>
+    <hr>
+    <p class="credits-label">Screensaver Framework</p>
+    <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+    <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>`;
+  document.body.appendChild(credits);
+  setTimeout(() => credits.classList.add('visible'), 500);
+  setTimeout(() => credits.classList.remove('visible'), 30500);
+  setTimeout(() => credits.remove(), 32500);
+
+  let armed = false;
+  setTimeout(() => { armed = true; }, 1500);
+  const dismiss = () => {
+    if (!armed) return;
+    try { window.close(); } catch (e) {}
+    document.body.innerHTML = '';
+    document.body.style.background = '#000';
+  };
+  window.addEventListener('keydown', dismiss);
+  window.addEventListener('mousedown', dismiss);
+  window.addEventListener('mousemove', (() => {
+    let lastX = -1, lastY = -1, moveCount = 0;
+    return (e) => {
+      if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+      if (e.clientX === lastX && e.clientY === lastY) return;
+      lastX = e.clientX; lastY = e.clientY;
+      if (++moveCount > 10) dismiss();
+    };
+  })());
+}
+
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d');
+
+let railX0, railY, railSpacing, stringLen;
+function resize() {
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  const margin = canvas.width * 0.12;
+  railX0 = margin;
+  railSpacing = (canvas.width - 2 * margin) / P_COUNT;
+  railY = canvas.height * 0.18;
+  stringLen = canvas.height * 0.62;
+}
+window.addEventListener('resize', resize);
+
+function bobColor(i) {
+  const f = P_COUNT > 1 ? i / (P_COUNT - 1) : 0;
+  switch (P_PALETTE) {
+    case 'warm': return `hsl(${lerp(40, 0, f)},90%,60%)`;
+    case 'cool': return `hsl(${lerp(180, 240, f)},80%,60%)`;
+    case 'mono': return '#cfe0ff';
+    default:     return `hsl(${f * 300},85%,62%)`; // spectrum
+  }
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+let startTime = 0;
+function loop() {
+  ctx.fillStyle = '#0a0a12'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const t = ((performance.now() - startTime) / 1000) * P_SPEED;
+  // top rail
+  ctx.strokeStyle = 'rgba(150,170,200,0.5)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(railX0, railY);
+  ctx.lineTo(railX0 + P_COUNT * railSpacing, railY); ctx.stroke();
+  const baseOsc = 24;
+  for (let i = 0; i < P_COUNT; i++) {
+    const angularFreq = 2 * Math.PI * (baseOsc + i) / P_CYCLE_TIME;
+    const angle = P_SWING_ANGLE * Math.sin(angularFreq * t);
+    const pivotX = railX0 + (i + 0.5) * railSpacing;
+    const bobX = pivotX + stringLen * Math.sin(angle);
+    const bobY = railY + stringLen * Math.cos(angle);
+    ctx.strokeStyle = 'rgba(150,170,200,0.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pivotX, railY); ctx.lineTo(bobX, bobY); ctx.stroke();
+    ctx.fillStyle = bobColor(i);
+    ctx.beginPath(); ctx.arc(bobX, bobY, 6, 0, Math.PI * 2); ctx.fill();
+  }
+  requestAnimationFrame(loop);
+}
+function startAnimation() {
+  canvas.style.opacity = '1';
+  document.fonts.ready.then(() => { resize(); startTime = performance.now(); loop(); });
+}
+
+if (START_AT > 0)        setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START)  setTimeout(startAnimation, 4000);
+else                     setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

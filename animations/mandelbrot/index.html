@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #020204;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #mandelbrot-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(8, 6, 20, 0.92);
+            border: 1px solid rgba(180, 60, 200, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #a070c0;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #cc60ff;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #603080;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(180, 60, 200, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #b060d0; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="mandelbrot-canvas"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED   = parseFloat(_params.get('speed')   || '1');
+const P_PALETTE = _params.get('palette') || 'classic';
+const P_MAXITER = parseInt(_params.get('maxIter')    || '64', 10);
+const P_CHARSET = _params.get('charset') || 'classic';
+const P_AUTOJUMP = parseInt(_params.get('autoJump')  || '1', 10);
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Mandelbrot</h2>
+        <p class="credits-label">Animation</p>
+        <p>Zooming ASCII fractal explorer<br>with auto-jumping boundary regions.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+const canvas = document.getElementById('mandelbrot-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 14;
+let CHAR_W = 8.4;
+let CHAR_H = 17.5;
+let cols = 0, rows = 0;
+
+function measureFont() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+}
+
+function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    measureFont();
+    cols = Math.floor(canvas.width  / CHAR_W);
+    rows = Math.floor(canvas.height / CHAR_H);
+}
+
+window.addEventListener('resize', resize);
+
+const CHARSETS = {
+    classic: ' .,:;=+*#%@',
+    blocks:  ' ░▒▓█',
+    dots:    ' .:oO@',
+};
+
+const PALETTES = {
+    classic: [
+        {t:0.00, r:0,   g:0,   b:20 },
+        {t:0.10, r:20,  g:0,   b:60 },
+        {t:0.25, r:0,   g:40,  b:140},
+        {t:0.45, r:0,   g:140, b:180},
+        {t:0.65, r:0,   g:220, b:140},
+        {t:0.80, r:100, g:255, b:60 },
+        {t:0.92, r:220, g:255, b:80 },
+        {t:1.00, r:255, g:255, b:200},
+    ],
+    fire: [
+        {t:0.00, r:0,   g:0,   b:0  },
+        {t:0.15, r:60,  g:0,   b:0  },
+        {t:0.30, r:160, g:10,  b:0  },
+        {t:0.50, r:255, g:80,  b:0  },
+        {t:0.70, r:255, g:180, b:20 },
+        {t:0.88, r:255, g:240, b:100},
+        {t:1.00, r:255, g:255, b:220},
+    ],
+    ocean: [
+        {t:0.00, r:0,   g:0,   b:15 },
+        {t:0.20, r:0,   g:10,  b:60 },
+        {t:0.40, r:0,   g:50,  b:140},
+        {t:0.60, r:0,   g:120, b:220},
+        {t:0.80, r:40,  g:200, b:255},
+        {t:1.00, r:180, g:240, b:255},
+    ],
+    neon: [
+        {t:0.00, r:0,   g:0,   b:20 },
+        {t:0.15, r:60,  g:0,   b:100},
+        {t:0.35, r:180, g:0,   b:200},
+        {t:0.55, r:255, g:40,  b:120},
+        {t:0.75, r:255, g:160, b:20 },
+        {t:0.90, r:255, g:240, b:100},
+        {t:1.00, r:255, g:255, b:220},
+    ],
+    mono: [
+        {t:0.00, r:0,   g:0,   b:0  },
+        {t:0.30, r:80,  g:80,  b:80 },
+        {t:0.60, r:160, g:160, b:160},
+        {t:1.00, r:255, g:255, b:255},
+    ],
+};
+
+const charset = CHARSETS[P_CHARSET] || CHARSETS.classic;
+const palSegs = PALETTES[P_PALETTE] || PALETTES.classic;
+
+function palColor(t, animOffset) {
+    t = Math.max(0, Math.min(1, (t + animOffset) % 1));
+    const segs = palSegs;
+    for (let i = 0; i < segs.length - 1; i++) {
+        if (t <= segs[i + 1].t) {
+            const m = (t - segs[i].t) / (segs[i + 1].t - segs[i].t);
+            return [
+                Math.round(segs[i].r + m * (segs[i+1].r - segs[i].r)),
+                Math.round(segs[i].g + m * (segs[i+1].g - segs[i].g)),
+                Math.round(segs[i].b + m * (segs[i+1].b - segs[i].b)),
+            ];
+        }
+    }
+    const last = segs[segs.length - 1];
+    return [last.r, last.g, last.b];
+}
+
+const BOUNDARY_POINTS = [
+    {cx: -0.7436, cy: 0.1319},
+    {cx: -0.16,   cy: 1.0405},
+    {cx: -1.2500, cy: 0.0100},
+    {cx: -0.7454, cy: 0.1127},
+    {cx: -0.2351, cy: 0.8272},
+    {cx: -0.7480, cy: 0.1001},
+    {cx:  0.0016, cy: 0.8223},
+    {cx: -0.5557, cy: 0.6269},
+    {cx: -0.1011, cy: 0.9563},
+    {cx: -0.7463, cy: 0.1102},
+    {cx: -0.5000, cy: 0.5640},
+    {cx: -0.0340, cy: 0.8890},
+];
+
+let viewCx = -0.5;
+let viewCy = 0.0;
+let viewRange = 3.5;
+let targetCx, targetCy, targetRange;
+let zoomPhase = 0;
+const ZOOM_DURATION = 5400;
+const JUMP_PAUSE = 120;
+let animCycle = 0;
+
+function pickNewTarget() {
+    const pt = BOUNDARY_POINTS[Math.floor(Math.random() * BOUNDARY_POINTS.length)];
+    targetCx = pt.cx;
+    targetCy = pt.cy;
+    targetRange = 0.3 + Math.random() * 0.8;
+    zoomPhase = 0;
+}
+
+function lerpView() {
+    zoomPhase++;
+    animCycle++;
+    const totalFrames = ZOOM_DURATION / P_SPEED;
+    let p = Math.min(1, zoomPhase / totalFrames);
+    
+    // Smooth ease-in-out curve
+    const smoothP = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p;
+    
+    const rate = 0.002 + 0.01 * smoothP;
+    
+    viewCx += (targetCx - viewCx) * rate * P_SPEED;
+    viewCy += (targetCy - viewCy) * rate * P_SPEED;
+    viewRange += (targetRange - viewRange) * rate * P_SPEED;
+    viewRange = Math.max(1e-13, viewRange);
+
+    if (p >= 1 && P_AUTOJUMP) {
+        if (zoomPhase > totalFrames + JUMP_PAUSE) {
+            viewCx = targetCx;
+            viewCy = targetCy;
+            viewRange = targetRange;
+            pickNewTarget();
+        }
+    }
+    if (!P_AUTOJUMP) {
+        if (viewRange < 1e-8) {
+            viewCx = -0.5;
+            viewCy = 0;
+            viewRange = 3.5;
+        }
+    }
+}
+
+function mandelbrotIter(cx, cy, maxIter) {
+    let zr = 0, zi = 0;
+    let zr2 = 0, zi2 = 0;
+    let i = 0;
+    while (zr2 + zi2 <= 4 && i < maxIter) {
+        zi = 2 * zr * zi + cy;
+        zr = zr2 - zi2 + cx;
+        zr2 = zr * zr;
+        zi2 = zi * zi;
+        i++;
+    }
+    if (i === maxIter) return -1;
+    const logZn = Math.log(zr2 + zi2) * 0.5;
+    const nu = Math.log(logZn / Math.log(2)) / Math.log(2);
+    return i + 1 - nu;
+}
+
+let buffer = null;
+let colorBuf = null;
+
+function renderFrame() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#000004';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    const aspect = (cols * CHAR_W) / (rows * CHAR_H);
+    const rangeY = viewRange;
+    const rangeX = viewRange * aspect;
+    const minRe = viewCx - rangeX * 0.5;
+    const maxRe = viewCx + rangeX * 0.5;
+    const minIm = viewCy - rangeY * 0.5;
+    const maxIm = viewCy + rangeY * 0.5;
+    const reStep = (maxRe - minRe) / cols;
+    const imStep = (maxIm - minIm) / rows;
+    const maxI = Math.max(16, Math.min(512, Math.floor(P_MAXITER * (1 + 3 * Math.min(1, 1 - viewRange / 3.5)))));
+    const cLen = charset.length;
+    const colorAnim = animCycle * 0.0003;
+
+    const sz = cols * rows;
+    if (!buffer || buffer.length !== sz) {
+        buffer = new Array(sz);
+        colorBuf = new Array(sz);
+    }
+
+    // HSL Color cycling helper
+    function hslShift(r, g, b, shiftAmount) {
+        // Simple RGB to pseudo-HSL shift and back for performance
+        // This is a fast approximation for screensaver purposes
+        const shift = Math.sin(shiftAmount) * 40;
+        return [
+            Math.min(255, Math.max(0, r + shift)),
+            Math.min(255, Math.max(0, g + shift * 0.5)),
+            Math.min(255, Math.max(0, b - shift * 0.5))
+        ];
+    }
+
+    let idx = 0;
+    for (let gy = 0; gy < rows; gy++) {
+        const ci = maxIm - gy * imStep;
+        for (let gx = 0; gx < cols; gx++) {
+            const cr = minRe + gx * reStep;
+            const iter = mandelbrotIter(cr, ci, maxI);
+
+            let ch, color;
+            if (iter < 0) {
+                // Interior set rendering
+                const pulse = Math.sin(animCycle * 0.05 + cr * 10 + ci * 10);
+                if (pulse > 0.8) {
+                    ch = '·';
+                    color = [20, 20, 40];
+                } else if (pulse > 0.6) {
+                    ch = '.';
+                    color = [10, 10, 20];
+                } else {
+                    ch = ' ';
+                    color = null;
+                }
+            } else {
+                const t = Math.min(1, iter / maxI);
+                
+                // Edge glow detection (simple approximation based on iteration count vs max)
+                let isEdge = false;
+                if (iter > maxI * 0.85) {
+                    isEdge = true;
+                }
+
+                const mapped = Math.pow(t, 0.8);
+                const ci2 = Math.floor(mapped * (cLen - 1));
+                ch = isEdge ? '+' : charset[Math.max(0, Math.min(ci2, cLen - 1))];
+                
+                let brightness = 0.6 + 0.4 * (1 - t);
+                if (isEdge) brightness *= 1.5; // Boost edge brightness
+
+                color = palColor(t, colorAnim);
+                
+                // Smooth HSL wave
+                const shiftAmt = t * 10 + animCycle * 0.02;
+                color = hslShift(color[0], color[1], color[2], shiftAmt);
+
+                color = [
+                    Math.min(255, Math.round(color[0] * brightness)),
+                    Math.min(255, Math.round(color[1] * brightness)),
+                    Math.min(255, Math.round(color[2] * brightness)),
+                ];
+            }
+
+            buffer[idx] = ch;
+            colorBuf[idx] = color;
+            idx++;
+        }
+    }
+
+    idx = 0;
+    for (let gy = 0; gy < rows; gy++) {
+        let runStart = -1;
+        let runColor = null;
+        for (let gx = 0; gx <= cols; gx++) {
+            const c = gx < cols ? colorBuf[idx] : null;
+            const ch = gx < cols ? buffer[idx] : ' ';
+            if (c !== runColor || gx === cols) {
+                if (runStart >= 0 && runColor && runStart < gx) {
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = `rgb(${runColor[0]},${runColor[1]},${runColor[2]})`;
+                    const str = [];
+                    for (let k = runStart; k < gx; k++) str.push(buffer[gy * cols + k]);
+                    ctx.fillText(str.join(''), runStart * CHAR_W, gy * CHAR_H);
+                }
+                runStart = (c && ch !== ' ') ? gx : -1;
+                runColor = c;
+            }
+            if (ch === ' ') { runStart = -1; runColor = null; }
+            idx++;
+        }
+    }
+
+    ctx.globalAlpha = 1;
+
+    // Zoom depth indicator (HUD)
+    const zoomLevel = Math.max(1, 3.5 / viewRange);
+    let zoomText = 'x' + Math.floor(zoomLevel).toString();
+    if (zoomLevel > 1000) zoomText = 'x' + (zoomLevel / 1000).toFixed(1) + 'k';
+    if (zoomLevel > 1000000) zoomText = 'x' + (zoomLevel / 1000000).toFixed(2) + 'M';
+    if (zoomLevel > 1000000000) zoomText = 'x' + (zoomLevel / 1000000000).toFixed(2) + 'B';
+    
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = '#a0a0c0';
+    ctx.fillText('DEPTH: ' + zoomText, 20, canvas.height - 30);
+    ctx.globalAlpha = 1;
+}
+
+let lastFrameTime = 0;
+const TARGET_FRAME_MS = 67;
+
+function loop(t) {
+    const elapsed = t - lastFrameTime;
+    if (elapsed >= TARGET_FRAME_MS) {
+        lastFrameTime = t;
+        lerpView();
+        renderFrame();
+    }
+    requestAnimationFrame(loop);
+}
+
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        pickNewTarget();
+        lastFrameTime = performance.now();
+        requestAnimationFrame(loop);
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

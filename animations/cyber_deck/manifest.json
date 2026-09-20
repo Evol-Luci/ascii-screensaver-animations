@@ -1,0 +1,61 @@
+{
+  "id": "cyber_deck",
+  "name": "Cyber Deck",
+  "description": "A fictional 1998 hacker terminal that never finishes booting \u2014 boot sequence, hex dumps, hardware diagrams, glitches and the occasional kernel panic.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "terminalStyle",
+      "type": "select",
+      "label": "Terminal Style",
+      "defaultValue": "amber",
+      "options": [
+        "amber",
+        "green",
+        "blue"
+      ]
+    },
+    {
+      "key": "corruption",
+      "type": "range",
+      "label": "Corruption",
+      "defaultValue": 0.2,
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "bootCycle",
+      "type": "range",
+      "label": "Boot Cycle",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 1,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "scrollSpeed",
+      "type": "range",
+      "label": "Scroll Speed",
+      "defaultValue": 8,
+      "min": 1,
+      "max": 20,
+      "step": 1,
+      "integer": true
+    }
+  ]
+}

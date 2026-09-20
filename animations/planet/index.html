@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Planet</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #planet-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(10, 10, 18, 0.92);
+            border: 1px solid rgba(64, 160, 208, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #206080;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #40a0d0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #103040;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(64, 160, 208, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #40a0d0; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="planet-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED              = parseFloat(_params.get('speed')              || '0.5');
+const P_PLANET_COLOR       = _params.get('planetColor')                  || 'earth';
+const P_PLANET_SIZE        = parseFloat(_params.get('planetSize')        || '1.0');
+const P_RINGS              = parseInt(_params.get('rings')               || '1', 10);
+const P_ATMOSPHERE_COLOR   = _params.get('atmosphereColor')              || 'cyan';
+const P_ATMOSPHERE_DENSITY = parseFloat(_params.get('atmosphereDensity') || '1.0');
+const P_ATMOSPHERE_TURB    = parseFloat(_params.get('atmosphereTurbulence') || '0.6');
+const P_ATMOSPHERE_DIR     = parseFloat(_params.get('atmosphereDirection')  || '0.3');
+const P_AURORA             = parseInt(_params.get('aurora')              || '1', 10);
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Planet</h2>
+        <p class="credits-label">Animation</p>
+        <p>Procedural planet with atmosphere,<br>rings, and polar aurora.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('planet-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 15;
+let CHAR_W = 9.0, CHAR_H = 18.75;
+let cols = 0, rows = 0;
+let W = 0, H = 0;
+let CX = 0, CY = 0, PLANET_R = 0;
+
+// Precomputed sphere data
+let sphereCache = null;
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+    cols = Math.floor(W / CHAR_W);
+    rows = Math.floor(H / CHAR_H);
+    CX = W * 0.50;
+    CY = H * 0.48;
+    PLANET_R = Math.min(W, H) * 0.30 * P_PLANET_SIZE;
+
+    // Precompute sphere normals
+    precomputeSphere();
+}
+
+function precomputeSphere() {
+    const atmoExtent = 1.0 + P_ATMOSPHERE_DENSITY * 0.25;
+    const bbR = PLANET_R * Math.max(atmoExtent + 0.05, 1.3);
+    const gxMin = Math.max(0, Math.floor((CX - bbR) / CHAR_W));
+    const gxMax = Math.min(cols, Math.ceil((CX + bbR) / CHAR_W));
+    const gyMin = Math.max(0, Math.floor((CY - bbR) / CHAR_H));
+    const gyMax = Math.min(rows, Math.ceil((CY + bbR) / CHAR_H));
+
+    const cache = {
+        gxMin, gxMax, gyMin, gyMax,
+        cells: []
+    };
+
+    for (let gy = gyMin; gy < gyMax; gy++) {
+        for (let gx = gxMin; gx < gxMax; gx++) {
+            const px = gx * CHAR_W + CHAR_W * 0.5;
+            const py = gy * CHAR_H + CHAR_H * 0.5;
+            const dx = px - CX;
+            const dy = py - CY;
+            const nr = Math.sqrt(dx * dx + dy * dy) / PLANET_R;
+
+            if (nr > atmoExtent + 0.05) continue;
+
+            const nx = dx / PLANET_R;
+            const ny = dy / PLANET_R;
+            let nz = 0;
+            let onSphere = false;
+
+            if (nr <= 1.0) {
+                nz = Math.sqrt(1.0 - nr * nr);
+                onSphere = true;
+            }
+
+            cache.cells.push({ gx, gy, nx, ny, nz, nr, onSphere });
+        }
+    }
+
+    sphereCache = cache;
+}
+
+window.addEventListener('resize', resize);
+
+// ─── Perlin Noise (inline) ─────────────────────────────────────────────────────
+const _perm = new Uint8Array(512);
+const _grad3 = [
+    [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+    [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+    [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+];
+(function initPerm() {
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    for (let i = 255; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = p[i]; p[i] = p[j]; p[j] = t;
+    }
+    for (let i = 0; i < 512; i++) _perm[i] = p[i & 255];
+})();
+
+function _fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+function _lerp(a, b, t) { return a + t * (b - a); }
+function _dot3(g, x, y, z) { return g[0]*x + g[1]*y + g[2]*z; }
+
+function perlin3(x, y, z) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const Z = Math.floor(z) & 255;
+    x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+    const u = _fade(x), v = _fade(y), w = _fade(z);
+    const A = _perm[X] + Y, AA = _perm[A] + Z, AB = _perm[A+1] + Z;
+    const B = _perm[X+1] + Y, BA = _perm[B] + Z, BB = _perm[B+1] + Z;
+    return _lerp(
+        _lerp(
+            _lerp(_dot3(_grad3[_perm[AA]%12],x,y,z),     _dot3(_grad3[_perm[BA]%12],x-1,y,z), u),
+            _lerp(_dot3(_grad3[_perm[AB]%12],x,y-1,z),   _dot3(_grad3[_perm[BB]%12],x-1,y-1,z), u), v),
+        _lerp(
+            _lerp(_dot3(_grad3[_perm[AA+1]%12],x,y,z-1), _dot3(_grad3[_perm[BA+1]%12],x-1,y,z-1), u),
+            _lerp(_dot3(_grad3[_perm[AB+1]%12],x,y-1,z-1),_dot3(_grad3[_perm[BB+1]%12],x-1,y-1,z-1), u), v), w);
+}
+
+function fbm(x, y, z, octaves) {
+    let val = 0, amp = 0.5, freq = 1;
+    for (let i = 0; i < octaves; i++) {
+        val += amp * perlin3(x * freq, y * freq, z * freq);
+        amp *= 0.5; freq *= 2;
+    }
+    return val;
+}
+
+// ─── Light direction ───────────────────────────────────────────────────────────
+const LIGHT_DIR = (() => {
+    const lx = 0.5, ly = -0.4, lz = 0.7;
+    const len = Math.sqrt(lx*lx + ly*ly + lz*lz);
+    return { x: lx/len, y: ly/len, z: lz/len };
+})();
+
+// ─── Planet color palettes ─────────────────────────────────────────────────────
+const PLANET_PALETTES = {
+    earth: {
+        sample(lon, lat, noise) {
+            // Continent shapes via noise
+            const continent = noise > 0.05;
+            if (continent) {
+                // Mix between green land and brown desert based on noise level
+                const t = Math.min(1, (noise - 0.05) / 0.4);
+                return [
+                    Math.round(96 + t * 64),   // 0x60 -> 0xa0
+                    Math.round(160 - t * 32),   // 0xa0 -> 0x80
+                    Math.round(64 - t * 14)     // 0x40 -> 0x32
+                ];
+            } else {
+                // Ocean
+                const depth = Math.max(0, Math.min(1, (0.05 - noise) / 0.3));
+                return [
+                    Math.round(64 - depth * 24),
+                    Math.round(144 - depth * 40),
+                    Math.round(208 - depth * 48)
+                ];
+            }
+        }
+    },
+    mars: {
+        sample(lon, lat, noise) {
+            const t = (noise + 0.5) * 0.5; // remap to ~0-1
+            return [
+                Math.round(160 + t * 56),  // c05030 -> d87040
+                Math.round(80 + t * 32),
+                Math.round(32 + t * 16)
+            ];
+        }
+    },
+    ice: {
+        sample(lon, lat, noise) {
+            const t = (noise + 0.5) * 0.5;
+            return [
+                Math.round(128 + t * 96),   // 80a8d0 -> e0e8f0
+                Math.round(168 + t * 64),
+                Math.round(208 + t * 32)
+            ];
+        }
+    },
+    gas: {
+        sample(lon, lat, noise) {
+            // Banded by latitude + noise
+            const band = Math.sin(lat * 8) * 0.5 + 0.5;
+            const n = (noise + 0.5) * 0.4;
+            const t = band * 0.7 + n * 0.3;
+            return [
+                Math.round(160 + t * 48),   // a06830 -> d0a060
+                Math.round(104 + t * 56),
+                Math.round(48 + t * 48)
+            ];
+        }
+    },
+    lava: {
+        sample(lon, lat, noise) {
+            // Dark rock with lava cracks
+            const crack = noise > 0.15 ? Math.min(1, (noise - 0.15) / 0.25) : 0;
+            return [
+                Math.round(48 + crack * 207),  // 302020 -> ff4010
+                Math.round(32 + crack * 32),
+                Math.round(32 - crack * 16)
+            ];
+        }
+    },
+    ocean: {
+        sample(lon, lat, noise) {
+            const t = (noise + 0.5) * 0.5;
+            return [
+                Math.round(32 + t * 32),    // 2060a0 -> 40a0e0
+                Math.round(96 + t * 64),
+                Math.round(160 + t * 64)
+            ];
+        }
+    },
+    mono: {
+        sample(lon, lat, noise) {
+            const t = (noise + 0.5) * 0.5;
+            const v = Math.round(64 + t * 128);
+            return [v, v, v];
+        }
+    }
+};
+const PALETTE = PLANET_PALETTES[P_PLANET_COLOR] || PLANET_PALETTES.earth;
+
+// ─── Atmosphere color map ──────────────────────────────────────────────────────
+const ATMO_COLORS = {
+    cyan:   { r: 0x40, g: 0xd8, b: 0xff },
+    amber:  { r: 0xff, g: 0xc0, b: 0x40 },
+    violet: { r: 0xc0, g: 0x60, b: 0xff },
+    green:  { r: 0x40, g: 0xff, b: 0x80 },
+    red:    { r: 0xff, g: 0x40, b: 0x40 },
+    white:  { r: 0xd0, g: 0xd8, b: 0xe0 },
+};
+const ATMO = ATMO_COLORS[P_ATMOSPHERE_COLOR] || ATMO_COLORS.cyan;
+
+// ─── Character sets ────────────────────────────────────────────────────────────
+const CHARS_BRIGHT   = ['@', '#', '8', '&', 'O'];
+const CHARS_MEDIUM   = ['*', '+', '=', 'o', 'x'];
+const CHARS_DARK     = ['.', ',', ':', ';', '-', '~'];
+const CHARS_VDARK    = ['`', "'"];
+const CHARS_ATMO     = ['.', "'", '`', '~'];
+const CHARS_RING     = ['=', '-', '~', '.'];
+const CHARS_AURORA   = ['*', '+', '|'];
+
+function charByBrightness(b, hash) {
+    if (b > 0.65) return CHARS_BRIGHT[hash % CHARS_BRIGHT.length];
+    if (b > 0.35) return CHARS_MEDIUM[hash % CHARS_MEDIUM.length];
+    if (b > 0.12) return CHARS_DARK[hash % CHARS_DARK.length];
+    return CHARS_VDARK[hash % CHARS_VDARK.length];
+}
+
+// ─── Ring geometry ─────────────────────────────────────────────────────────────
+const RING_INCL       = 25 * Math.PI / 180; // 25° inclination
+const RING_SIN        = Math.sin(RING_INCL);
+const RING_COS        = Math.cos(RING_INCL);
+const RING_INNER      = 1.25;
+const RING_OUTER      = 2.10;
+// Cassini-style band definitions: [innerR, outerR, brightness]
+const RING_BANDS = [
+    { inner: 1.25, outer: 1.45, bright: 0.7 },
+    { inner: 1.50, outer: 1.55, bright: 0.3 },  // thin dim band (gap-like)
+    { inner: 1.58, outer: 1.80, bright: 0.85 },
+    { inner: 1.85, outer: 2.10, bright: 0.5 },
+];
+
+// ─── Stars ─────────────────────────────────────────────────────────────────────
+let stars = [];
+function initStars() {
+    stars = [];
+    for (let i = 0; i < 180; i++) {
+        stars.push({
+            x: Math.random() * W,
+            y: Math.random() * H,
+            char:    Math.random() < 0.15 ? '*' : '.',
+            base:    0.20 + Math.random() * 0.60,
+            twinkle: Math.random() * Math.PI * 2,
+            speed:   0.3 + Math.random() * 1.8,
+        });
+    }
+}
+
+function drawStars(t) {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    for (const s of stars) {
+        const a = s.base * (0.5 + 0.5 * Math.sin(t * s.speed * 0.001 + s.twinkle));
+        ctx.globalAlpha = a * 0.65;
+        ctx.fillStyle   = '#5a6a8a';
+        ctx.fillText(s.char, s.x, s.y);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Animation time ────────────────────────────────────────────────────────────
+let animTime = 0;
+
+// ─── Render helper: fast hash for character variation ──────────────────────────
+function cellHash(gx, gy) {
+    return ((gx * 73856093) ^ (gy * 19349663)) & 0x7fffffff;
+}
+
+// ─── Ring rendering ────────────────────────────────────────────────────────────
+function renderRings(frontHalf) {
+    if (!P_RINGS) return;
+
+    const bbR = PLANET_R * (RING_OUTER + 0.15);
+    const gxMin = Math.max(0, Math.floor((CX - bbR) / CHAR_W));
+    const gxMax = Math.min(cols, Math.ceil((CX + bbR) / CHAR_W));
+    const gyMin = Math.max(0, Math.floor((CY - bbR) / CHAR_H));
+    const gyMax = Math.min(rows, Math.ceil((CY + bbR) / CHAR_H));
+
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (let gy = gyMin; gy < gyMax; gy++) {
+        for (let gx = gxMin; gx < gxMax; gx++) {
+            const px = gx * CHAR_W + CHAR_W * 0.5;
+            const py = gy * CHAR_H + CHAR_H * 0.5;
+            const dx = (px - CX) / PLANET_R;
+            const dy = (py - CY) / PLANET_R;
+
+            // De-project y by ring inclination to get disk-plane coords
+            const ny_d = dy / RING_SIN;
+            const disk_r = Math.sqrt(dx * dx + ny_d * ny_d);
+
+            if (disk_r < RING_INNER || disk_r > RING_OUTER) continue;
+
+            // Determine front vs back: front half has ny_d >= 0 (below center in screen coords = front)
+            // We define "front" as the part between us and the planet (ny_d > 0 = front of disk)
+            const isFront = dy > 0;
+
+            if (frontHalf !== isFront) continue;
+
+            // Back-half occlusion: if behind planet and cell is within planet circle, skip
+            if (!isFront) {
+                const pr = Math.sqrt(dx * dx + dy * dy);
+                if (pr < 1.0) continue;
+            }
+
+            // Which band?
+            let bandBright = 0;
+            let inBand = false;
+            for (const band of RING_BANDS) {
+                if (disk_r >= band.inner && disk_r <= band.outer) {
+                    bandBright = band.bright;
+                    inBand = true;
+                    break;
+                }
+            }
+            if (!inBand) continue; // In a gap
+
+            // Animated angular variation
+            const angle = Math.atan2(ny_d, dx) + animTime * 0.15;
+            const shimmer = 0.7 + 0.3 * Math.sin(angle * 6 + disk_r * 12);
+
+            // Radial fade at edges
+            const radialFade = 1 - Math.pow(Math.abs(disk_r - (RING_INNER + RING_OUTER) * 0.5) / ((RING_OUTER - RING_INNER) * 0.5), 3);
+
+            const alpha = bandBright * shimmer * radialFade;
+            if (alpha < 0.03) continue;
+
+            // Character
+            const hash = cellHash(gx, gy);
+            const ci = Math.floor((1 - bandBright) * CHARS_RING.length);
+            const ch = CHARS_RING[Math.max(0, Math.min(ci, CHARS_RING.length - 1))];
+
+            // Ring color: warm tan/grey complementing planet
+            const warmth = bandBright;
+            const cr = Math.round(160 + warmth * 60);
+            const cg = Math.round(140 + warmth * 50);
+            const cb = Math.round(110 + warmth * 40);
+
+            ctx.globalAlpha = Math.min(1, alpha);
+            ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
+            ctx.fillText(ch, gx * CHAR_W, gy * CHAR_H);
+        }
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Render ────────────────────────────────────────────────────────────────────
+function render(t) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    // 1. Star field
+    drawStars(t);
+
+    // 2. Back-half of rings (behind planet)
+    renderRings(false);
+
+    // 3. Planet sphere surface + 5. Aurora
+    if (sphereCache) {
+        const rotSpeed = P_SPEED * 0.4;
+        const atmoExtent = 1.0 + P_ATMOSPHERE_DENSITY * 0.25;
+
+        // Collect atmosphere cells for pass 7
+        const atmoCells = [];
+
+        for (const cell of sphereCache.cells) {
+            const { gx, gy, nx, ny, nz, nr, onSphere } = cell;
+
+            if (onSphere) {
+                // ── Planet surface ──────────────────────────────────────────
+                // Lambert lighting
+                const dot = nx * LIGHT_DIR.x + ny * LIGHT_DIR.y + nz * LIGHT_DIR.z;
+                const brightness = Math.max(0, Math.min(1, dot));
+
+                if (brightness < 0.02) {
+                    // Very dark side — still draw a faint char for shape
+                    ctx.globalAlpha = 0.15;
+                    ctx.fillStyle = '#101018';
+                    ctx.fillText('`', gx * CHAR_W, gy * CHAR_H);
+                    continue;
+                }
+
+                // Surface texture: longitude/latitude from sphere normal
+                const lat = Math.acos(Math.max(-1, Math.min(1, nz)));
+                const lon = Math.atan2(ny, nx) + animTime * rotSpeed;
+
+                // Perlin noise terrain
+                const noiseVal = fbm(
+                    Math.cos(lon) * Math.sin(lat) * 2.5,
+                    Math.sin(lon) * Math.sin(lat) * 2.5,
+                    Math.cos(lat) * 2.5,
+                    4
+                );
+
+                // Sample color from palette
+                const [cr, cg, cb] = PALETTE.sample(lon, lat, noiseVal);
+
+                // Mix color with brightness
+                const br = Math.max(0, Math.min(255, Math.round(cr * brightness)));
+                const bg = Math.max(0, Math.min(255, Math.round(cg * brightness)));
+                const bb = Math.max(0, Math.min(255, Math.round(cb * brightness)));
+
+                // Character selection
+                const hash = cellHash(gx, gy);
+                const ch = charByBrightness(brightness, hash);
+
+                ctx.globalAlpha = 0.7 + brightness * 0.3;
+                ctx.fillStyle = `rgb(${br},${bg},${bb})`;
+                ctx.fillText(ch, gx * CHAR_W, gy * CHAR_H);
+
+                // ── Aurora (on planet surface) ─────────────────────────────
+                if (P_AURORA) {
+                    // latitude in radians from pole: lat is 0 at +z pole, PI at -z pole
+                    const latDeg = lat * 180 / Math.PI;
+                    // North polar cap: latDeg < 35 (meaning > 55° latitude from equator)
+                    // South polar cap: latDeg > 145
+                    const northDist = latDeg;           // 0 at north pole, 90 at equator
+                    const southDist = 180 - latDeg;     // 0 at south pole, 90 at equator
+
+                    let auroraIntensity = 0;
+                    let polarDist = 999;
+
+                    if (northDist < 40) {
+                        // Peak around 25-35° from pole (= 55-65° latitude)
+                        polarDist = northDist;
+                        const peak = Math.exp(-Math.pow((northDist - 30) / 8, 2));
+                        auroraIntensity = peak;
+                    } else if (southDist < 40) {
+                        polarDist = southDist;
+                        const peak = Math.exp(-Math.pow((southDist - 30) / 8, 2));
+                        auroraIntensity = peak;
+                    }
+
+                    if (auroraIntensity > 0.05) {
+                        // Multiple overlapping sine waves for curtain effect
+                        const curtain1 = Math.sin(lon * 5 + animTime * P_SPEED * 1.2) * 0.5 + 0.5;
+                        const curtain2 = Math.sin(lon * 8 - animTime * P_SPEED * 0.7 + 1.5) * 0.5 + 0.5;
+                        const curtain3 = Math.sin(lon * 3 + animTime * P_SPEED * 0.4 + 3.0) * 0.5 + 0.5;
+                        const curtainVal = (curtain1 * 0.5 + curtain2 * 0.3 + curtain3 * 0.2);
+
+                        // High-frequency shimmer
+                        const shimmer = 0.6 + 0.4 * Math.sin(animTime * P_SPEED * 6 + lon * 12 + polarDist * 0.5);
+
+                        const auroraAlpha = auroraIntensity * curtainVal * shimmer * brightness;
+
+                        if (auroraAlpha > 0.08) {
+                            // Color gradient: green -> cyan -> magenta based on curtain phase
+                            const colorPhase = (curtain1 + curtain2 * 0.5) / 1.5;
+                            let ar, ag, ab;
+                            if (colorPhase < 0.4) {
+                                const m = colorPhase / 0.4;
+                                ar = Math.round(64 * (1-m) + 64 * m);
+                                ag = Math.round(255 * (1-m) + 216 * m);
+                                ab = Math.round(128 * (1-m) + 255 * m);
+                            } else {
+                                const m = (colorPhase - 0.4) / 0.6;
+                                ar = Math.round(64 + m * 128);
+                                ag = Math.round(216 - m * 120);
+                                ab = 255;
+                            }
+
+                            const ach = CHARS_AURORA[cellHash(gx + Math.floor(animTime * 3), gy) % CHARS_AURORA.length];
+
+                            ctx.globalAlpha = Math.min(1, auroraAlpha * 0.8);
+                            ctx.fillStyle = `rgb(${ar},${ag},${ab})`;
+                            ctx.fillText(ach, gx * CHAR_W, gy * CHAR_H);
+                        }
+                    }
+                }
+
+            } else {
+                // ── Atmosphere glow (outside sphere) ───────────────────────
+                if (nr > 1.0 && nr <= atmoExtent) {
+                    atmoCells.push(cell);
+                }
+            }
+        }
+
+        // 6. Front-half of rings (over planet)
+        renderRings(true);
+
+        // 7. Atmosphere glow
+        for (const cell of atmoCells) {
+            const { gx, gy, nx, ny, nr } = cell;
+
+            const distFromEdge = nr - 1.0;
+            const maxDist = P_ATMOSPHERE_DENSITY * 0.25;
+
+            // Gaussian falloff
+            const sigma = maxDist * 0.4;
+            let opacity = Math.exp(-(distFromEdge * distFromEdge) / (2 * sigma * sigma));
+
+            // Limb brightening: brightest near r≈1.0
+            opacity *= (1.0 - distFromEdge / maxDist);
+
+            // Turbulence via Perlin noise
+            const angle = Math.atan2(ny, nx);
+            const turbNoise = perlin3(
+                angle * 2 + animTime * P_ATMOSPHERE_DIR * 0.5,
+                nr * 5,
+                animTime * P_SPEED * 0.3
+            );
+            opacity *= (1.0 + turbNoise * P_ATMOSPHERE_TURB);
+
+            if (opacity < 0.02) continue;
+
+            // Light-facing bias: atmosphere is brighter on lit side
+            const lightFacing = 0.4 + 0.6 * Math.max(0, nx * LIGHT_DIR.x + ny * LIGHT_DIR.y);
+            opacity *= lightFacing;
+
+            const ach = CHARS_ATMO[cellHash(gx, gy) % CHARS_ATMO.length];
+
+            ctx.globalAlpha = Math.min(1, opacity * 0.7);
+            ctx.fillStyle = `rgb(${ATMO.r},${ATMO.g},${ATMO.b})`;
+            ctx.fillText(ach, gx * CHAR_W, gy * CHAR_H);
+        }
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+// ─── Loop ──────────────────────────────────────────────────────────────────────
+let raf;
+
+function loop(t) {
+    animTime += 0.018 * P_SPEED;
+    render(t);
+    raf = requestAnimationFrame(loop);
+}
+
+// ─── Entry point ───────────────────────────────────────────────────────────────
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        initStars();
+        raf = requestAnimationFrame(loop);
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

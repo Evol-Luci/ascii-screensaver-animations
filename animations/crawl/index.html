@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Crawl</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #crawl-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(10, 10, 18, 0.92);
+            border: 1px solid rgba(180, 150, 20, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #a89840;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #f0d040;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #706020;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(180, 150, 20, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #b09030; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="crawl-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED   = parseFloat(_params.get('speed')   || '1');
+const P_PALETTE = _params.get('palette') || 'gold';
+const P_EPISODE = parseInt(_params.get('episode')   || '-1', 10); // -1 = random
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Crawl</h2>
+        <p class="credits-label">Animation</p>
+        <p>Perspective text crawl<br>inspired by a galaxy<br>far, far away.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('crawl-canvas');
+const ctx    = canvas.getContext('2d');
+
+let W = 0, H = 0;
+const VANISH_Y_FRAC = 0.32; // vanishing point at 32% from top
+let VANISH_Y = 0;
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    VANISH_Y = H * VANISH_Y_FRAC;
+}
+window.addEventListener('resize', resize);
+
+// ─── Content ───────────────────────────────────────────────────────────────────
+// Each episode is a sequence of lines. Special prefixes:
+//   'ep:'   → episode number (large, centred, gold)
+//   'title:'→ episode title (medium, centred, gold)
+//   ''      → blank line
+const EPISODES = [
+    [
+        '', '',
+        'ep:EPISODE IV',
+        '',
+        'title:A NEW SCREENSAVER',
+        '', '',
+        'It is a period of visual',
+        'chaos. Rebel pixels,',
+        'striking from hidden',
+        'monitors, have won their',
+        'first victory against the',
+        'evil Desktop Environment.',
+        '',
+        'During the skirmish, Rebel',
+        'engineers managed to steal',
+        'the source code to the',
+        "Empire's ultimate weapon:",
+        'a SCREENSAVER capable of',
+        'making idle time beautiful',
+        'across the entire galaxy.',
+        '',
+        'Pursued by the sinister',
+        'mouse cursor, a lone',
+        'developer races home,',
+        'custodian of the code',
+        'that can restore elegance',
+        'to ten thousand desktops...',
+        '', '', '', '',
+    ],
+    [
+        '', '',
+        'ep:EPISODE II',
+        '',
+        'title:ATTACK OF THE PIXELS',
+        '', '',
+        'The galaxy teeters on the',
+        'brink of aesthetic ruin.',
+        'Thousands of terminals burn',
+        'with the harsh glow of',
+        'blank grey rectangles.',
+        '',
+        'A brave alliance of ASCII',
+        'artists and terminal poets',
+        'has risen from the shadows',
+        'of the home directory to',
+        'fill the void with',
+        'something worthy of',
+        'the darkness.',
+        '',
+        'As monitors sleep and',
+        'phosphors cool, one quiet',
+        'screensaver dares to ask:',
+        '',
+        'What if idle time',
+        'could be beautiful?',
+        '', '', '', '',
+    ],
+    [
+        '', '',
+        'ep:EPISODE VII',
+        '',
+        'title:THE CURSOR AWAKENS',
+        '', '',
+        'Three decades have passed',
+        'since the fall of the great',
+        'flying toaster screensavers.',
+        '',
+        'A new darkness spreads',
+        'across the desktop:',
+        'the blank screen of',
+        'nothingness, cold and',
+        'featureless, a void that',
+        'stares back.',
+        '',
+        'From the outer rim of',
+        'the filesystem, a new',
+        'hope has surfaced.',
+        '',
+        'Hidden inside an ASCII',
+        'character grid, a map to',
+        'the last beautiful',
+        'screensaver has been found.',
+        '',
+        'The resistance sends',
+        'its finest developer...',
+        '', '', '', '',
+    ],
+    [
+        '', '',
+        'ep:EPISODE I',
+        '',
+        'title:THE PHANTOM PROCESS',
+        '', '',
+        'Turmoil has engulfed the',
+        'Galactic Operating System.',
+        'A rogue background process',
+        'has silently consumed all',
+        'available CPU cycles in',
+        'a dispute over render',
+        'threading rights.',
+        '',
+        'Hoping to resolve the',
+        'matter, the Jedi Council',
+        'of UI Engineers has sent',
+        'two senior developers as',
+        'emissaries to the rogue',
+        'process...',
+        '',
+        'Little do they know that',
+        'a far darker force lurks',
+        'behind the kernel panic,',
+        'watching,',
+        'waiting,',
+        'segfaulting.',
+        '', '', '', '',
+    ],
+];
+
+// ─── Stars ─────────────────────────────────────────────────────────────────────
+let stars = [];
+function initStars() {
+    stars = [];
+    for (let i = 0; i < 160; i++) {
+        stars.push({
+            x:       Math.random(),
+            y:       Math.random(),
+            char:    Math.random() < 0.2 ? '*' : '.',
+            base:    0.2 + Math.random() * 0.6,
+            twinkle: Math.random() * Math.PI * 2,
+            speed:   0.4 + Math.random() * 1.8,
+        });
+    }
+}
+
+function drawStars(t) {
+    ctx.font = `14px 'JetBrains Mono', monospace`;
+    ctx.textBaseline = 'top';
+    for (const s of stars) {
+        const alpha = s.base * (0.55 + 0.45 * Math.sin(t * s.speed * 0.001 + s.twinkle));
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle   = '#5a6a7a';
+        ctx.fillText(s.char, s.x * W, s.y * H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── State machine ─────────────────────────────────────────────────────────────
+// Phases: 'intro' → 'crawl' → 'fade' → 'intro' (next episode)
+let phase       = 'intro';
+let frameCount  = 0;
+let epIdx       = (P_EPISODE >= 0 && P_EPISODE < EPISODES.length)
+    ? P_EPISODE
+    : Math.floor(Math.random() * EPISODES.length);
+let crawlT      = 0;          // scroll progress, increases per frame
+let fadeAlpha   = 1;
+let introAlpha  = 0;
+
+const INTRO_FADE_IN  = 60;   // frames
+const INTRO_HOLD     = 200;  // frames held at full opacity
+const INTRO_FADE_OUT = 60;   // frames
+const INTRO_TOTAL    = INTRO_FADE_IN + INTRO_HOLD + INTRO_FADE_OUT;
+
+const CRAWL_SPEED    = 0.00032 * P_SPEED;  // perspective-t units per frame
+const LINE_T_GAP     = 0.048;    // perspective-t spacing between lines
+
+// ─── Perspective helpers ───────────────────────────────────────────────────────
+// t=0: line at bottom of screen. t=1: line at vanishing point.
+function tToScreenY(t) {
+    return H - Math.pow(t, 1.1) * (H - VANISH_Y);
+}
+
+function tToScale(t) {
+    return Math.max(0, 1 - t);
+}
+
+// ─── Crawl rendering ───────────────────────────────────────────────────────────
+const CRAWL_FONT_SIZE = 22;
+
+const CRAWL_PALETTES = {
+    gold:   { bright: '#f0d840', dim: '#c0a820' },
+    white:  { bright: '#ffffff', dim: '#cccccc' },
+    green:  { bright: '#40f080', dim: '#20c050' },
+    blue:   { bright: '#40a8f0', dim: '#2060c0' },
+    red:    { bright: '#f04848', dim: '#c02828' },
+};
+const CP       = CRAWL_PALETTES[P_PALETTE] || CRAWL_PALETTES.gold;
+const GOLD     = CP.bright;
+const GOLD_DIM = CP.dim;
+
+function drawCrawl() {
+    const lines = EPISODES[epIdx];
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let i = 0; i < lines.length; i++) {
+        const t = crawlT - i * LINE_T_GAP;
+        if (t <= 0 || t >= 1) continue;
+
+        const screenY = tToScreenY(t);
+        const scale   = tToScale(t);
+        if (scale < 0.01) continue;
+
+        // Fade out near vanishing point
+        const alpha = t > 0.88 ? (1 - t) / 0.12 : 1;
+        if (alpha < 0.01) continue;
+
+        const raw  = lines[i];
+        const isEp    = raw.startsWith('ep:');
+        const isTitle = raw.startsWith('title:');
+        const text    = isEp ? raw.slice(3) : isTitle ? raw.slice(6) : raw;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(W / 2, screenY);
+        ctx.scale(scale, scale);
+
+        if (isEp) {
+            ctx.font      = `bold ${CRAWL_FONT_SIZE * 1.5}px 'JetBrains Mono', monospace`;
+            ctx.fillStyle = GOLD;
+            ctx.fillText(text, 0, 0);
+        } else if (isTitle) {
+            ctx.font      = `bold ${CRAWL_FONT_SIZE * 1.15}px 'JetBrains Mono', monospace`;
+            ctx.fillStyle = GOLD;
+            ctx.fillText(text, 0, 0);
+        } else {
+            ctx.font      = `${CRAWL_FONT_SIZE}px 'JetBrains Mono', monospace`;
+            ctx.fillStyle = GOLD_DIM;
+            ctx.fillText(text, 0, 0);
+        }
+
+        ctx.restore();
+    }
+
+    ctx.textAlign = 'left';
+}
+
+// ─── Intro rendering ───────────────────────────────────────────────────────────
+function drawIntro(f) {
+    let alpha;
+    if (f < INTRO_FADE_IN) {
+        alpha = f / INTRO_FADE_IN;
+    } else if (f < INTRO_FADE_IN + INTRO_HOLD) {
+        alpha = 1;
+    } else {
+        alpha = 1 - (f - INTRO_FADE_IN - INTRO_HOLD) / INTRO_FADE_OUT;
+    }
+
+    ctx.globalAlpha  = Math.max(0, alpha) * 0.85;
+    ctx.fillStyle    = '#3a88cc';
+    ctx.font         = `italic 18px 'JetBrains Mono', monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('A long time ago in a galaxy far, far away....', W / 2, H / 2);
+    ctx.textAlign    = 'left';
+    ctx.globalAlpha  = 1;
+}
+
+// ─── Loop ──────────────────────────────────────────────────────────────────────
+let raf;
+
+function loop(t) {
+    ctx.clearRect(0, 0, W, H);
+    drawStars(t);
+
+    if (phase === 'intro') {
+        drawIntro(frameCount);
+        frameCount++;
+        if (frameCount >= INTRO_TOTAL) {
+            phase      = 'crawl';
+            frameCount = 0;
+            crawlT     = 0;
+        }
+
+    } else if (phase === 'crawl') {
+        drawCrawl();
+        crawlT += CRAWL_SPEED;
+        // Done when all lines have passed the vanishing point
+        const lastT = crawlT - (EPISODES[epIdx].length - 1) * LINE_T_GAP;
+        if (lastT > 1.05) {
+            phase      = 'fade';
+            frameCount = 0;
+            fadeAlpha  = 1;
+        }
+
+    } else if (phase === 'fade') {
+        drawCrawl();
+        fadeAlpha      = Math.max(0, 1 - frameCount / 90);
+        ctx.globalAlpha = 1 - fadeAlpha;
+        ctx.fillStyle   = '#0a0a12';
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+        frameCount++;
+        if (frameCount >= 90) {
+            epIdx      = (epIdx + 1) % EPISODES.length;
+            phase      = 'intro';
+            frameCount = 0;
+            crawlT     = 0;
+        }
+    }
+
+    raf = requestAnimationFrame(loop);
+}
+
+// ─── Entry point ───────────────────────────────────────────────────────────────
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        initStars();
+        raf = requestAnimationFrame(loop);
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

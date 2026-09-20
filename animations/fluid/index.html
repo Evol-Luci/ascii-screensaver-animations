@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Fluid</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #020208;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #fluid-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(6, 10, 22, 0.92);
+            border: 1px solid rgba(60, 140, 200, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #5090b0;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #40a0d0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #2a5070;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(60, 140, 200, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #4090b0; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="fluid-canvas"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED      = parseFloat(_params.get('speed')      || '1');
+const P_PALETTE    = _params.get('palette') || 'plasma';
+const P_RESOLUTION = _params.get('resolution') || 'medium';
+const P_DIFFUSION  = parseFloat(_params.get('diffusion')   || '0.0001');
+const P_VISCOSITY  = parseFloat(_params.get('viscosity')   || '0');
+const P_DYEFADE    = parseFloat(_params.get('dyeFade')     || '0.995');
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Fluid</h2>
+        <p class="credits-label">Animation</p>
+        <p>Real-time fluid dynamics<br>simulation rendered in ASCII.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+const canvas = document.getElementById('fluid-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 14;
+let CHAR_W = 8.4;
+let CHAR_H = 17.5;
+
+const RESOLUTIONS = {
+    low:    { N: 50, M: 25 },
+    medium: { N: 70, M: 35 },
+    high:   { N: 100, M: 50 },
+    ultra:  { N: 140, M: 70 },
+};
+
+const RES = RESOLUTIONS[P_RESOLUTION] || RESOLUTIONS.high;
+const N = RES.N;
+const M = RES.M;
+
+const PALETTES = {
+    plasma: {
+        stops: [
+            {t:0.00, r:0,   g:0,   b:30 },
+            {t:0.15, r:40,  g:0,   b:100},
+            {t:0.35, r:160, g:0,   b:100},
+            {t:0.55, r:255, g:60,  b:20  },
+            {t:0.75, r:255, g:200, b:30  },
+            {t:0.90, r:255, g:255, b:100},
+            {t:1.00, r:255, g:255, b:220},
+        ],
+        bg: '#02020a',
+    },
+    ocean: {
+        stops: [
+            {t:0.00, r:0,   g:0,   b:20 },
+            {t:0.20, r:0,   g:20,  b:80 },
+            {t:0.45, r:0,   g:80,  b:180},
+            {t:0.70, r:0,   g:160, b:240},
+            {t:0.90, r:80,  g:220, b:255},
+            {t:1.00, r:200, g:240, b:255},
+        ],
+        bg: '#02060e',
+    },
+    fire: {
+        stops: [
+            {t:0.00, r:5,   g:0,   b:0  },
+            {t:0.20, r:80,  g:5,   b:0  },
+            {t:0.40, r:200, g:40,  b:0  },
+            {t:0.60, r:255, g:140, b:0  },
+            {t:0.80, r:255, g:220, b:60 },
+            {t:1.00, r:255, g:255, b:200},
+        ],
+        bg: '#080202',
+    },
+    neon: {
+        stops: [
+            {t:0.00, r:0,   g:0,   b:30 },
+            {t:0.20, r:60,  g:0,   b:140},
+            {t:0.40, r:180, g:0,   b:200},
+            {t:0.60, r:255, g:40,  b:120},
+            {t:0.80, r:255, g:180, b:40 },
+            {t:1.00, r:255, g:240, b:200},
+        ],
+        bg: '#04020a',
+    },
+    mono: {
+        stops: [
+            {t:0.00, r:5,   g:5,   b:5  },
+            {t:0.40, r:80,  g:80,  b:80 },
+            {t:0.70, r:180, g:180, b:180},
+            {t:1.00, r:255, g:255, b:255},
+        ],
+        bg: '#020202',
+    },
+};
+
+const PAL = PALETTES[P_PALETTE] || PALETTES.plasma;
+
+const DENSITY_CHARS = ' .·:;=+*#%@';
+
+function palColor(t) {
+    t = Math.max(0, Math.min(1, t));
+    const stops = PAL.stops;
+    for (let i = 0; i < stops.length - 1; i++) {
+        if (t <= stops[i + 1].t) {
+            const m = (t - stops[i].t) / (stops[i + 1].t - stops[i].t);
+            return [
+                Math.round(stops[i].r + m * (stops[i+1].r - stops[i].r)),
+                Math.round(stops[i].g + m * (stops[i+1].g - stops[i].g)),
+                Math.round(stops[i].b + m * (stops[i+1].b - stops[i].b)),
+            ];
+        }
+    }
+    const last = stops[stops.length - 1];
+    return [last.r, last.g, last.b];
+}
+
+const SZ = (N + 2) * (M + 2);
+
+function IX(i, j) { return i + (N + 2) * j; }
+
+let u = new Float32Array(SZ);
+let v = new Float32Array(SZ);
+let u0 = new Float32Array(SZ);
+let v0 = new Float32Array(SZ);
+let dens = new Float32Array(SZ);
+let dens0 = new Float32Array(SZ);
+let dyeR = new Float32Array(SZ);
+let dyeG = new Float32Array(SZ);
+let dyeB = new Float32Array(SZ);
+let dyeR0 = new Float32Array(SZ);
+let dyeG0 = new Float32Array(SZ);
+let dyeB0 = new Float32Array(SZ);
+
+let trail = new Float32Array(SZ);
+let trailR = new Float32Array(SZ);
+let trailG = new Float32Array(SZ);
+let trailB = new Float32Array(SZ);
+
+function swap(a, b) {
+    const tmp = new Float32Array(a);
+    a.set(b);
+    b.set(tmp);
+    return [a, b];
+}
+
+function setBnd(b, x) {
+    for (let i = 1; i <= N; i++) {
+        x[IX(0,     i)] = b === 1 ? -x[IX(1, i)] : x[IX(1, i)];
+        x[IX(N + 1, i)] = b === 1 ? -x[IX(N, i)] : x[IX(N, i)];
+    }
+    for (let j = 1; j <= M; j++) {
+        x[IX(j, 0)]     = b === 2 ? -x[IX(j, 1)] : x[IX(j, 1)];
+        x[IX(j, M + 1)] = b === 2 ? -x[IX(j, M)] : x[IX(j, M)];
+    }
+    x[IX(0,     0)]     = 0.5 * (x[IX(1, 0)]     + x[IX(0, 1)]);
+    x[IX(0,     M + 1)] = 0.5 * (x[IX(1, M + 1)] + x[IX(0, M)]);
+    x[IX(N + 1, 0)]     = 0.5 * (x[IX(N, 0)]     + x[IX(N + 1, 1)]);
+    x[IX(N + 1, M + 1)] = 0.5 * (x[IX(N, M + 1)] + x[IX(N + 1, M)]);
+}
+
+function diffuse(b, x, x0, diff, dt) {
+    const a = dt * diff * N * M;
+    if (a === 0) { x.set(x0); return; }
+    for (let k = 0; k < 4; k++) {
+        for (let j = 1; j <= M; j++) {
+            for (let i = 1; i <= N; i++) {
+                x[IX(i, j)] = (x0[IX(i, j)] + a * (
+                    x[IX(i-1, j)] + x[IX(i+1, j)] +
+                    x[IX(i, j-1)] + x[IX(i, j+1)]
+                )) / (1 + 4 * a);
+            }
+        }
+        setBnd(b, x);
+    }
+}
+
+function advect(b, d, d0, uu, vv, dt) {
+    const dt0x = dt * N;
+    const dt0y = dt * M;
+    for (let j = 1; j <= M; j++) {
+        for (let i = 1; i <= N; i++) {
+            let x = i - dt0x * uu[IX(i, j)];
+            let y = j - dt0y * vv[IX(i, j)];
+            x = Math.max(0.5, Math.min(N + 0.5, x));
+            y = Math.max(0.5, Math.min(M + 0.5, y));
+            const i0 = Math.floor(x), i1 = i0 + 1;
+            const j0 = Math.floor(y), j1 = j0 + 1;
+            const s1 = x - i0, s0 = 1 - s1;
+            const t1 = y - j0, t0 = 1 - t1;
+            d[IX(i, j)] = s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)]) +
+                          s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
+        }
+    }
+    setBnd(b, d);
+}
+
+function project(uu, vv, p, div) {
+    for (let j = 1; j <= M; j++) {
+        for (let i = 1; i <= N; i++) {
+            div[IX(i, j)] = -0.5 * (
+                (uu[IX(i+1, j)] - uu[IX(i-1, j)]) / N +
+                (vv[IX(i, j+1)] - vv[IX(i, j-1)]) / M
+            );
+            p[IX(i, j)] = 0;
+        }
+    }
+    setBnd(0, div);
+    setBnd(0, p);
+    for (let k = 0; k < 4; k++) {
+        for (let j = 1; j <= M; j++) {
+            for (let i = 1; i <= N; i++) {
+                p[IX(i, j)] = (div[IX(i, j)] +
+                    p[IX(i-1, j)] + p[IX(i+1, j)] +
+                    p[IX(i, j-1)] + p[IX(i, j+1)]
+                ) / 4;
+            }
+        }
+        setBnd(0, p);
+    }
+    for (let j = 1; j <= M; j++) {
+        for (let i = 1; i <= N; i++) {
+            uu[IX(i, j)] -= 0.5 * (p[IX(i+1, j)] - p[IX(i-1, j)]) * N;
+            vv[IX(i, j)] -= 0.5 * (p[IX(i, j+1)] - p[IX(i, j-1)]) * M;
+        }
+    }
+    setBnd(1, uu);
+    setBnd(2, vv);
+}
+
+const dt = 0.12;
+
+function fluidStep() {
+    [u, u0] = swap(u, u0);
+    diffuse(1, u, u0, P_VISCOSITY, dt);
+    [v, v0] = swap(v, v0);
+    diffuse(2, v, v0, P_VISCOSITY, dt);
+    project(u, v, u0, v0);
+    [u, u0] = swap(u, u0);
+    [v, v0] = swap(v, v0);
+    advect(1, u, u0, u0, v0, dt);
+    advect(2, v, v0, u0, v0, dt);
+    project(u, v, u0, v0);
+    [dens, dens0] = swap(dens, dens0);
+    diffuse(0, dens, dens0, P_DIFFUSION, dt);
+    [dens, dens0] = swap(dens, dens0);
+    advect(0, dens, dens0, u, v, dt);
+    [dyeR, dyeR0] = swap(dyeR, dyeR0);
+    diffuse(0, dyeR, dyeR0, P_DIFFUSION, dt);
+    advect(0, dyeR, dyeR0, u, v, dt);
+    [dyeG, dyeG0] = swap(dyeG, dyeG0);
+    diffuse(0, dyeG, dyeG0, P_DIFFUSION, dt);
+    advect(0, dyeG, dyeG0, u, v, dt);
+    [dyeB, dyeB0] = swap(dyeB, dyeB0);
+    diffuse(0, dyeB, dyeB0, P_DIFFUSION, dt);
+    advect(0, dyeB, dyeB0, u, v, dt);
+}
+
+function addSource(x, s, dt2) {
+    for (let i = 0; i < SZ; i++) x[i] += dt2 * s[i];
+}
+
+const dyeColors = [
+    [1.0, 0.15, 0.25],
+    [0.15, 1.0, 0.35],
+    [0.2, 0.3, 1.0],
+    [1.0, 1.0, 0.15],
+    [0.1, 1.0, 1.0],
+    [1.0, 0.3, 1.0],
+    [1.0, 0.5, 0.05],
+    [0.5, 1.0, 0.7],
+];
+
+const EMITTER_TYPES = ['stream', 'burst', 'pulse', 'orbit'];
+let emitterTimer = 0;
+let emitterList = [];
+let globalAnim = 0;
+
+class Emitter {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.life = 180 + Math.floor(Math.random() * 300);
+        this.age = 0;
+        this.color = dyeColors[Math.floor(Math.random() * dyeColors.length)];
+        this.phase = Math.random() * Math.PI * 2;
+        this.orbitAngle = Math.random() * Math.PI * 2;
+        this.orbitRadius = 3 + Math.random() * 6;
+        this.orbitSpeed = 0.02 + Math.random() * 0.03;
+        this.pulsePhase = Math.random() * Math.PI * 2;
+
+        if (type === 'stream') {
+            this.angle = Math.random() * Math.PI * 2;
+            this.vx = Math.cos(this.angle) * (2 + Math.random() * 3);
+            this.vy = Math.sin(this.angle) * (2 + Math.random() * 3);
+            this.rate = 60 + Math.floor(Math.random() * 60);
+        } else if (type === 'burst') {
+            this.rate = 120 + Math.floor(Math.random() * 120);
+        } else if (type === 'pulse') {
+            this.rate = 80;
+            this.pulseRate = 0.03 + Math.random() * 0.04;
+        } else {
+            this.rate = 50 + Math.floor(Math.random() * 40);
+            this.orbitDir = Math.random() < 0.5 ? 1 : -1;
+        }
+    }
+}
+
+function spawnEmitter() {
+    const margin = Math.max(4, Math.floor(N * 0.1));
+    const x = margin + Math.floor(Math.random() * (N - 2 * margin));
+    const y = margin + Math.floor(Math.random() * (M - 2 * margin));
+    const type = EMITTER_TYPES[Math.floor(Math.random() * EMITTER_TYPES.length)];
+    emitterList.push(new Emitter(x, y, type));
+}
+
+function processEmitters() {
+    globalAnim++;
+    for (const em of emitterList) {
+        em.age++;
+
+        const dx = em.type === 'orbit' ? Math.cos(globalAnim * em.orbitSpeed * em.orbitDir + em.orbitAngle) * em.orbitRadius : 0;
+        const dy = em.type === 'orbit' ? Math.sin(globalAnim * em.orbitSpeed * em.orbitDir + em.orbitAngle) * em.orbitRadius : 0;
+        const cx = Math.floor(em.x + dx);
+        const cy = Math.floor(em.y + dy);
+
+        if (em.type === 'stream') {
+            em.x += em.vx * 0.03;
+            em.y += em.vy * 0.03;
+            em.vx *= 0.998;
+            em.vy *= 0.998;
+        }
+
+        let injectRate = em.rate;
+        if (em.type === 'pulse') {
+            injectRate = Math.max(0, em.rate * (0.5 + 0.5 * Math.sin(globalAnim * em.pulseRate + em.pulsePhase)));
+        } else if (em.type === 'burst') {
+            const burstPhase = (globalAnim + em.phase * 100) % 200;
+            injectRate = burstPhase < 20 ? em.rate * 3 : em.rate * 0.3;
+        }
+
+        const xi = Math.floor(cx);
+        const yi = Math.floor(cy);
+        if (xi < 1 || xi > N || yi < 1 || yi > M) continue;
+
+        const idx = IX(xi, yi);
+        const force = injectRate * 0.008 * P_SPEED;
+        if (em.type === 'stream') {
+            u0[idx] += em.vx * force;
+            v0[idx] += em.vy * force;
+        } else if (em.type === 'orbit') {
+            const orbitalVx = -Math.sin(globalAnim * em.orbitSpeed * em.orbitDir + em.orbitAngle) * 2;
+            const orbitalVy = Math.cos(globalAnim * em.orbitSpeed * em.orbitDir + em.orbitAngle) * 2;
+            u0[idx] += orbitalVx * force;
+            v0[idx] += orbitalVy * force;
+        } else if (em.type === 'burst') {
+            for (let d = 0; d < 4; d++) {
+                const ni = xi + [0,1,0,-1][d];
+                const nj = yi + [-1,0,1,0][d];
+                if (ni >= 1 && ni <= N && nj >= 1 && nj <= M) {
+                    const nidx = IX(ni, nj);
+                    u0[nidx] += [0, 1, 0, -1][d] * force * 2;
+                    v0[nidx] += [-1, 0, 1, 0][d] * force * 2;
+                }
+            }
+        } else if (em.type === 'pulse') {
+            const pulseForce = force * (1 + Math.sin(globalAnim * em.pulseRate + em.pulsePhase));
+            u0[idx] += (Math.random() - 0.5) * pulseForce;
+            v0[idx] += (Math.random() - 0.5) * pulseForce;
+        }
+
+        dens0[idx] += injectRate * 0.4;
+        dyeR0[idx] += em.color[0] * injectRate * 0.3;
+        dyeG0[idx] += em.color[1] * injectRate * 0.3;
+        dyeB0[idx] += em.color[2] * injectRate * 0.3;
+    }
+    emitterList = emitterList.filter(e => e.age < e.life);
+
+    emitterTimer++;
+    const spawnInterval = Math.max(10, Math.floor(60 / P_SPEED));
+    if (emitterTimer >= spawnInterval) {
+        emitterTimer = 0;
+        spawnEmitter();
+    }
+}
+
+function fadeDye() {
+    const fade = P_DYEFADE;
+    const trailFade = 0.998; // Slower fade for trail
+    for (let i = 0; i < SZ; i++) {
+        // Update trails to match current dye if brighter, else decay
+        if (dens[i] > trail[i]) {
+            trail[i] = dens[i];
+            trailR[i] = dyeR[i];
+            trailG[i] = dyeG[i];
+            trailB[i] = dyeB[i];
+        } else {
+            trail[i] *= trailFade;
+            trailR[i] *= trailFade;
+            trailG[i] *= trailFade;
+            trailB[i] *= trailFade;
+        }
+
+        dyeR[i] *= fade;
+        dyeG[i] *= fade;
+        dyeB[i] *= fade;
+        dens[i] *= fade;
+    }
+}
+
+function measureFont() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+}
+
+function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    measureFont();
+}
+
+window.addEventListener('resize', resize);
+
+function render() {
+    ctx.fillStyle = PAL.bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    const cellW = canvas.width / N;
+    const cellH = canvas.height / M;
+    const cLen = DENSITY_CHARS.length;
+
+    const satBoost = 1.2;
+    const brightBoost = 1.1;
+
+    // Precalculate background particles
+    const time = Date.now() * 0.001;
+    const pCount = Math.floor((N * M) * 0.03); // 3% of cells have particles
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    for (let p = 0; p < pCount; p++) {
+        const px = (p * 73.1 + time * 10) % N;
+        const py = (p * 31.7 - time * 15) % M;
+        ctx.fillText('.', px * cellW, py * cellH);
+    }
+
+    const bloomPositions = [];
+
+    for (let j = 1; j <= M; j++) {
+        for (let i = 1; i <= N; i++) {
+            const idx = IX(i, j);
+            let d = dens[idx];
+            let t = trail[idx];
+
+            if (d < 0.005 && t < 0.005) continue;
+
+            let r, g, b;
+            let renderD = 0;
+
+            if (d > t * 0.5) {
+                // Primary fluid
+                renderD = d;
+                r = Math.min(255, Math.max(0, Math.floor(dyeR[idx] * 255)));
+                g = Math.min(255, Math.max(0, Math.floor(dyeG[idx] * 255)));
+                b = Math.min(255, Math.max(0, Math.floor(dyeB[idx] * 255)));
+            } else {
+                // Wake trail
+                renderD = t * 0.4; // Fade trail visually
+                r = Math.min(255, Math.max(0, Math.floor(trailR[idx] * 255)));
+                g = Math.min(255, Math.max(0, Math.floor(trailG[idx] * 255)));
+                b = Math.min(255, Math.max(0, Math.floor(trailB[idx] * 255)));
+            }
+
+            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+            r = Math.min(255, Math.round(gray + (r - gray) * satBoost));
+            g = Math.min(255, Math.round(gray + (g - gray) * satBoost));
+            b = Math.min(255, Math.round(gray + (b - gray) * satBoost));
+
+            r = Math.min(255, Math.round(r * brightBoost));
+            g = Math.min(255, Math.round(g * brightBoost));
+            b = Math.min(255, Math.round(b * brightBoost));
+
+            const density = Math.min(1, renderD * 0.12);
+            
+            // Determine character based on velocity and curl
+            const vx = u[idx];
+            const vy = v[idx];
+            const speed = Math.sqrt(vx*vx + vy*vy);
+            
+            // Curl (vorticity)
+            const curl = (v[IX(i+1, j)] - v[IX(i-1, j)]) * 0.5 - (u[IX(i, j+1)] - u[IX(i, j-1)]) * 0.5;
+
+            let ch = '';
+            if (Math.abs(curl) > 0.4 && speed > 0.1) {
+                const VORTEX_CHARS = ['@', '©', '⊛', 'O'];
+                ch = VORTEX_CHARS[Math.floor((Math.abs(curl) * 10) % VORTEX_CHARS.length)];
+            } else if (speed > 0.2 && d > t * 0.5) {
+                // Directional characters for primary fluid
+                const angle = Math.atan2(vy, vx);
+                // Map angle to chars: / \ | — ~
+                const octant = Math.round(8 * angle / (2*Math.PI) + 8) % 8;
+                const DIR_CHARS = ['—', '\\', '|', '/', '—', '\\', '|', '/'];
+                ch = DIR_CHARS[octant];
+            } else {
+                // Standard density
+                const charIdx = Math.min(cLen - 1, Math.floor(density * cLen));
+                ch = DENSITY_CHARS[charIdx];
+            }
+
+            const alpha = Math.min(1, renderD * 0.15);
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            
+            const px = (i - 1) * cellW;
+            const py = (j - 1) * cellH;
+            ctx.fillText(ch, px, py);
+
+            if (d > 2.5) {
+                bloomPositions.push({ x: px + CHAR_W/2, y: py + CHAR_H/2, r, g, b, a: Math.min(1, (d - 2.5) * 0.2) });
+            }
+        }
+    }
+    ctx.globalAlpha = 1;
+
+    // Render bloom passes
+    if (bloomPositions.length > 0) {
+        const prevComp = ctx.globalCompositeOperation;
+        ctx.globalCompositeOperation = 'lighter';
+        for (let bp of bloomPositions) {
+            const rad = CHAR_H * 2.5;
+            const grad = ctx.createRadialGradient(bp.x, bp.y, 0, bp.x, bp.y, rad);
+            grad.addColorStop(0, `rgba(${bp.r},${bp.g},${bp.b},${bp.a * 0.2})`);
+            grad.addColorStop(1, `rgba(${bp.r},${bp.g},${bp.b},0)`);
+            ctx.fillStyle = grad;
+            ctx.fillRect(bp.x - rad, bp.y - rad, rad * 2, rad * 2);
+        }
+        ctx.globalCompositeOperation = prevComp;
+    }
+}
+
+function loop() {
+    processEmitters();
+    addSource(u, u0, dt);
+    addSource(v, v0, dt);
+    addSource(dens, dens0, dt);
+    addSource(dyeR, dyeR0, dt);
+    addSource(dyeG, dyeG0, dt);
+    addSource(dyeB, dyeB0, dt);
+    u0.fill(0);
+    v0.fill(0);
+    dens0.fill(0);
+    dyeR0.fill(0);
+    dyeG0.fill(0);
+    dyeB0.fill(0);
+    fluidStep();
+    fadeDye();
+    render();
+    requestAnimationFrame(loop);
+}
+
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        for (let i = 0; i < 5; i++) spawnEmitter();
+        requestAnimationFrame(loop);
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

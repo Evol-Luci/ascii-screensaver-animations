@@ -1,0 +1,2289 @@
+{
+  "version": 1,
+  "updated": "2026-09-20",
+  "animations": [
+    {
+      "id": "aquarium",
+      "name": "Aquarium",
+      "description": "A living reef: the fish school rests at night, flees a roaming predator, and swarms feeding events, under a day/night lighting cycle with sunbeams, plankton, kelp, and sand crabs.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aquarium/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "tropical",
+          "options": [
+            "tropical",
+            "deepsea",
+            "freshwater",
+            "neon",
+            "mono"
+          ]
+        },
+        {
+          "key": "fishCount",
+          "type": "range",
+          "label": "Fish Count",
+          "defaultValue": 10,
+          "min": 5,
+          "max": 20,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "kelpDensity",
+          "type": "range",
+          "label": "Kelp Density",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "bubbleRate",
+          "type": "range",
+          "label": "Bubble Rate",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "cycleTime",
+          "type": "range",
+          "label": "Cycle Time",
+          "defaultValue": 8,
+          "min": 0,
+          "max": 30,
+          "step": 0.5,
+          "integer": false
+        },
+        {
+          "key": "predatorRate",
+          "type": "range",
+          "label": "Predator Rate",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "feedRate",
+          "type": "range",
+          "label": "Feed Rate",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aquarium/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aquarium/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aquarium/preview.gif"
+      ]
+    },
+    {
+      "id": "attractor",
+      "name": "Attractor",
+      "description": "A particle tracing a real strange-attractor equation \u2014 Lorenz butterfly and R\u00f6ssler ribbon rendered as speed-weighted ASCII glyphs through a slowly rotating 3D camera.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/attractor/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "cycleTime",
+          "type": "range",
+          "label": "Cycle Time",
+          "defaultValue": 30,
+          "min": 10,
+          "max": 60,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "trailLength",
+          "type": "range",
+          "label": "Trail Length",
+          "defaultValue": 800,
+          "min": 200,
+          "max": 2000,
+          "step": 50,
+          "integer": true
+        },
+        {
+          "key": "rotationSpeed",
+          "type": "range",
+          "label": "Rotation Speed",
+          "defaultValue": 0.1,
+          "min": 0,
+          "max": 0.5,
+          "step": 0.01,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "ice",
+          "options": [
+            "ice",
+            "ember",
+            "spectrum",
+            "mono"
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/attractor/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/attractor/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/attractor/preview.gif"
+      ]
+    },
+    {
+      "id": "aurora",
+      "name": "Aurora",
+      "description": "Procedural aurora borealis ribbons with twinkling star field.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.jpg",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "aurora",
+          "options": [
+            "aurora",
+            "northern",
+            "southern",
+            "neon",
+            "mono"
+          ]
+        },
+        {
+          "key": "bands",
+          "type": "range",
+          "label": "Bands",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 5,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "brightness",
+          "type": "range",
+          "label": "Brightness",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "stars",
+          "type": "range",
+          "label": "Stars",
+          "defaultValue": 150,
+          "min": 0,
+          "max": 400,
+          "step": 10,
+          "integer": true
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.jpg"
+      ]
+    },
+    {
+      "id": "blackhole",
+      "name": "Black Hole",
+      "description": "Accretion disk animation with jet toggle, disk size, and inclination.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/blackhole/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "fire",
+          "options": [
+            "fire",
+            "cool",
+            "plasma",
+            "mono"
+          ]
+        },
+        {
+          "key": "diskSize",
+          "type": "range",
+          "label": "Disk Size",
+          "defaultValue": 1,
+          "min": 0.4,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "jets",
+          "type": "select",
+          "label": "Jets",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
+        },
+        {
+          "key": "inclination",
+          "type": "range",
+          "label": "Inclination",
+          "defaultValue": 0.36,
+          "min": 0,
+          "max": 1,
+          "step": 0.01,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/blackhole/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/blackhole/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/blackhole/preview.gif"
+      ]
+    },
+    {
+      "id": "boids",
+      "name": "Boids Flock",
+      "description": "Classic boid flocking \u2014 separation, alignment, cohesion \u2014 with an optional predator that scatters the flock.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/boids/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "birds",
+          "options": [
+            "birds",
+            "fish",
+            "abstract",
+            "mono"
+          ]
+        },
+        {
+          "key": "flockSize",
+          "type": "range",
+          "label": "Flock Size",
+          "defaultValue": 60,
+          "min": 20,
+          "max": 150,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "cohesion",
+          "type": "range",
+          "label": "Cohesion",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "separation",
+          "type": "range",
+          "label": "Separation",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "predator",
+          "type": "select",
+          "label": "Predator",
+          "defaultValue": 0,
+          "options": [
+            0,
+            1
+          ]
+        },
+        {
+          "key": "predatorSpeed",
+          "type": "range",
+          "label": "Predator Speed",
+          "defaultValue": 1.35,
+          "min": 0.5,
+          "max": 3,
+          "step": 0.05,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/boids/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/boids/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/boids/preview.gif"
+      ]
+    },
+    {
+      "id": "bonsai",
+      "name": "Bonsai",
+      "description": "Procedural tree growth with leaf density and rest time between redraws.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/bonsai/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "natural",
+          "options": [
+            "natural",
+            "autumn",
+            "sakura",
+            "cherry",
+            "purple",
+            "mono"
+          ]
+        },
+        {
+          "key": "leafDensity",
+          "type": "range",
+          "label": "Leaf Density",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "holdTime",
+          "type": "range",
+          "label": "Hold Time",
+          "defaultValue": 360,
+          "min": 60,
+          "max": 900,
+          "step": 30,
+          "integer": true
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/bonsai/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/bonsai/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/bonsai/preview.gif"
+      ]
+    },
+    {
+      "id": "campfire",
+      "name": "Campfire",
+      "description": "Layered noise-driven flame tongues with rising embers, a dark forest silhouette, and a drifting firefly.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/campfire/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "warm",
+          "options": [
+            "warm",
+            "blueFlame",
+            "greenFlame",
+            "violetFlame",
+            "mono"
+          ]
+        },
+        {
+          "key": "flameHeight",
+          "type": "range",
+          "label": "Flame Height",
+          "defaultValue": 1,
+          "min": 0.5,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "emberRate",
+          "type": "range",
+          "label": "Ember Rate",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "crackleIntensity",
+          "type": "range",
+          "label": "Crackle Intensity",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "forestSilhouette",
+          "type": "select",
+          "label": "Forest Silhouette",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/campfire/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/campfire/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/campfire/preview.gif"
+      ]
+    },
+    {
+      "id": "crawl",
+      "name": "Crawl",
+      "description": "Retro title crawl with selectable episode and text speed.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crawl/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "gold",
+          "options": [
+            "gold",
+            "white",
+            "green",
+            "blue",
+            "red"
+          ]
+        },
+        {
+          "key": "episode",
+          "type": "range",
+          "label": "Episode",
+          "defaultValue": -1,
+          "min": -1,
+          "max": 5,
+          "step": 1,
+          "integer": true
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crawl/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crawl/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crawl/preview.gif"
+      ]
+    },
+    {
+      "id": "crystals",
+      "name": "Crystals",
+      "description": "Geological cave growth simulation with procedural stalactites, stalagmites, and a glowing bioluminescent pool.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crystals/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1.0,
+          "min": 0.1,
+          "max": 3.0,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "amethyst",
+          "options": [
+            "amethyst",
+            "quartz",
+            "emerald",
+            "obsidian",
+            "ice"
+          ]
+        },
+        {
+          "key": "poolGlow",
+          "type": "range",
+          "label": "Pool Glow",
+          "defaultValue": 1.0,
+          "min": 0.0,
+          "max": 2.0,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "dripRate",
+          "type": "range",
+          "label": "Drip Rate",
+          "defaultValue": 1.0,
+          "min": 0.0,
+          "max": 5.0,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "density",
+          "type": "range",
+          "label": "Density",
+          "defaultValue": 1.0,
+          "min": 0.2,
+          "max": 2.0,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crystals/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crystals/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crystals/preview.gif"
+      ]
+    },
+    {
+      "id": "cyber_deck",
+      "name": "Cyber Deck",
+      "description": "A fictional 1998 hacker terminal that never finishes booting \u2014 boot sequence, hex dumps, hardware diagrams, glitches and the occasional kernel panic.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/cyber_deck/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "terminalStyle",
+          "type": "select",
+          "label": "Terminal Style",
+          "defaultValue": "amber",
+          "options": [
+            "amber",
+            "green",
+            "blue"
+          ]
+        },
+        {
+          "key": "corruption",
+          "type": "range",
+          "label": "Corruption",
+          "defaultValue": 0.2,
+          "min": 0,
+          "max": 1,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "bootCycle",
+          "type": "range",
+          "label": "Boot Cycle",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 1,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "scrollSpeed",
+          "type": "range",
+          "label": "Scroll Speed",
+          "defaultValue": 8,
+          "min": 1,
+          "max": 20,
+          "step": 1,
+          "integer": true
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/cyber_deck/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/cyber_deck/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/cyber_deck/preview.gif"
+      ]
+    },
+    {
+      "id": "fluid",
+      "name": "Fluid",
+      "description": "Real-time fluid dynamics simulation with dye injection rendered in ASCII.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fluid/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "plasma",
+          "options": [
+            "plasma",
+            "ocean",
+            "fire",
+            "neon",
+            "mono"
+          ]
+        },
+        {
+          "key": "resolution",
+          "type": "select",
+          "label": "Resolution",
+          "defaultValue": "medium",
+          "options": [
+            "low",
+            "medium",
+            "high",
+            "ultra"
+          ]
+        },
+        {
+          "key": "diffusion",
+          "type": "range",
+          "label": "Diffusion",
+          "defaultValue": 0.0001,
+          "min": 0,
+          "max": 0.01,
+          "step": 0.0001,
+          "integer": false
+        },
+        {
+          "key": "viscosity",
+          "type": "range",
+          "label": "Viscosity",
+          "defaultValue": 0,
+          "min": 0,
+          "max": 0.001,
+          "step": 5e-05,
+          "integer": false
+        },
+        {
+          "key": "dyeFade",
+          "type": "range",
+          "label": "Dye Fade",
+          "defaultValue": 0.995,
+          "min": 0.98,
+          "max": 1,
+          "step": 0.001,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fluid/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fluid/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fluid/preview.gif"
+      ]
+    },
+    {
+      "id": "gameoflife",
+      "name": "Game of Life",
+      "description": "Conway cells rendered as growing and wilting garden glyphs.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/gameoflife/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "spring",
+          "options": [
+            "spring",
+            "autumn",
+            "neon",
+            "mono"
+          ]
+        },
+        {
+          "key": "cellSize",
+          "type": "range",
+          "label": "Cell Size",
+          "defaultValue": 16,
+          "min": 8,
+          "max": 32,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "density",
+          "type": "range",
+          "label": "Density",
+          "defaultValue": 0.35,
+          "min": 0,
+          "max": 1,
+          "step": 0.01,
+          "integer": false
+        },
+        {
+          "key": "reseedMode",
+          "type": "select",
+          "label": "Reseed Mode",
+          "defaultValue": "mixed",
+          "options": [
+            "random",
+            "classic",
+            "mixed"
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/gameoflife/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/gameoflife/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/gameoflife/preview.gif"
+      ]
+    },
+    {
+      "id": "glitch_field",
+      "name": "Glitch Field",
+      "description": "A broken digital reality \u2014 a character grid torn by drifting corruption bands, RGB split, scanline tearing and packet loss.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/glitch_field/preview.jpg",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "terminal",
+          "options": [
+            "terminal",
+            "amber",
+            "vapor",
+            "mono"
+          ]
+        },
+        {
+          "key": "density",
+          "type": "range",
+          "label": "Density",
+          "defaultValue": 0.8,
+          "min": 0,
+          "max": 1,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "corruptionRate",
+          "type": "range",
+          "label": "Corruption Rate",
+          "defaultValue": 0.2,
+          "min": 0,
+          "max": 1,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "scanBands",
+          "type": "range",
+          "label": "Scan Bands",
+          "defaultValue": 3,
+          "min": 0,
+          "max": 6,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "chaos",
+          "type": "range",
+          "label": "Chaos",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/glitch_field/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/glitch_field/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/glitch_field/preview.jpg"
+      ]
+    },
+    {
+      "id": "incense",
+      "name": "Incense",
+      "description": "Smoke particle simulation rising from an incense stick with wind and turbulence controls.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/incense/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "smokeDensity",
+          "type": "range",
+          "label": "Smoke Density",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "smokeLifespan",
+          "type": "range",
+          "label": "Smoke Lifespan",
+          "defaultValue": 1,
+          "min": 0.5,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "smokeColor",
+          "type": "select",
+          "label": "Smoke Color",
+          "defaultValue": "warm",
+          "options": [
+            "warm",
+            "cool",
+            "incense",
+            "sage",
+            "lavender",
+            "mono"
+          ]
+        },
+        {
+          "key": "windDirection",
+          "type": "range",
+          "label": "Wind Direction",
+          "defaultValue": 0,
+          "min": -1,
+          "max": 1,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "windSpeed",
+          "type": "range",
+          "label": "Wind Speed",
+          "defaultValue": 0.3,
+          "min": 0,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "randomization",
+          "type": "range",
+          "label": "Randomization",
+          "defaultValue": 0.8,
+          "min": 0,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/incense/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/incense/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/incense/preview.gif"
+      ]
+    },
+    {
+      "id": "jellyfish",
+      "name": "Jellyfish Drift",
+      "description": "Bioluminescent jellyfish drifting through deep-sea darkness with pulsing bell glow, wavy trailing tentacles, and plankton sparkle.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/jellyfish/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "blue",
+          "options": [
+            "blue",
+            "purple",
+            "teal",
+            "pink",
+            "mono"
+          ]
+        },
+        {
+          "key": "jellyfishCount",
+          "type": "range",
+          "label": "Jellyfish Count",
+          "defaultValue": 6,
+          "min": 3,
+          "max": 10,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "glowIntensity",
+          "type": "range",
+          "label": "Glow Intensity",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "driftCurrents",
+          "type": "range",
+          "label": "Drift Currents",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/jellyfish/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/jellyfish/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/jellyfish/preview.gif"
+      ]
+    },
+    {
+      "id": "mandelbrot",
+      "name": "Mandelbrot",
+      "description": "Zooming ASCII fractal with auto-jumping boundary regions.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/mandelbrot/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "classic",
+          "options": [
+            "classic",
+            "fire",
+            "ocean",
+            "neon",
+            "mono"
+          ]
+        },
+        {
+          "key": "maxIter",
+          "type": "range",
+          "label": "Max Iter",
+          "defaultValue": 64,
+          "min": 16,
+          "max": 256,
+          "step": 16,
+          "integer": true
+        },
+        {
+          "key": "charset",
+          "type": "select",
+          "label": "Charset",
+          "defaultValue": "classic",
+          "options": [
+            "classic",
+            "blocks",
+            "dots"
+          ]
+        },
+        {
+          "key": "autoJump",
+          "type": "select",
+          "label": "Auto Jump",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/mandelbrot/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/mandelbrot/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/mandelbrot/preview.gif"
+      ]
+    },
+    {
+      "id": "moon",
+      "name": "Moon",
+      "description": "Orbital ASCII scene with star count, floaters, glow, and palette.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/moon/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "silver",
+          "options": [
+            "silver",
+            "gold",
+            "blood",
+            "blue",
+            "green"
+          ]
+        },
+        {
+          "key": "stars",
+          "type": "range",
+          "label": "Stars",
+          "defaultValue": 120,
+          "min": 0,
+          "max": 300,
+          "step": 10,
+          "integer": true
+        },
+        {
+          "key": "floaterFreq",
+          "type": "range",
+          "label": "Floater Freq",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "glowIntensity",
+          "type": "range",
+          "label": "Glow Intensity",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/moon/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/moon/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/moon/preview.gif"
+      ]
+    },
+    {
+      "id": "nixie",
+      "name": "Nixie",
+      "description": "Vintage nixie tube clock with cathode poisoning, neon glow bloom, and per-tube flicker. Inspired by joeparadiso/nixie-tube-clock.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/nixie/preview.gif",
+      "params": [
+        {
+          "key": "glowColor",
+          "type": "select",
+          "label": "Glow Color",
+          "defaultValue": "amber",
+          "options": [
+            "amber",
+            "red",
+            "green",
+            "blue",
+            "white",
+            "purple"
+          ]
+        },
+        {
+          "key": "flickerIntensity",
+          "type": "range",
+          "label": "Flicker Intensity",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "poisoningSpeed",
+          "type": "range",
+          "label": "Poisoning Speed",
+          "defaultValue": 1.5,
+          "min": 0.5,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "showSeconds",
+          "type": "select",
+          "label": "Show Seconds",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
+        },
+        {
+          "key": "tubeStyle",
+          "type": "select",
+          "label": "Tube Style",
+          "defaultValue": "classic",
+          "options": [
+            "classic",
+            "slim",
+            "wide"
+          ]
+        },
+        {
+          "key": "tubeColons",
+          "type": "select",
+          "label": "Tube Colons",
+          "defaultValue": 0,
+          "options": [
+            0,
+            1
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/nixie/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/nixie/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/nixie/preview.gif"
+      ]
+    },
+    {
+      "id": "oscilloscope",
+      "name": "Oscilloscope",
+      "description": "A CRT lab instrument left running forever \u2014 a glowing phosphor Lissajous trace with decay, scanlines and bloom.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/oscilloscope/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "complexity",
+          "type": "range",
+          "label": "Complexity",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 6,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "phosphorDecay",
+          "type": "range",
+          "label": "Phosphor Decay",
+          "defaultValue": 0.92,
+          "min": 0.8,
+          "max": 0.99,
+          "step": 0.01,
+          "integer": false
+        },
+        {
+          "key": "noise",
+          "type": "range",
+          "label": "Noise",
+          "defaultValue": 0.2,
+          "min": 0,
+          "max": 1,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "phosphor",
+          "options": [
+            "phosphor",
+            "amber",
+            "blue"
+          ]
+        },
+        {
+          "key": "shapeSet",
+          "type": "select",
+          "label": "Shape Set",
+          "defaultValue": "all",
+          "options": [
+            "all",
+            "curves",
+            "geometric",
+            "waveforms"
+          ]
+        },
+        {
+          "key": "cyclePeriod",
+          "type": "range",
+          "label": "Cycle Period",
+          "defaultValue": 14,
+          "min": 4,
+          "max": 40,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "morphTime",
+          "type": "range",
+          "label": "Morph Time",
+          "defaultValue": 1.5,
+          "min": 0.3,
+          "max": 5,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/oscilloscope/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/oscilloscope/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/oscilloscope/preview.gif"
+      ]
+    },
+    {
+      "id": "pendulum_wave",
+      "name": "Pendulum Wave",
+      "description": "Pendulums of progressively shorter period swinging in and out of phase \u2014 travelling waves that periodically snap back into perfect sync.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pendulum_wave/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 0.25,
+          "min": 0.05,
+          "max": 1,
+          "step": 0.025,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "spectrum",
+          "options": [
+            "spectrum",
+            "warm",
+            "cool",
+            "mono"
+          ]
+        },
+        {
+          "key": "pendulumCount",
+          "type": "range",
+          "label": "Pendulum Count",
+          "defaultValue": 18,
+          "min": 8,
+          "max": 24,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "cycleTime",
+          "type": "range",
+          "label": "Cycle Time",
+          "defaultValue": 8,
+          "min": 4,
+          "max": 16,
+          "step": 0.5,
+          "integer": false
+        },
+        {
+          "key": "swingAngle",
+          "type": "range",
+          "label": "Swing Angle",
+          "defaultValue": 0.4,
+          "min": 0.1,
+          "max": 0.8,
+          "step": 0.05,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pendulum_wave/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pendulum_wave/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pendulum_wave/preview.gif"
+      ]
+    },
+    {
+      "id": "pipes",
+      "name": "Pipes",
+      "description": "Growing pipe network using Unicode box-drawing characters.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pipes/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "blue",
+          "options": [
+            "blue",
+            "green",
+            "amber",
+            "neon",
+            "mono"
+          ]
+        },
+        {
+          "key": "density",
+          "type": "range",
+          "label": "Density",
+          "defaultValue": 6,
+          "min": 1,
+          "max": 12,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "fading",
+          "type": "select",
+          "label": "Fading",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
+        },
+        {
+          "key": "spawnRate",
+          "type": "range",
+          "label": "Spawn Rate",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pipes/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pipes/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pipes/preview.gif"
+      ]
+    },
+    {
+      "id": "planet",
+      "name": "Planet",
+      "description": "Rotating planet sphere with atmosphere, optional rings, and polar aurora.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/planet/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 0.5,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "planetColor",
+          "type": "select",
+          "label": "Planet Color",
+          "defaultValue": "earth",
+          "options": [
+            "earth",
+            "mars",
+            "ice",
+            "gas",
+            "lava",
+            "ocean",
+            "mono"
+          ]
+        },
+        {
+          "key": "planetSize",
+          "type": "range",
+          "label": "Planet Size",
+          "defaultValue": 1,
+          "min": 0.3,
+          "max": 1.5,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "rings",
+          "type": "select",
+          "label": "Rings",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
+        },
+        {
+          "key": "atmosphereColor",
+          "type": "select",
+          "label": "Atmosphere Color",
+          "defaultValue": "cyan",
+          "options": [
+            "cyan",
+            "amber",
+            "violet",
+            "green",
+            "red",
+            "white"
+          ]
+        },
+        {
+          "key": "atmosphereDensity",
+          "type": "range",
+          "label": "Atmosphere Density",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "atmosphereTurbulence",
+          "type": "range",
+          "label": "Atmosphere Turbulence",
+          "defaultValue": 0.6,
+          "min": 0,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "atmosphereDirection",
+          "type": "range",
+          "label": "Atmosphere Direction",
+          "defaultValue": 0.3,
+          "min": -1,
+          "max": 1,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "aurora",
+          "type": "select",
+          "label": "Aurora",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/planet/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/planet/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/planet/preview.gif"
+      ]
+    },
+    {
+      "id": "sandmandala",
+      "name": "Sand Mandala",
+      "description": "Radial sand mandala that builds grain by grain, holds, dissolves, and rebuilds.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/sandmandala/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "tibetan",
+          "options": [
+            "tibetan",
+            "desert",
+            "ocean",
+            "jewel",
+            "mono"
+          ]
+        },
+        {
+          "key": "symmetry",
+          "type": "select",
+          "label": "Symmetry",
+          "defaultValue": 8,
+          "options": [
+            4,
+            6,
+            8,
+            12
+          ]
+        },
+        {
+          "key": "holdTime",
+          "type": "range",
+          "label": "Hold Time",
+          "defaultValue": 300,
+          "min": 0,
+          "max": 900,
+          "step": 30,
+          "integer": true
+        },
+        {
+          "key": "dissolveStyle",
+          "type": "select",
+          "label": "Dissolve Style",
+          "defaultValue": "wind",
+          "options": [
+            "sweep",
+            "wind",
+            "fade"
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/sandmandala/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/sandmandala/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/sandmandala/preview.gif"
+      ]
+    },
+    {
+      "id": "spiderweb",
+      "name": "Spider Web",
+      "description": "A spider builds its web strand by strand, hunts drifting prey, flees wasp raids and bird strikes, and repairs the damage \u2014 all under a soft moonlight glow.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/spiderweb/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "moonlit",
+          "options": [
+            "moonlit",
+            "dawn",
+            "amber",
+            "frost",
+            "mono"
+          ]
+        },
+        {
+          "key": "pacing",
+          "type": "select",
+          "label": "Pacing",
+          "defaultValue": "medium",
+          "options": [
+            "brisk",
+            "medium",
+            "slow",
+            "glacial"
+          ]
+        },
+        {
+          "key": "webSway",
+          "type": "range",
+          "label": "Web Sway",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "dewDensity",
+          "type": "range",
+          "label": "Dew Density",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "preyRate",
+          "type": "range",
+          "label": "Prey Rate",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "predatorRate",
+          "type": "range",
+          "label": "Predator Rate",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "moonGlow",
+          "type": "range",
+          "label": "Moon Glow",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/spiderweb/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/spiderweb/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/spiderweb/preview.gif"
+      ]
+    },
+    {
+      "id": "terrarium",
+      "name": "Terrarium",
+      "description": "A living ecosystem: plants grow, seed, wilt and decay; fungi recycle litter into soil nutrients; detritivores, leaf-grazing snails, a centipede predator, and a foraging ant colony cycle through closed water, nutrient, and light cycles under day/night and seasons. Nothing goes extinct.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/terrarium/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "mossy",
+          "options": [
+            "mossy",
+            "tropical",
+            "desert",
+            "autumn",
+            "mono"
+          ]
+        },
+        {
+          "key": "plantDensity",
+          "type": "range",
+          "label": "Plant Density",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 5,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "condensation",
+          "type": "range",
+          "label": "Condensation",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "growthCycle",
+          "type": "select",
+          "label": "Growth Cycle",
+          "defaultValue": "loop",
+          "options": [
+            "loop",
+            "static"
+          ]
+        },
+        {
+          "key": "cycleTime",
+          "type": "range",
+          "label": "Cycle Time",
+          "defaultValue": 8,
+          "min": 0,
+          "max": 30,
+          "step": 0.5,
+          "integer": false
+        },
+        {
+          "key": "seasonTime",
+          "type": "range",
+          "label": "Season Time",
+          "defaultValue": 24,
+          "min": 0,
+          "max": 60,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "faunaRate",
+          "type": "range",
+          "label": "Fauna Rate",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "predatorRate",
+          "type": "range",
+          "label": "Predator Rate",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 3,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/terrarium/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/terrarium/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/terrarium/preview.gif"
+      ]
+    },
+    {
+      "id": "thunderstorm",
+      "name": "Thunderstorm",
+      "description": "Dynamic rain, lightning bolts, and storm clouds in ASCII.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/thunderstorm/preview.gif",
+      "params": [
+        {
+          "key": "intensity",
+          "type": "range",
+          "label": "Intensity",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 2,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "wind",
+          "type": "range",
+          "label": "Wind",
+          "defaultValue": 0.3,
+          "min": -1,
+          "max": 1,
+          "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "lightning",
+          "type": "range",
+          "label": "Lightning",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "tempest",
+          "options": [
+            "tempest",
+            "tropical",
+            "desert",
+            "arctic",
+            "mono"
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/thunderstorm/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/thunderstorm/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/thunderstorm/preview.gif"
+      ]
+    },
+    {
+      "id": "vinyl",
+      "name": "Vinyl Spin",
+      "description": "Spinning turntable with a rotating groove sheen, procedural radial label, tracking tonearm, and lamplit dust motes.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/vinyl/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "vinylBlack",
+          "options": [
+            "vinylBlack",
+            "red",
+            "blue",
+            "gold",
+            "mono"
+          ]
+        },
+        {
+          "key": "dustDensity",
+          "type": "range",
+          "label": "Dust Density",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "lampGlow",
+          "type": "range",
+          "label": "Lamp Glow",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/vinyl/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/vinyl/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/vinyl/preview.gif"
+      ]
+    },
+    {
+      "id": "volcano",
+      "name": "Volcanic Flow",
+      "description": "Night mountain with a glowing crater, lava flowing down a fixed channel, eruption sparks, and a rising smoke plume.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/volcano/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "classic",
+          "options": [
+            "classic",
+            "sulfur",
+            "obsidian",
+            "blueFlame",
+            "mono"
+          ]
+        },
+        {
+          "key": "flowIntensity",
+          "type": "range",
+          "label": "Flow Intensity",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "eruptionRate",
+          "type": "range",
+          "label": "Eruption Rate",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "smokeDensity",
+          "type": "range",
+          "label": "Smoke Density",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/volcano/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/volcano/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/volcano/preview.gif"
+      ]
+    },
+    {
+      "id": "waterfall",
+      "name": "Waterfall",
+      "description": "Cascading waterfall through a mossy rock channel with a base mist/spray burst and an optional faint rainbow arc.",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.jpg",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "clear",
+          "options": [
+            "clear",
+            "glacier",
+            "jungle",
+            "moonlit",
+            "mono"
+          ]
+        },
+        {
+          "key": "flowDensity",
+          "type": "range",
+          "label": "Flow Density",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "mistIntensity",
+          "type": "range",
+          "label": "Mist Intensity",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "rainbow",
+          "type": "select",
+          "label": "Rainbow",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.jpg"
+      ]
+    },
+    {
+      "id": "windchimes",
+      "name": "Wind Chimes",
+      "description": "Hanging chime tubes swaying as damped pendulums in a gusty breeze, with proximity glint flashes and synthesized bell tones (press M to toggle sound).",
+      "author": "Luci Evol",
+      "version": "1.0.0",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/windchimes/preview.gif",
+      "params": [
+        {
+          "key": "speed",
+          "type": "range",
+          "label": "Speed",
+          "defaultValue": 1,
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "palette",
+          "type": "select",
+          "label": "Palette",
+          "defaultValue": "bronze",
+          "options": [
+            "bronze",
+            "silver",
+            "bamboo",
+            "glass",
+            "mono"
+          ]
+        },
+        {
+          "key": "chimeCount",
+          "type": "range",
+          "label": "Chime Count",
+          "defaultValue": 5,
+          "min": 3,
+          "max": 7,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "windStrength",
+          "type": "range",
+          "label": "Wind Strength",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "gustFrequency",
+          "type": "range",
+          "label": "Gust Frequency",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "doublePendulum",
+          "type": "select",
+          "label": "Double Pendulum",
+          "defaultValue": 0,
+          "options": [
+            0,
+            1
+          ]
+        },
+        {
+          "key": "soundType",
+          "type": "select",
+          "label": "Sound Type",
+          "defaultValue": "bell",
+          "options": [
+            "bell",
+            "crystal",
+            "wood",
+            "gong"
+          ]
+        },
+        {
+          "key": "pitch",
+          "type": "range",
+          "label": "Pitch",
+          "defaultValue": 2,
+          "min": 2,
+          "max": 5,
+          "step": 0.05,
+          "integer": false
+        }
+      ],
+      "files": [
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/windchimes/index.html",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/windchimes/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/windchimes/preview.gif"
+      ]
+    }
+  ]
+}

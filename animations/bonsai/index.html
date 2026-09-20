@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Bonsai</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #bonsai-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(10, 10, 18, 0.92);
+            border: 1px solid rgba(50, 110, 50, 0.4);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #90b890;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #40a040;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #507050;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(50, 110, 50, 0.3);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #50a050; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="bonsai-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED        = parseFloat(_params.get('speed')       || '1');
+const P_PALETTE      = _params.get('palette') || 'natural';
+const P_LEAF_DENSITY = parseFloat(_params.get('leafDensity') || '1');
+const P_HOLD_TIME    = parseInt(_params.get('holdTime')      || '360', 10);
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Bonsai</h2>
+        <p class="credits-label">Animation</p>
+        <p>Procedural bonsai growth<br>inspired by cbonsai.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('bonsai-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 16;
+let CHAR_W = 9.6;
+let CHAR_H = 20;
+let cols = 0, rows = 0;
+
+function measureFont() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+}
+
+function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    measureFont();
+    cols = Math.floor(canvas.width  / CHAR_W);
+    rows = Math.floor(canvas.height / CHAR_H);
+}
+
+window.addEventListener('resize', () => {
+    resize();
+    if (animRunning) scheduleRestart();
+});
+
+// ─── Palettes ──────────────────────────────────────────────────────────────────
+const PALETTES = {
+    natural: {
+        trunk:     ['#6b3410', '#7a3d12', '#8B4513'],
+        branch:    ['#8B4513', '#9B5020', '#A05828'],
+        twig:      ['#B87030', '#C88040', '#D49050'],
+        leafDark:  ['#1a4d1a', '#1e5c22', '#1a5c2a', '#16501e'],
+        leafMid:   ['#228B22', '#267326', '#2a8030', '#24782a'],
+        leafLight: ['#32CD32', '#38c038', '#3db83d'],
+        potRim:    '#7a4515',
+        potBody:   '#5c3010',
+    },
+    autumn: {
+        trunk:     ['#6b3410', '#7a3d12', '#8B4513'],
+        branch:    ['#8B4513', '#9B5020', '#A05828'],
+        twig:      ['#B87030', '#C88040', '#D49050'],
+        leafDark:  ['#8B2500', '#a03010', '#6b1a00', '#7a2800'],
+        leafMid:   ['#c84000', '#d45010', '#e06020', '#c05010'],
+        leafLight: ['#ff8c00', '#ffa020', '#ffb030'],
+        potRim:    '#7a4515',
+        potBody:   '#5c3010',
+    },
+    cherry: {
+        trunk:     ['#5a3020', '#6b3828', '#7a4030'],
+        branch:    ['#7a4030', '#8B5040', '#905848'],
+        twig:      ['#b08080', '#c09090', '#d0a0a0'],
+        leafDark:  ['#a01040', '#b01850', '#8B0040', '#900838'],
+        leafMid:   ['#e040a0', '#cc3080', '#d840a0', '#e050b0'],
+        leafLight: ['#ff88cc', '#ffaad8', '#ffbbee'],
+        potRim:    '#6a3828',
+        potBody:   '#4a2818',
+    },
+    purple: {
+        trunk:     ['#3a2858', '#48306a', '#50387a'],
+        branch:    ['#50387a', '#604890', '#6850a0'],
+        twig:      ['#9070c0', '#a080d0', '#b090e0'],
+        leafDark:  ['#3a0060', '#480080', '#2a0050', '#400070'],
+        leafMid:   ['#7000a0', '#8800c0', '#9000d0', '#7800b0'],
+        leafLight: ['#c040e8', '#d060f0', '#e080ff'],
+        potRim:    '#503870',
+        potBody:   '#382858',
+    },
+    sakura: {
+        trunk:     ['#4a2c18', '#5c3420', '#6a3c28'],
+        branch:    ['#6a3c28', '#7a4838', '#886050'],
+        twig:      ['#c0a090', '#d0b0a0', '#e0c8b8'],
+        leafDark:  ['#c06080', '#d07090', '#b85070', '#c86880'],
+        leafMid:   ['#f090b0', '#f8a0c0', '#ffa8c8', '#f898b8'],
+        leafLight: ['#ffd0e8', '#ffe0f0', '#fff0f8'],
+        potRim:    '#6a3c28',
+        potBody:   '#4a2c18',
+    },
+    mono: {
+        trunk:     ['#3a3a3a', '#484848', '#555555'],
+        branch:    ['#555555', '#646464', '#707070'],
+        twig:      ['#888888', '#999999', '#aaaaaa'],
+        leafDark:  ['#555555', '#606060', '#484848', '#505050'],
+        leafMid:   ['#888888', '#909090', '#9a9a9a', '#858585'],
+        leafLight: ['#cccccc', '#d5d5d5', '#e0e0e0'],
+        potRim:    '#606060',
+        potBody:   '#484848',
+    },
+};
+
+const C = PALETTES[P_PALETTE] || PALETTES.natural;
+
+function rnd(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function coin(p = 0.5) { return Math.random() < p; }
+
+// ─── Tree generation ───────────────────────────────────────────────────────────
+// Stems and their leaf pads are interleaved — each stem terminates in its pad.
+// Branch life and pad size are scaled by a bell-curve envelope keyed to trunk
+// position: short+small near the pot, full-size at mid-trunk, smaller again at top.
+function generateTree(cx, baseY) {
+    const ops = [];
+
+    function put(x, y, char, color) {
+        x = Math.round(x);
+        y = Math.round(y);
+        if (x < 1 || x >= cols - 1 || y < 1 || y >= rows - 1) return;
+        ops.push({ x, y, char, color, key: `${x},${y}` });
+    }
+
+    // Pot
+    const pw = 14;
+    const px = cx - Math.floor(pw / 2);
+    put(px - 1, baseY,     '/',  C.potRim);
+    put(px + pw, baseY,    '\\', C.potRim);
+    for (let i = 0; i < pw; i++) put(px + i, baseY, '=', C.potRim);
+    put(px,          baseY + 1, '|',  C.potBody);
+    put(px + pw - 1, baseY + 1, '|',  C.potBody);
+    for (let i = 1; i < pw - 1; i++) put(px + i, baseY + 1, ' ', C.potBody);
+    put(px,          baseY + 2, '\\', C.potBody);
+    put(px + pw - 1, baseY + 2, '/',  C.potBody);
+    for (let i = 1; i < pw - 1; i++) put(px + i, baseY + 2, '_', C.potBody);
+
+    // Dense horizontal ellipse pad
+    const LEAF_CHARS = ['*', '&', '@', '^', '.', ',', "'", '`'];
+    function pad(cx, cy, w, h) {
+        for (let dy = -(h + 1); dy <= (h + 1); dy++) {
+            for (let dx = -(w + 2); dx <= (w + 2); dx++) {
+                const norm = (dx / w) * (dx / w) * 0.75 + (dy / h) * (dy / h) * 1.6;
+                if (norm > 1.2) continue;
+                const isEdge = norm > 0.80;
+                if (!coin(isEdge ? 0.55 : 0.88)) continue;
+                const col = Math.random() < 0.10
+                    ? rnd(C.leafLight)
+                    : Math.random() < 0.55 ? rnd(C.leafMid) : rnd(C.leafDark);
+                put(cx + dx, cy + dy, rnd(LEAF_CHARS), col);
+            }
+        }
+    }
+
+    // 2-3 overlapping pads. padSz 1=tiny blob, 5=full bonsai cloud.
+    function leafClump(cx, cy, padSz) {
+        const w = Math.max(4, (padSz + 2 + Math.floor(Math.random() * 3)) * 2);
+        const h = Math.max(2, Math.floor(padSz / 2) * 2);
+        pad(cx, cy, w, h);
+        if (padSz >= 2 && coin(0.70)) {
+            const ox = Math.round((Math.random() - 0.5) * w * 0.8);
+            pad(cx + ox, cy - 1, Math.max(2, w - 2), h);
+        }
+        if (padSz >= 3 && coin(0.40)) {
+            const ox = Math.round((Math.random() - 0.5) * w);
+            pad(cx + ox, cy - 2, Math.max(2, w - 3), h);
+        }
+    }
+
+    // Branch: stem runs outward, terminates in a leaf clump sized by padSz.
+    // Sub-branches inherit a proportionally smaller padSz.
+    function shoot(x, y, dx, life, depth, padSz) {
+        const origLife = life;
+
+        while (life > 0) {
+            life--;
+            const prog = 1 - life / origLife;
+
+            let mx, my, ch, col;
+
+            if (depth === 0) {
+                mx = coin(prog < 0.6 ? 0.78 : 0.45) ? dx : 0;
+                const r = Math.random();
+                if (prog < 0.60) {
+                    if      (r < 0.52) my = 0;
+                    else if (r < 0.72) my = 1;
+                    else               my = -1;
+                } else {
+                    my = r < 0.30 ? 0 : -1;
+                }
+                const slim = prog > 0.78;
+                if (my === 1)      ch = mx === 0 ? '|' : (dx < 0 ? '/' : '\\');
+                else if (my === 0) ch = slim ? rnd(['~', '-', '_']) : (dx < 0 ? '\\' : '/');
+                else               ch = mx === 0 ? (slim ? rnd(['/', '\\']) : '|') : (mx < 0 ? '/' : '\\');
+                col = prog < 0.3 ? rnd(C.branch) : slim ? rnd(C.twig) : rnd(C.branch);
+
+                if (life > 4 && coin(0.14)) {
+                    const subLife = Math.floor(life * 0.38) + 4;
+                    const subPad  = Math.max(1, Math.floor(padSz * 0.75));
+                    shoot(x, y, dx,  subLife,                   1, subPad);
+                    if (coin(0.35)) shoot(x, y, -dx, Math.floor(subLife * 0.55), 1, subPad);
+                }
+            } else {
+                mx = coin(0.28) ? dx : 0;
+                my = coin(0.20) ? 0 : -1;
+                const slim = prog > 0.70;
+                ch  = my === 0 ? rnd(['~', '_']) : (mx === 0 ? (slim ? rnd(['/', '\\']) : '|') : (mx < 0 ? '/' : '\\'));
+                col = slim ? rnd(C.twig) : rnd(C.branch);
+            }
+
+            put(x, y, ch, col);
+            x += mx;
+            y += my;
+        }
+
+        // Stem terminates in its leaf clump — right here, interleaved with the stem
+        leafClump(x, y, depth === 1 ? padSz : Math.max(1, padSz - 1));
+    }
+
+    // Trunk
+    const trunkH      = Math.floor(rows * 0.28);
+    const branchEvery = Math.max(2, Math.floor(trunkH / 7));
+    let tx = cx, ty = baseY - 1;
+
+    for (let i = 0; i < trunkH; i++) {
+        const age    = i / trunkH;
+        const isBase = age < 0.15;
+
+        const wob = (!isBase && coin(0.12)) ? (coin() ? -1 : 1) : 0;
+        const ch  = wob === 0 ? '|' : (wob < 0 ? '/' : '\\');
+        const col = isBase ? rnd(C.trunk) : age < 0.45 ? rnd(C.branch) : rnd(C.twig);
+        put(tx, ty, ch, col);
+
+        if (!isBase && i > 0 && i % branchEvery === 0) {
+            // Bell-curve envelope: small at base, peak at mid-trunk, smaller at top
+            const envelope = 0.55 + 0.45 * Math.sin((i / trunkH) * Math.PI);
+            const life     = Math.floor(cols * 0.55 * envelope) + 6;
+            const padSz    = Math.max(1, Math.round(envelope * 5));
+            shoot(tx - 1, ty, -1, life, 0, padSz);
+            shoot(tx + 1, ty, +1, life, 0, padSz);
+        }
+
+        tx += wob;
+        ty--;
+    }
+
+    // Crown
+    leafClump(tx, ty,     3);
+    leafClump(tx, ty - 2, 2);
+
+    return ops;
+}
+
+// ─── Falling leaves ────────────────────────────────────────────────────────────
+const FALL_CHARS = ['*', '.', ',', "'", '`', '&', '^'];
+
+class FallingLeaf {
+    constructor() { this.spawn(true); }
+    spawn(randomY = false) {
+        this.x     = Math.random() * cols;
+        this.y     = randomY ? Math.random() * rows : -1;
+        this.vy    = 0.025 + Math.random() * 0.06;
+        this.vx    = (Math.random() - 0.5) * 0.04;
+        this.char  = rnd(FALL_CHARS);
+        this.color = Math.random() < 0.3 ? rnd(C.leafLight) : rnd(C.leafMid);
+    }
+    update() {
+        this.y += this.vy;
+        this.x += this.vx;
+        if (this.y > rows || this.x < 0 || this.x > cols) this.spawn();
+    }
+}
+
+// ─── Animation loop ────────────────────────────────────────────────────────────
+let drawOps    = [];
+let drawn      = new Map();
+let fallers    = [];
+let phase      = 'IDLE';
+let growIdx    = 0;
+let holdFrames = 0;
+let fadeAlpha  = 1;
+let raf        = null;
+let animRunning  = false;
+let restartTimer = null;
+
+const GROW_PER_FRAME = Math.max(1, Math.round(3 * P_SPEED));
+const HOLD_FRAMES    = P_HOLD_TIME;
+const LEAF_COUNT     = Math.round(40 * P_LEAF_DENSITY);
+
+function scheduleRestart() {
+    if (restartTimer) clearTimeout(restartTimer);
+    restartTimer = setTimeout(startCycle, 50);
+}
+
+function startCycle() {
+    if (raf) cancelAnimationFrame(raf);
+    drawn.clear();
+    growIdx    = 0;
+    holdFrames = 0;
+    fadeAlpha  = 1;
+    fallers    = Array.from({ length: LEAF_COUNT }, () => new FallingLeaf());
+
+    resize();
+    drawOps = generateTree(Math.floor(cols / 2), rows - 4);
+    phase   = 'GROWING';
+    animRunning = true;
+    loop();
+}
+
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font         = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    // State transitions
+    if (phase === 'GROWING') {
+        for (let i = 0; i < GROW_PER_FRAME && growIdx < drawOps.length; i++, growIdx++) {
+            const op = drawOps[growIdx];
+            drawn.set(op.key, { char: op.char, color: op.color });
+        }
+        if (growIdx >= drawOps.length) phase = 'HOLDING';
+    }
+
+    if (phase === 'HOLDING') {
+        fallers.forEach(l => l.update());
+        if (++holdFrames > HOLD_FRAMES) phase = 'FADING';
+    }
+
+    if (phase === 'FADING') {
+        fallers.forEach(l => l.update());
+        fadeAlpha -= 0.007;
+        if (fadeAlpha <= 0) {
+            animRunning = false;
+            setTimeout(startCycle, 800);
+            return;
+        }
+    }
+
+    // Draw tree
+    ctx.globalAlpha = phase === 'FADING' ? fadeAlpha : 1;
+    drawn.forEach(({ char, color }, key) => {
+        const comma = key.indexOf(',');
+        ctx.fillStyle = color;
+        ctx.fillText(char, parseInt(key) * CHAR_W, parseInt(key.slice(comma + 1)) * CHAR_H);
+    });
+
+    // Draw falling leaves during hold + fade
+    if (phase === 'HOLDING' || phase === 'FADING') {
+        ctx.globalAlpha = (phase === 'FADING' ? fadeAlpha : 1) * 0.75;
+        fallers.forEach(l => {
+            ctx.fillStyle = l.color;
+            ctx.fillText(l.char, Math.floor(l.x) * CHAR_W, Math.floor(l.y) * CHAR_H);
+        });
+    }
+
+    ctx.globalAlpha = 1;
+    raf = requestAnimationFrame(loop);
+}
+
+// ─── Entry point ───────────────────────────────────────────────────────────────
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        startCycle();
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

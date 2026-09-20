@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinyl Spin</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a12;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    body.screensaver-mode { cursor: none; }
+
+    #vinyl-canvas {
+      display: block;
+      opacity: 0;
+      transition: opacity 2s ease-in;
+    }
+
+    .credits-popup {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      background: rgba(10, 10, 18, 0.92);
+      border: 1px solid rgba(90, 90, 100, 0.4);
+      border-radius: 8px;
+      padding: 20px 24px;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 12px;
+      color: #aaaab0;
+      max-width: 280px;
+      opacity: 0;
+      transition: opacity 2s ease-in-out;
+      z-index: 100;
+      line-height: 1.6;
+    }
+    .credits-popup.visible { opacity: 1; }
+    .credits-popup h2 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #d8d8e0;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .credits-popup .credits-label {
+      font-size: 10px;
+      color: #707078;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    .credits-popup hr {
+      border: none;
+      border-top: 1px solid rgba(90, 90, 100, 0.3);
+      margin: 12px 0;
+    }
+    .credits-popup a { color: #9090a0; text-decoration: none; }
+  </style>
+</head>
+<body>
+<canvas id="vinyl-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED         = parseFloat(_params.get('speed')       || '1');
+const P_PALETTE       = _params.get('palette')                || 'vinylBlack';
+const P_DUST_DENSITY  = parseFloat(_params.get('dustDensity')  || '1');
+const P_LAMP_GLOW     = parseFloat(_params.get('lampGlow')     || '1');
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>Vinyl Spin</h2>
+        <p class="credits-label">Animation</p>
+        <p>Spinning turntable with tracking tonearm,<br>radial label, and lamplit dust motes.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Palettes ──────────────────────────────────────────────────────────────────
+const PALETTES = {
+    vinylBlack: {
+        disc:        '#1a1a1d',
+        discRim:     '#2a2a2e',
+        grooveLight: '#3a3a40',
+        grooveDark:  '#0c0c0e',
+        labelBg:     '#8a1a1a',
+        labelText:   '#e8d8a0',
+        tonearm:     '#c0c0c8',
+        lampRgb:     '255,220,160',
+    },
+    red: {
+        disc:        '#2a0a0a',
+        discRim:     '#401414',
+        grooveLight: '#682828',
+        grooveDark:  '#180404',
+        labelBg:     '#700000',
+        labelText:   '#ffe0c0',
+        tonearm:     '#d0a0a0',
+        lampRgb:     '255,180,160',
+    },
+    blue: {
+        disc:        '#0a0e2a',
+        discRim:     '#141c40',
+        grooveLight: '#283868',
+        grooveDark:  '#040818',
+        labelBg:     '#0a2a70',
+        labelText:   '#d0e0ff',
+        tonearm:     '#a0b0d0',
+        lampRgb:     '170,200,255',
+    },
+    gold: {
+        disc:        '#2a2008',
+        discRim:     '#403010',
+        grooveLight: '#685828',
+        grooveDark:  '#181004',
+        labelBg:     '#7a5a00',
+        labelText:   '#fff0c0',
+        tonearm:     '#d0c0a0',
+        lampRgb:     '255,225,150',
+    },
+    mono: {
+        disc:        '#1c1c1c',
+        discRim:     '#2c2c2c',
+        grooveLight: '#3c3c3c',
+        grooveDark:  '#0e0e0e',
+        labelBg:     '#454545',
+        labelText:   '#e0e0e0',
+        tonearm:     '#b8b8b8',
+        lampRgb:     '230,230,230',
+    },
+};
+
+const PAL = PALETTES[P_PALETTE] || PALETTES.vinylBlack;
+
+// ─── Rotation state ─────────────────────────────────────────────────────────────
+// Real 33⅓ RPM = 2π/ (60/33.33) rad/s ≈ 0.2094 rad/s. Convert to rad/ms and scale by speed.
+const RPM_ANGULAR_VEL = (2 * Math.PI * (33.333 / 60)) / 1000; // rad/ms at speed=1
+let discAngle = 0;
+
+const GROOVE_CHARS = ['-', '=', '~', '·', '.', "'"];
+
+// ─── Tonearm state ──────────────────────────────────────────────────────────────
+// Tonearm pivots from a fixed post at the upper-right of the platter. Its needle
+// position interpolates linearly inward from the outer groove edge to the label
+// edge over one simulated track runtime, then "lifts" and resets to the outer edge.
+const TRACK_DURATION_MS = 45000; // ~45s per simulated side at speed=1
+let trackProgress = 0; // 0 = needle at outer edge, 1 = needle at label edge
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('vinyl-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 15;
+let CHAR_W = 9.0, CHAR_H = 18.75;
+let W = 0, H = 0;
+let CX = 0, CY = 0, DISC_R = 0;
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+    CX = W * 0.5;
+    CY = H * 0.52;
+    DISC_R = Math.min(W, H) * 0.38;
+    updateLampPosition();
+}
+window.addEventListener('resize', resize);
+
+// ─── Lamp cone ───────────────────────────────────────────────────────────────────
+// Lamp sits off-screen upper-left, casting a soft cone of light down across the
+// platter. Defined as an angular wedge from LAMP_X/LAMP_Y; dust motes are confined
+// to this wedge so they only sparkle where the "light" actually falls.
+let LAMP_X = 0, LAMP_Y = 0;
+const LAMP_CONE_HALF_ANGLE = Math.PI / 22; // ~8.2° half-angle — a tight directional beam,
+                                            // not a wide wedge covering most of the screen
+const LAMP_CONE_DIR = Math.PI * 0.32;      // cone points down-and-right from the lamp
+const LAMP_CONE_LEN = 0.62;                // fraction of screen diagonal the cone reaches
+
+function updateLampPosition() {
+    LAMP_X = W * 0.08;
+    LAMP_Y = -H * 0.05;
+}
+
+function isInCone(x, y) {
+    const dx = x - LAMP_X, dy = y - LAMP_Y;
+    const dist = Math.hypot(dx, dy);
+    const maxDist = Math.hypot(W, H) * LAMP_CONE_LEN;
+    if (dist > maxDist) return false;
+    const a = Math.atan2(dy, dx);
+    let diff = a - LAMP_CONE_DIR;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    return Math.abs(diff) <= LAMP_CONE_HALF_ANGLE;
+}
+
+function drawLampCone(glowIntensity) {
+    if (glowIntensity <= 0) return;
+    const maxDist = Math.hypot(W, H) * LAMP_CONE_LEN;
+    const a0 = LAMP_CONE_DIR - LAMP_CONE_HALF_ANGLE;
+    const a1 = LAMP_CONE_DIR + LAMP_CONE_HALF_ANGLE;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(LAMP_X, LAMP_Y);
+    ctx.arc(LAMP_X, LAMP_Y, maxDist, a0, a1);
+    ctx.closePath();
+
+    const grad = ctx.createRadialGradient(LAMP_X, LAMP_Y, 0, LAMP_X, LAMP_Y, maxDist);
+    grad.addColorStop(0,    `rgba(${PAL.lampRgb},${0.16 * glowIntensity})`);
+    grad.addColorStop(0.5,  `rgba(${PAL.lampRgb},${0.07 * glowIntensity})`);
+    grad.addColorStop(1,    `rgba(${PAL.lampRgb},0)`);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+}
+
+// ─── Dust motes (SOA particle pool) ─────────────────────────────────────────────
+const MAX_DUST = Math.round(60 * Math.max(0, P_DUST_DENSITY));
+const dustX     = new Float32Array(MAX_DUST);
+const dustY     = new Float32Array(MAX_DUST);
+const dustVX    = new Float32Array(MAX_DUST);
+const dustVY    = new Float32Array(MAX_DUST);
+const dustAlpha = new Float32Array(MAX_DUST);
+const dustPhase = new Float32Array(MAX_DUST);
+const dustAlive = new Uint8Array(MAX_DUST);
+
+function respawnDust(i) {
+    const dist  = Math.random() * Math.hypot(W, H) * LAMP_CONE_LEN;
+    const angle = LAMP_CONE_DIR + (Math.random() * 2 - 1) * LAMP_CONE_HALF_ANGLE;
+    dustX[i] = LAMP_X + Math.cos(angle) * dist;
+    dustY[i] = LAMP_Y + Math.sin(angle) * dist;
+    dustVX[i] = (Math.random() - 0.5) * 0.006;
+    dustVY[i] = 0.004 + Math.random() * 0.010;
+    dustPhase[i] = Math.random() * Math.PI * 2;
+    dustAlive[i] = 1;
+}
+
+function initDust() {
+    for (let i = 0; i < MAX_DUST; i++) respawnDust(i);
+}
+
+function updateDust(dtMs) {
+    for (let i = 0; i < MAX_DUST; i++) {
+        dustX[i] += dustVX[i] * dtMs * P_SPEED;
+        dustY[i] += dustVY[i] * dtMs * P_SPEED;
+        dustPhase[i] += 0.002 * dtMs;
+        if (!isInCone(dustX[i], dustY[i]) || dustY[i] > H + 20) {
+            respawnDust(i);
+        }
+    }
+}
+
+const DUST_CHARS = ['.', "'", '·', '*'];
+
+function drawDust() {
+    if (MAX_DUST === 0) return;
+    ctx.save();
+    ctx.font = `${FONT_SIZE * 0.55}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = `rgb(${PAL.lampRgb})`;
+    for (let i = 0; i < MAX_DUST; i++) {
+        const twinkle = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(dustPhase[i]));
+        ctx.globalAlpha = twinkle * Math.min(1, P_LAMP_GLOW + 0.3);
+        ctx.fillText(DUST_CHARS[i % DUST_CHARS.length], dustX[i], dustY[i]);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+}
+
+// ─── Static turntable base ─────────────────────────────────────────────────────
+function drawPlinth() {
+    // Square plinth behind the platter
+    const plinthSize = DISC_R * 2.55;
+    const px = CX - plinthSize / 2;
+    const py = CY - plinthSize / 2;
+    ctx.fillStyle = '#15151a';
+    ctx.fillRect(px, py, plinthSize, plinthSize);
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px, py, plinthSize, plinthSize);
+
+    // Platter (slightly larger than disc, metallic rim)
+    ctx.beginPath();
+    ctx.arc(CX, CY, DISC_R * 1.06, 0, Math.PI * 2);
+    ctx.fillStyle = '#22222a';
+    ctx.fill();
+    ctx.strokeStyle = '#34343e';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+
+function drawDiscOutline() {
+    ctx.beginPath();
+    ctx.arc(CX, CY, DISC_R, 0, Math.PI * 2);
+    ctx.fillStyle = PAL.disc;
+    ctx.fill();
+    ctx.strokeStyle = PAL.discRim;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Center spindle hole
+    ctx.beginPath();
+    ctx.arc(CX, CY, DISC_R * 0.025, 0, Math.PI * 2);
+    ctx.fillStyle = '#000';
+    ctx.fill();
+}
+
+// ─── Groove rings ───────────────────────────────────────────────────────────────
+// Grooves occupy the band between the label radius and the disc rim. Each ring is
+// drawn as a full circle stroke whose alpha sine-modulates with rotation angle to
+// fake a rotating sheen/reflection, plus a sparse ring of ASCII tick glyphs that
+// visibly rotate with the disc so the spin is unambiguous even at a glance.
+const LABEL_R_FRAC = 0.30; // label occupies inner 30% of disc radius
+const GROOVE_COUNT = 22;
+
+function drawGrooves(angle) {
+    const innerR = DISC_R * LABEL_R_FRAC;
+    const outerR = DISC_R * 0.97;
+    const band   = outerR - innerR;
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    for (let i = 0; i < GROOVE_COUNT; i++) {
+        const t = i / (GROOVE_COUNT - 1);
+        const r = innerR + t * band;
+
+        // Sine-modulated sheen: a soft bright arc sweeps around the ring as it
+        // "rotates", anchored to disc angle so it reads as reflection on spinning vinyl.
+        const sheen = 0.5 + 0.5 * Math.sin(angle * 2 + t * 9);
+        const alpha = 0.18 + sheen * 0.22;
+
+        ctx.beginPath();
+        ctx.arc(CX, CY, r, 0, Math.PI * 2);
+        ctx.strokeStyle = i % 3 === 0 ? PAL.grooveLight : PAL.grooveDark;
+        ctx.globalAlpha = alpha;
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Sparse rotating tick glyphs along a couple of rings, to make rotation legible
+    ctx.font = `${FONT_SIZE * 0.62}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const tickRings = [0.35, 0.55, 0.75, 0.92];
+    for (let ri = 0; ri < tickRings.length; ri++) {
+        const r = innerR + tickRings[ri] * band;
+        const tickCount = 28 + ri * 10;
+        for (let k = 0; k < tickCount; k++) {
+            const a = angle + (k / tickCount) * Math.PI * 2;
+            const x = CX + Math.cos(a) * r;
+            const y = CY + Math.sin(a) * r;
+            const glyphAlpha = 0.12 + 0.10 * (0.5 + 0.5 * Math.sin(a * 3 + angle));
+            ctx.globalAlpha = glyphAlpha;
+            ctx.fillStyle = PAL.grooveLight;
+            ctx.fillText(GROOVE_CHARS[(k + ri) % GROOVE_CHARS.length], x, y);
+        }
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+}
+
+// ─── Procedural radial label ───────────────────────────────────────────────────
+// A pie-wedge sunburst pattern with alternating wedge colors and a thin concentric
+// "spindle hole" ring, rotating rigidly with the disc (same angle as the grooves).
+const LABEL_SEGMENTS = 16;
+
+function drawLabel(angle) {
+    const r = DISC_R * LABEL_R_FRAC;
+
+    ctx.save();
+    ctx.translate(CX, CY);
+    ctx.rotate(angle);
+
+    // Label disc base
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = PAL.labelBg;
+    ctx.fill();
+
+    // Radial sunburst wedges, alternating shade
+    for (let i = 0; i < LABEL_SEGMENTS; i++) {
+        const a0 = (i / LABEL_SEGMENTS) * Math.PI * 2;
+        const a1 = ((i + 1) / LABEL_SEGMENTS) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, r * 0.92, a0, a1);
+        ctx.closePath();
+        ctx.globalAlpha = i % 2 === 0 ? 0.12 : 0;
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Concentric rings inside the label (track listing lines)
+    ctx.strokeStyle = PAL.labelText;
+    ctx.lineWidth = 1;
+    for (const frac of [0.35, 0.55, 0.78]) {
+        ctx.globalAlpha = 0.35;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * frac, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Curved label text along the top arc ("ASCII RECORDS")
+    const text = 'ASCII RECORDS • SIDE A • ';
+    ctx.font = `${FONT_SIZE * 0.5}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.fillStyle = PAL.labelText;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const textR = r * 0.66;
+    const anglePerChar = (Math.PI * 1.7) / text.length;
+    let charAngle = -Math.PI * 0.85;
+    for (const ch of text) {
+        ctx.save();
+        ctx.rotate(charAngle);
+        ctx.translate(0, -textR);
+        ctx.fillText(ch, 0, 0);
+        ctx.restore();
+        charAngle += anglePerChar;
+    }
+
+    // Spindle hole (rotates with disc but always looks the same — fine)
+    ctx.beginPath();
+    ctx.arc(0, 0, DISC_R * 0.025, 0, Math.PI * 2);
+    ctx.fillStyle = '#000';
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// ─── Tonearm ─────────────────────────────────────────────────────────────────────
+function drawTonearm(progress) {
+    const innerR = DISC_R * LABEL_R_FRAC;
+    const outerR = DISC_R * 0.97;
+    const needleTargetR = outerR - progress * (outerR - innerR);
+
+    // Pivot post sits outside the disc, upper-right
+    const pivotX = CX + DISC_R * 1.35;
+    const pivotY = CY - DISC_R * 0.95;
+
+    // The arm itself has a FIXED length and only swings (rotates about the pivot) —
+    // it never extends or retracts, like a real tonearm. To make the needle land at
+    // a given distance from the disc center as it tracks inward, we solve for the
+    // pivot angle via the law of cosines on the pivot/center/needle triangle (sides:
+    // armLength, d = pivot-to-center distance, needleTargetR).
+    const armLength = DISC_R * 1.6;
+    const d = Math.hypot(CX - pivotX, CY - pivotY);
+    const beta = Math.atan2(CY - pivotY, CX - pivotX); // angle from pivot toward disc center
+
+    const cosPhi = (armLength * armLength + d * d - needleTargetR * needleTargetR) / (2 * armLength * d);
+    const phi = Math.acos(Math.max(-1, Math.min(1, cosPhi)));
+    const armAngle = beta - phi;
+
+    const needleX = pivotX + Math.cos(armAngle) * armLength;
+    const needleY = pivotY + Math.sin(armAngle) * armLength;
+
+    ctx.save();
+
+    // Headshell counterweight nub at the pivot
+    ctx.beginPath();
+    ctx.arc(pivotX, pivotY, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#2a2a30';
+    ctx.fill();
+    ctx.strokeStyle = PAL.tonearm;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Arm shaft
+    ctx.beginPath();
+    ctx.moveTo(pivotX, pivotY);
+    ctx.lineTo(needleX, needleY);
+    ctx.strokeStyle = PAL.tonearm;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Headshell box at the needle end, oriented along the arm angle
+    ctx.translate(needleX, needleY);
+    ctx.rotate(armAngle);
+    ctx.fillStyle = '#1c1c20';
+    ctx.fillRect(-10, -4, 14, 8);
+    ctx.strokeStyle = PAL.tonearm;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-10, -4, 14, 8);
+
+    // Needle tip glint
+    ctx.beginPath();
+    ctx.arc(4, 0, 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#e8e8f0';
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// ─── Draw ───────────────────────────────────────────────────────────────────────
+function draw(now) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0a0a12';
+    ctx.fillRect(0, 0, W, H);
+
+    discAngle += RPM_ANGULAR_VEL * dtMs * P_SPEED;
+
+    trackProgress += (dtMs / TRACK_DURATION_MS) * P_SPEED;
+    if (trackProgress > 1) trackProgress = 0; // needle lifts and resets to outer edge
+
+    updateDust(dtMs);
+
+    drawLampCone(P_LAMP_GLOW);
+    drawPlinth();
+    drawDiscOutline();
+    drawGrooves(discAngle);
+    drawLabel(discAngle);
+    drawTonearm(trackProgress);
+    drawDust();
+}
+
+// ─── Loop ───────────────────────────────────────────────────────────────────────
+let lastTs = 0;
+let raf = null;
+let dtMs = 16.67;
+
+function frame(ts) {
+    dtMs = Math.min(ts - lastTs, 100);
+    lastTs = ts;
+    draw(ts);
+    raf = requestAnimationFrame(frame);
+}
+
+function startAnimation() {
+    resize();
+    initDust();
+    canvas.style.opacity = '1';
+    lastTs = performance.now();
+    raf = requestAnimationFrame(frame);
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

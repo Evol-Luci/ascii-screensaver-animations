@@ -1,0 +1,63 @@
+{
+  "id": "moon",
+  "name": "Moon",
+  "description": "Orbital ASCII scene with star count, floaters, glow, and palette.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "silver",
+      "options": [
+        "silver",
+        "gold",
+        "blood",
+        "blue",
+        "green"
+      ]
+    },
+    {
+      "key": "stars",
+      "type": "range",
+      "label": "Stars",
+      "defaultValue": 120,
+      "min": 0,
+      "max": 300,
+      "step": 10,
+      "integer": true
+    },
+    {
+      "key": "floaterFreq",
+      "type": "range",
+      "label": "Floater Freq",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "glowIntensity",
+      "type": "range",
+      "label": "Glow Intensity",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.05,
+      "integer": false
+    }
+  ]
+}

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Crystals</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #08080c; overflow: hidden; width: 100vw; height: 100vh; }
+    body.screensaver-mode { cursor: none; }
+    #scene { display: block; opacity: 0; transition: opacity 2s ease-in; }
+    .credits-popup {
+      position: fixed; bottom: 32px; right: 32px;
+      background: rgba(8, 8, 12, 0.92); border: 1px solid rgba(150, 100, 200, 0.4);
+      border-radius: 8px; padding: 20px 24px;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 12px; color: #b8a8d0; max-width: 280px;
+      opacity: 0; transition: opacity 2s ease-in-out; z-index: 100; line-height: 1.6;
+    }
+    .credits-popup.visible { opacity: 1; }
+    .credits-popup h2 {
+      font-size: 14px; font-weight: 700; color: #d8c8f0;
+      letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;
+    }
+    .credits-popup .credits-label {
+      font-size: 10px; color: #8878a0;
+      text-transform: uppercase; letter-spacing: 1px; margin: 10px 0 4px;
+    }
+    .credits-popup hr { border: none; border-top: 1px solid rgba(150, 100, 200, 0.3); margin: 12px 0; }
+    .credits-popup a { color: #d0b0f0; text-decoration: none; }
+  </style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="credits" class="credits-popup">
+  <h2>Crystals</h2>
+  <div>Geological cave growth simulation</div>
+  <div class="credits-label">Algorithm</div>
+  <div>Procedural stalactite and stalagmite rendering with bioluminescent pooling</div>
+  <hr>
+  <div>Part of the Omarchy ASCII Collection</div>
+</div>
+
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+
+if (SCREENSAVER_MODE) document.body.classList.add('screensaver-mode');
+
+const P_SPEED    = parseFloat(_params.get('speed')    || '1.0');
+const P_PALETTE  = _params.get('palette')             || 'amethyst';
+const P_POOLGLOW = parseFloat(_params.get('poolGlow') || '1.0');
+const P_DRIPRATE = parseFloat(_params.get('dripRate') || '1.0');
+const P_DENSITY  = parseFloat(_params.get('density')  || '1.0');
+
+const PALETTES = {
+  amethyst: { core: '#8b5cf6', mid: '#a78bfa', edge: '#c4b5fd', tip: '#ddd6fe', pool: '#6d28d9', bg: '#08080c' },
+  quartz:   { core: '#f43f5e', mid: '#fb7185', edge: '#fda4af', tip: '#fecdd3', pool: '#be123c', bg: '#0c0808' },
+  emerald:  { core: '#10b981', mid: '#34d399', edge: '#6ee7b7', tip: '#a7f3d0', pool: '#047857', bg: '#080c0a' },
+  obsidian: { core: '#3f3f46', mid: '#71717a', edge: '#a1a1aa', tip: '#e4e4e7', pool: '#18181b', bg: '#050505' },
+  ice:      { core: '#0ea5e9', mid: '#38bdf8', edge: '#7dd3fc', tip: '#bae6fd', pool: '#0369a1', bg: '#080a0c' }
+};
+
+const colors = PALETTES[P_PALETTE] || PALETTES.amethyst;
+document.body.style.background = colors.bg;
+
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+const CHAR_W = 8.4;
+const CHAR_H = 14;
+
+let cols, rows;
+let targetTop = [], targetBottom = [];
+let currentTop = [], currentBottom = [];
+let poolY = 0;
+let drips = [], ripples = [];
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  cols = Math.floor(canvas.width / CHAR_W);
+  rows = Math.floor(canvas.height / CHAR_H);
+  ctx.font = '14px "JetBrains Mono", monospace';
+  ctx.textBaseline = 'top';
+  initCave();
+}
+window.addEventListener('resize', resize);
+
+function smoothNoise(arr, passes, strength) {
+  for (let p = 0; p < passes; p++) {
+    let prev = arr[0];
+    for (let i = 1; i < arr.length - 1; i++) {
+      let curr = arr[i];
+      arr[i] = (prev + arr[i] + arr[i+1]) / 3;
+      arr[i] += (Math.random() - 0.5) * strength;
+      prev = curr;
+    }
+  }
+}
+
+function initCave() {
+  poolY = Math.floor(rows * 0.85);
+
+  targetTop = Array(cols).fill(0);
+  targetBottom = Array(cols).fill(0);
+  currentTop = Array(cols).fill(0);
+  currentBottom = Array(cols).fill(0);
+
+  for (let i = 0; i < cols; i++) {
+    targetTop[i] = Math.max(1, Math.random() * (rows * 0.45) * P_DENSITY);
+    targetBottom[i] = Math.max(1, Math.random() * (rows * 0.4) * P_DENSITY);
+  }
+  
+  smoothNoise(targetTop, 6, 2.5);
+  smoothNoise(targetBottom, 6, 2.5);
+  
+  for(let i=0; i<cols; i++) {
+    targetTop[i] = Math.max(1, Math.floor(Math.min(targetTop[i], poolY - 4)));
+    targetBottom[i] = Math.max(1, Math.floor(Math.min(targetBottom[i], poolY - 2)));
+  }
+  drips = [];
+  ripples = [];
+}
+
+function getCrystalChar(depth, maxDepth, isTop) {
+  let ratio = depth / maxDepth;
+  if (ratio < 0.25) return '█';
+  if (ratio < 0.45) return '▓';
+  if (ratio < 0.65) return '▒';
+  if (ratio < 0.85) return '░';
+  if (ratio < 0.95) return isTop ? '\\' : '/';
+  return '·';
+}
+
+function getCrystalColor(depth, maxDepth) {
+  let ratio = depth / maxDepth;
+  if (ratio < 0.3) return colors.core;
+  if (ratio < 0.6) return colors.mid;
+  if (ratio < 0.9) return colors.edge;
+  return colors.tip;
+}
+
+let lastTime = 0;
+let phase = 'grow';
+let phaseTimer = 0;
+
+function loop(time) {
+  requestAnimationFrame(loop);
+  let dt = (time - lastTime) * 0.001 * P_SPEED;
+  lastTime = time;
+  if (dt > 0.1) dt = 0.1;
+
+  phaseTimer += dt;
+  if (phase === 'grow' && phaseTimer > 60) {
+    phase = 'hold'; phaseTimer = 0;
+  } else if (phase === 'hold' && phaseTimer > 25) {
+    phase = 'fade'; phaseTimer = 0;
+  } else if (phase === 'fade' && phaseTimer > 15) {
+    phase = 'grow'; phaseTimer = 0;
+    initCave();
+  }
+
+  if (phase === 'grow') {
+    for (let i = 0; i < cols; i++) {
+      if (Math.random() < 1.5 * dt) {
+        if (currentTop[i] < targetTop[i]) currentTop[i] += 0.3;
+      }
+      if (Math.random() < 1.5 * dt) {
+        if (currentBottom[i] < targetBottom[i]) currentBottom[i] += 0.3;
+      }
+      if (Math.random() < 0.1 * dt * P_DRIPRATE && currentTop[i] > 3) {
+        drips.push({ x: i, y: currentTop[i], speed: 12 + Math.random()*8 });
+      }
+    }
+  }
+
+  for (let i = drips.length - 1; i >= 0; i--) {
+    let d = drips[i];
+    d.y += d.speed * dt;
+    if (d.y >= poolY) {
+      ripples.push({ x: d.x, age: 0, maxAge: 1.5 + Math.random() });
+      drips.splice(i, 1);
+    }
+  }
+
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    let r = ripples[i];
+    r.age += dt;
+    if (r.age >= r.maxAge) ripples.splice(i, 1);
+  }
+
+  draw();
+}
+
+function draw() {
+  ctx.fillStyle = colors.bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  let globalAlpha = 1.0;
+  if (phase === 'fade') globalAlpha = Math.max(0, 1.0 - (phaseTimer / 15));
+  else if (phase === 'grow' && phaseTimer < 5) globalAlpha = phaseTimer / 5;
+  ctx.globalAlpha = globalAlpha;
+
+  // Pool
+  for (let y = poolY; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let char = Math.random() > 0.8 ? '~' : '≈';
+      let rippleForce = 0;
+      for (let r of ripples) {
+        let dist = Math.abs(x - r.x);
+        let waveRadius = r.age * 12;
+        if (Math.abs(dist - waveRadius) < 2) rippleForce += (1.0 - (r.age / r.maxAge));
+      }
+      if (rippleForce > 0) {
+        ctx.fillStyle = colors.tip;
+        char = '-';
+      } else {
+        ctx.fillStyle = colors.pool;
+        ctx.globalAlpha = (0.2 + Math.random()*0.15) * P_POOLGLOW * globalAlpha;
+      }
+      ctx.fillText(char, x * CHAR_W, y * CHAR_H);
+    }
+  }
+  ctx.globalAlpha = globalAlpha;
+
+  // Stalactites
+  for (let x = 0; x < cols; x++) {
+    let len = Math.floor(currentTop[x]);
+    for (let y = 0; y < len; y++) {
+      ctx.fillStyle = getCrystalColor(y, targetTop[x]);
+      ctx.fillText(getCrystalChar(y, targetTop[x], true), x * CHAR_W, y * CHAR_H);
+    }
+    if (len > 0) {
+      ctx.fillStyle = colors.tip;
+      ctx.fillText('v', x * CHAR_W, len * CHAR_H);
+    }
+  }
+
+  // Stalagmites
+  for (let x = 0; x < cols; x++) {
+    let len = Math.floor(currentBottom[x]);
+    for (let i = 0; i < len; i++) {
+      let y = rows - 1 - i;
+      if (y >= poolY) continue; 
+      ctx.fillStyle = getCrystalColor(i, targetBottom[x]);
+      ctx.fillText(getCrystalChar(i, targetBottom[x], false), x * CHAR_W, y * CHAR_H);
+    }
+    if (len > 0) {
+      let tipY = rows - 1 - len;
+      if (tipY < poolY) {
+        ctx.fillStyle = colors.tip;
+        ctx.fillText('^', x * CHAR_W, tipY * CHAR_H);
+      }
+    }
+  }
+
+  ctx.fillStyle = colors.tip;
+  for (let d of drips) ctx.fillText('|', d.x * CHAR_W, Math.floor(d.y) * CHAR_H);
+  
+  ctx.globalAlpha = 1.0;
+}
+
+resize();
+canvas.style.opacity = '1';
+
+if (SCREENSAVER_MODE) {
+  let armed = false;
+  setTimeout(() => { armed = true; }, 1500);
+  const dismiss = () => {
+    if (!armed) return;
+    try { window.close(); } catch (e) {}
+    document.body.innerHTML = '';
+    document.body.style.background = '#000';
+  };
+  window.addEventListener('keydown', dismiss);
+  window.addEventListener('mousedown', dismiss);
+  window.addEventListener('mousemove', (() => {
+    let lastX = -1, lastY = -1, moveCount = 0;
+    return (e) => {
+      if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+      if (e.clientX === lastX && e.clientY === lastY) return;
+      lastX = e.clientX; lastY = e.clientY;
+      if (++moveCount > 10) dismiss();
+    };
+  })());
+} else {
+  let to;
+  document.addEventListener('mousemove', () => {
+    const p = document.getElementById('credits');
+    p.classList.add('visible');
+    clearTimeout(to);
+    to = setTimeout(() => p.classList.remove('visible'), 3000);
+  });
+}
+
+if (DELAYED_START) setTimeout(() => requestAnimationFrame(loop), 2000);
+else requestAnimationFrame(loop);
+</script>
+</body>
+</html>

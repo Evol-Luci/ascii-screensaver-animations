@@ -1,0 +1,93 @@
+{
+  "id": "aquarium",
+  "name": "Aquarium",
+  "description": "A living reef: the fish school rests at night, flees a roaming predator, and swarms feeding events, under a day/night lighting cycle with sunbeams, plankton, kelp, and sand crabs.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "tropical",
+      "options": [
+        "tropical",
+        "deepsea",
+        "freshwater",
+        "neon",
+        "mono"
+      ]
+    },
+    {
+      "key": "fishCount",
+      "type": "range",
+      "label": "Fish Count",
+      "defaultValue": 10,
+      "min": 5,
+      "max": 20,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "kelpDensity",
+      "type": "range",
+      "label": "Kelp Density",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "bubbleRate",
+      "type": "range",
+      "label": "Bubble Rate",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "cycleTime",
+      "type": "range",
+      "label": "Cycle Time",
+      "defaultValue": 8,
+      "min": 0,
+      "max": 30,
+      "step": 0.5,
+      "integer": false
+    },
+    {
+      "key": "predatorRate",
+      "type": "range",
+      "label": "Predator Rate",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "feedRate",
+      "type": "range",
+      "label": "Feed Rate",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.1,
+      "integer": false
+    }
+  ]
+}

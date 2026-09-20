@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Aquarium</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #aquarium-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(8, 14, 18, 0.92);
+            border: 1px solid rgba(64, 160, 200, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #60a0c0;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #40b0e0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #306080;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(64, 160, 200, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #40b0e0; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="aquarium-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED         = parseFloat(_params.get('speed')        || '1');
+const P_PALETTE       = _params.get('palette') || 'tropical';
+const P_FISH_COUNT    = Math.max(5, Math.min(20, parseInt(_params.get('fishCount') || '10', 10)));
+const P_KELP_DENSITY  = parseFloat(_params.get('kelpDensity')  || '1');
+const P_BUBBLE_RATE   = parseFloat(_params.get('bubbleRate')   || '1');
+const P_CYCLE_TIME    = parseFloat(_params.get('cycleTime')    || '8');   // minutes; 0 = fixed day
+const P_PREDATOR_RATE = parseFloat(_params.get('predatorRate') || '1');   // 0 = disabled
+const P_FEED_RATE     = parseFloat(_params.get('feedRate')     || '1');   // 0 = disabled
+
+// ─── Palettes ──────────────────────────────────────────────────────────────────
+const PALETTES = {
+    tropical: {
+        bgTop: 'rgba(10, 40, 58, 1)', bgMid: 'rgba(8, 30, 48, 1)', bgBottom: 'rgba(6, 20, 34, 1)',
+        sandBase: '#3a2f18', sandSpeckle: '#e0b860',
+        kelp: ['rgb(20,170,70)', 'rgb(20,190,90)', 'rgb(15,150,60)'],
+        fish: ['#ff8040', '#ffd060', '#40c0ff', '#ff5080'],
+        bubble: '#bfe8ff',
+        nightTop: 'rgba(3,10,22,1)', nightMid: 'rgba(2,6,15,1)', nightBottom: 'rgba(1,3,9,1)',
+        warmth: 'rgb(150,80,45)', predator: '#33454f', food: '#ffe0a0',
+        crawler: '#c08850', biolum: '#80ffe0', sunbeam: 'rgb(120,180,200)',
+    },
+    deepsea: {
+        bgTop: 'rgba(4, 14, 28, 1)', bgMid: 'rgba(3, 9, 20, 1)', bgBottom: 'rgba(2, 5, 12, 1)',
+        sandBase: '#1c2230', sandSpeckle: '#4a5868',
+        kelp: ['rgb(20,60,90)', 'rgb(30,80,110)', 'rgb(15,50,80)'],
+        fish: ['#5080a0', '#3050a0', '#80a0c0', '#406090'],
+        bubble: '#80c0e0',
+        nightTop: 'rgba(1,5,12,1)', nightMid: 'rgba(1,3,8,1)', nightBottom: 'rgba(0,1,4,1)',
+        warmth: 'rgb(90,55,40)', predator: '#2a3a48', food: '#cfe0ff',
+        crawler: '#5a6878', biolum: '#60c0ff', sunbeam: 'rgb(60,110,150)',
+    },
+    freshwater: {
+        bgTop: 'rgba(14, 42, 36, 1)', bgMid: 'rgba(10, 34, 30, 1)', bgBottom: 'rgba(7, 24, 22, 1)',
+        sandBase: '#3a3420', sandSpeckle: '#a89858',
+        kelp: ['rgb(40,140,60)', 'rgb(60,160,70)', 'rgb(30,120,50)'],
+        fish: ['#c0a060', '#80a050', '#6080a0', '#a08040'],
+        bubble: '#c8e8d8',
+        nightTop: 'rgba(4,16,14,1)', nightMid: 'rgba(2,10,9,1)', nightBottom: 'rgba(1,6,6,1)',
+        warmth: 'rgb(140,90,45)', predator: '#3a4a3a', food: '#e8d090',
+        crawler: '#a08850', biolum: '#90ffc0', sunbeam: 'rgb(120,170,140)',
+    },
+    neon: {
+        bgTop: 'rgba(20, 8, 40, 1)', bgMid: 'rgba(14, 6, 32, 1)', bgBottom: 'rgba(8, 4, 22, 1)',
+        sandBase: '#241030', sandSpeckle: '#a040ff',
+        kelp: ['rgb(255,40,200)', 'rgb(60,255,220)', 'rgb(180,60,255)'],
+        fish: ['#ff40c0', '#40ffe0', '#c040ff', '#ffe040'],
+        bubble: '#e0a0ff',
+        nightTop: 'rgba(8,2,18,1)', nightMid: 'rgba(5,2,12,1)', nightBottom: 'rgba(3,1,8,1)',
+        warmth: 'rgb(120,40,120)', predator: '#503070', food: '#fff080',
+        crawler: '#a040ff', biolum: '#40ffe0', sunbeam: 'rgb(160,80,200)',
+    },
+    mono: {
+        bgTop: 'rgba(28, 28, 28, 1)', bgMid: 'rgba(20, 20, 20, 1)', bgBottom: 'rgba(12, 12, 12, 1)',
+        sandBase: '#2a2a2a', sandSpeckle: '#888888',
+        kelp: ['rgb(90,90,90)', 'rgb(110,110,110)', 'rgb(70,70,70)'],
+        fish: ['#cccccc', '#aaaaaa', '#dddddd', '#999999'],
+        bubble: '#e8e8e8',
+        nightTop: 'rgba(8,8,8,1)', nightMid: 'rgba(5,5,5,1)', nightBottom: 'rgba(2,2,2,1)',
+        warmth: 'rgb(80,80,80)', predator: '#666666', food: '#dddddd',
+        crawler: '#999999', biolum: '#cccccc', sunbeam: 'rgb(120,120,120)',
+    },
+};
+
+const C = PALETTES[P_PALETTE] || PALETTES.tropical;
+
+// ─── Color helpers ─────────────────────────────────────────────────────────────
+function parseRGB(s) {
+    if (s[0] === '#') {
+        const n = parseInt(s.slice(1), 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    const m = s.match(/(\d+(\.\d+)?)/g);
+    return [parseFloat(m[0]), parseFloat(m[1]), parseFloat(m[2])];
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpRGB(c1, c2, t) {
+    return [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
+}
+function rgbStr(c, a) {
+    return a === undefined
+        ? `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`
+        : `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+}
+
+C._dayTop    = parseRGB(C.bgTop);      C._dayMid    = parseRGB(C.bgMid);      C._dayBottom    = parseRGB(C.bgBottom);
+C._nightTop  = parseRGB(C.nightTop);   C._nightMid  = parseRGB(C.nightMid);   C._nightBottom  = parseRGB(C.nightBottom);
+C._warmth    = parseRGB(C.warmth);     C._sunbeam   = parseRGB(C.sunbeam);
+
+// ─── Day/night cycle state ─────────────────────────────────────────────────────
+let dayPhase    = 0.5;  // start at noon (full day); [0,1)
+let lightLevel  = 1;    // [0,1], 1 = full day, 0 = deep night
+let warmthLevel = 0;    // [0,1], peaks at the dusk/dawn crossings
+
+function updateDayNight(scaledDt) {
+    if (P_CYCLE_TIME > 0) {
+        dayPhase += scaledDt / (P_CYCLE_TIME * 60000);
+        dayPhase -= Math.floor(dayPhase);
+    } else {
+        dayPhase = 0.5;
+    }
+    lightLevel  = 0.5 - 0.5 * Math.cos(dayPhase * Math.PI * 2);
+    warmthLevel = Math.abs(Math.sin(dayPhase * Math.PI * 2));
+}
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Aquarium</h2>
+        <p class="credits-label">Animation</p>
+        <p>Fish school, swaying kelp, and<br>an aerator bubble stream over<br>a sandy tank floor.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('aquarium-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 15;
+let CHAR_W = 9.0, CHAR_H = 18.75;
+let cols = 0, rows = 0;
+let W = 0, H = 0;
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+    cols = Math.floor(W / CHAR_W);
+    rows = Math.floor(H / CHAR_H);
+}
+window.addEventListener('resize', () => {
+    resize();
+    regenerateSandPattern();
+    generateKelp();
+    generateFish();
+    placeAerator();
+    generateSunbeams();
+    generatePlankton();
+    generateCrawlers();
+});
+
+// ─── Background water tint ──────────────────────────────────────────────────────
+function drawBackground() {
+    ctx.clearRect(0, 0, W, H);
+    const L = lightLevel;
+    const top = lerpRGB(C._nightTop,    C._dayTop,    L);
+    const mid = lerpRGB(C._nightMid,    C._dayMid,    L);
+    const bot = lerpRGB(C._nightBottom, C._dayBottom, L);
+    const wf  = warmthLevel * 0.30;
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0,   rgbStr(lerpRGB(top, C._warmth, wf)));
+    grad.addColorStop(0.6, rgbStr(lerpRGB(mid, C._warmth, wf * 0.6)));
+    grad.addColorStop(1,   rgbStr(bot));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+}
+
+// ─── Sunbeams (daytime god-rays) ────────────────────────────────────────────────
+const SUNBEAM_COUNT = 4;
+let sunbeams = [];
+
+function generateSunbeams() {
+    sunbeams = [];
+    for (let i = 0; i < SUNBEAM_COUNT; i++) {
+        sunbeams.push({
+            x: (i + 0.5) / SUNBEAM_COUNT,         // fractional screen-x of beam top
+            width: 60 + Math.random() * 80,        // px
+            phase: Math.random() * Math.PI * 2,
+            drift: 0.2 + Math.random() * 0.2,
+        });
+    }
+}
+
+function drawSunbeams(L) {
+    if (L <= 0.15) return;
+    const strength = (L - 0.15) / 0.85;            // 0 at L=0.15 → 1 at L=1
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const b of sunbeams) {
+        const sway = Math.sin(animTime * b.drift + b.phase) * 40;
+        const topX = b.x * W + sway;
+        const botX = topX + H * 0.5;               // diagonal slant
+        const grad = ctx.createLinearGradient(topX, 0, botX, H);
+        grad.addColorStop(0, rgbStr(C._sunbeam, 0.10 * strength));
+        grad.addColorStop(1, rgbStr(C._sunbeam, 0));
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(topX - b.width / 2, 0);
+        ctx.lineTo(topX + b.width / 2, 0);
+        ctx.lineTo(botX + b.width / 2, H);
+        ctx.lineTo(botX - b.width / 2, H);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+// ─── Bioluminescent plankton (nighttime drift) ──────────────────────────────────
+const PLANKTON_COUNT = 40;
+let plankton = [];
+
+function generatePlankton() {
+    plankton = [];
+    for (let i = 0; i < PLANKTON_COUNT; i++) {
+        plankton.push({
+            x: Math.random() * cols,
+            y: Math.random() * rows,
+            drift: (Math.random() - 0.5) * 0.002,
+            riseY: (Math.random() - 0.5) * 0.001,
+            phase: Math.random() * Math.PI * 2,
+            pulse: 0.5 + Math.random() * 0.8,
+            ch: Math.random() < 0.5 ? '·' : '.',
+        });
+    }
+}
+
+function updateAndDrawPlankton(scaledDt, L) {
+    if (L >= 0.85) return;
+    const strength = (0.85 - L) / 0.85;            // 0 at L=0.85 → 1 at L=0
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    for (const p of plankton) {
+        p.x += p.drift * scaledDt;
+        p.y += p.riseY * scaledDt;
+        if (p.x < 0) p.x += cols; else if (p.x > cols) p.x -= cols;
+        if (p.y < 0) p.y += rows; else if (p.y > rows) p.y -= rows;
+        const glow = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(animTime * p.pulse + p.phase));
+        ctx.globalAlpha = glow * strength * 0.9;
+        ctx.fillStyle = C.biolum;
+        ctx.fillText(p.ch, p.x * CHAR_W, p.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Sandy bottom (static texture, regenerated on resize) ──────────────────────
+const SAND_ROWS = 2;
+let sandRow = 0;
+let sandPattern = [];
+
+function regenerateSandPattern() {
+    sandRow = rows - SAND_ROWS - 1;
+    sandPattern = [];
+    const sandChars = ['.', ',', '`', '~', '.', ','];
+    for (let r = 0; r < SAND_ROWS; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (Math.random() < 0.5) {
+                sandPattern.push({
+                    c, r,
+                    char: sandChars[Math.floor(Math.random() * sandChars.length)],
+                });
+            }
+        }
+    }
+}
+
+function drawSandyBottom() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = C.sandBase;
+    ctx.fillRect(0, sandRow * CHAR_H, W, (rows - sandRow) * CHAR_H);
+
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = C.sandSpeckle;
+    for (const sp of sandPattern) {
+        ctx.fillText(sp.char, sp.c * CHAR_W, (sandRow + sp.r) * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Kelp strands ───────────────────────────────────────────────────────────────
+const KELP_CHARS = ['(', ')', '{', '}', '|'];
+let kelpStrands = [];
+
+function generateKelp() {
+    kelpStrands = [];
+    const baseCount = Math.round(6 * P_KELP_DENSITY);
+    if (baseCount <= 0) return;
+
+    for (let i = 0; i < baseCount; i++) {
+        const col = Math.floor(((i + 0.5) / baseCount) * cols + (Math.random() - 0.5) * 4);
+        const height = Math.floor((sandRow - 4) * (0.35 + Math.random() * 0.45));
+        const segments = [];
+        for (let s = 0; s < height; s++) {
+            segments.push({
+                charIdx: Math.floor(Math.random() * KELP_CHARS.length),
+                shade: 0.6 + Math.random() * 0.4,
+            });
+        }
+        kelpStrands.push({
+            baseCol: Math.max(1, Math.min(cols - 2, col)),
+            height,
+            segments,
+            phase: Math.random() * Math.PI * 2,
+            swaySpeed: 0.5 + Math.random() * 0.3,
+            swayAmp: 1.0 + Math.random() * 1.2,
+        });
+    }
+}
+
+function drawKelp(t) {
+    if (!kelpStrands.length) return;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (const k of kelpStrands) {
+        for (let s = 0; s < k.height; s++) {
+            const seg = k.segments[s];
+            const swayNorm = s / k.height;
+            const sway = Math.sin(t * k.swaySpeed + k.phase + s * 0.35) * k.swayAmp * swayNorm;
+            const col = k.baseCol + sway;
+            const row = sandRow - 1 - s;
+            if (row < 0) continue;
+
+            ctx.globalAlpha = seg.shade;
+            ctx.fillStyle = C.kelp[seg.charIdx % C.kelp.length];
+            ctx.fillText(KELP_CHARS[seg.charIdx], col * CHAR_W, row * CHAR_H);
+        }
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Fish school ─────────────────────────────────────────────────────────────────
+const FISH_GLYPHS_RIGHT = ['><', '>>', '-<', '=<'];
+const FISH_GLYPHS_LEFT  = ['<>', '<<', '>-', '>='];
+let fishes = [];
+
+function generateFish() {
+    fishes = [];
+    const swimTop    = 1;
+    const swimBottom = Math.max(swimTop + 2, sandRow - 2);
+
+    for (let i = 0; i < P_FISH_COUNT; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        fishes.push({
+            x: Math.random() * cols,
+            y: swimTop + Math.random() * (swimBottom - swimTop),
+            vx: Math.cos(angle) * 0.02,
+            vy: Math.sin(angle) * 0.01,
+            glyphIdx: Math.floor(Math.random() * FISH_GLYPHS_RIGHT.length),
+            wanderAngle: angle,
+            swimTop, swimBottom,
+            state: 'SCHOOL',
+        });
+    }
+}
+
+const GROUP_RADIUS = 10;
+const NIGHT_REST_THRESHOLD = 0.30;   // lightLevel below this → fish REST
+
+// Decide a fish's behavior state. Priority is extended in later tasks
+// (FLEE for predators, FEED for food); for now: REST at night, else SCHOOL.
+function computeFishState(f) {
+    if (predator) {
+        const dx = f.x - predator.x, dy = f.y - predator.y;
+        if (dx * dx + dy * dy < FEAR_RADIUS * FEAR_RADIUS) return 'FLEE';
+    }
+    if (foodFlakes.length && nearestFood(f)) return 'FEED';
+    if (lightLevel < NIGHT_REST_THRESHOLD) return 'REST';
+    return 'SCHOOL';
+}
+
+function updateAndDrawFish(scaledDt) {
+    if (!fishes.length) return;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    const dtNorm = scaledDt / 16.67;
+
+    for (const f of fishes) {
+        f.state = computeFishState(f);
+        f.wanderAngle += (Math.random() - 0.5) * 0.15 * dtNorm;
+
+        // Neighbor grouping (consumed by the SCHOOL branch)
+        let avgVX = 0, avgVY = 0, avgX = 0, avgY = 0, n = 0;
+        for (const other of fishes) {
+            if (other === f) continue;
+            const dx = other.x - f.x, dy = other.y - f.y;
+            const distSq = dx * dx + dy * dy;
+            if (distSq < GROUP_RADIUS * GROUP_RADIUS) {
+                avgVX += other.vx; avgVY += other.vy;
+                avgX  += other.x;  avgY  += other.y;
+                n++;
+            }
+        }
+
+        let targetVX, targetVY, accel = 0.08, speedScale = 1;
+
+        if (f.state === 'FLEE') {
+            const dx = f.x - predator.x, dy = f.y - predator.y;
+            const d = Math.max(0.5, Math.hypot(dx, dy));
+            let fx = (dx / d) * 0.07, fy = (dy / d) * 0.05;
+            const kc = nearestKelpCol(f.x);
+            if (kc >= 0) fx += Math.sign(kc - f.x) * 0.02;
+            targetVX = fx; targetVY = fy;
+            accel = 0.18; speedScale = 1.7;
+        } else if (f.state === 'FEED') {
+            const fl = nearestFood(f);
+            if (fl) {
+                const dx = fl.x - f.x, dy = fl.y - f.y;
+                const d = Math.max(0.5, Math.hypot(dx, dy));
+                targetVX = (dx / d) * 0.04; targetVY = (dy / d) * 0.04;
+                accel = 0.12; speedScale = 1.2;
+                if (d < EAT_RADIUS) {
+                    const idx = foodFlakes.indexOf(fl);
+                    if (idx >= 0) foodFlakes.splice(idx, 1);
+                }
+            } else {
+                targetVX = Math.cos(f.wanderAngle) * 0.025;
+                targetVY = Math.sin(f.wanderAngle) * 0.012;
+            }
+        } else if (f.state === 'REST') {
+            const restY = f.swimTop + (f.swimBottom - f.swimTop) * 0.75;
+            targetVX = Math.cos(f.wanderAngle) * 0.008;
+            targetVY = (restY - f.y) * 0.0008 + Math.sin(f.wanderAngle) * 0.004;
+            accel = 0.04; speedScale = 0.5;
+        } else { // SCHOOL
+            targetVX = Math.cos(f.wanderAngle) * 0.025;
+            targetVY = Math.sin(f.wanderAngle) * 0.012;
+            if (n > 0) {
+                avgVX /= n; avgVY /= n; avgX /= n; avgY /= n;
+                const towardX = (avgX - f.x) * 0.0006;
+                const towardY = (avgY - f.y) * 0.0006;
+                targetVX = targetVX * 0.6 + avgVX * 0.3 + towardX;
+                targetVY = targetVY * 0.6 + avgVY * 0.3 + towardY;
+            }
+        }
+
+        f.vx += (targetVX - f.vx) * accel * dtNorm;
+        f.vy += (targetVY - f.vy) * accel * dtNorm;
+
+        if (f.y < f.swimTop)    f.vy += 0.01 * dtNorm;
+        if (f.y > f.swimBottom) f.vy -= 0.01 * dtNorm;
+
+        f.x += f.vx * scaledDt * speedScale;
+        f.y += f.vy * scaledDt * speedScale;
+
+        if (f.x < -2) f.x = cols + 2;
+        if (f.x > cols + 2) f.x = -2;
+        f.y = Math.max(f.swimTop, Math.min(f.swimBottom, f.y));
+
+        const swimmingRight = f.vx >= 0;
+        const glyph = swimmingRight
+            ? FISH_GLYPHS_RIGHT[f.glyphIdx]
+            : FISH_GLYPHS_LEFT[f.glyphIdx];
+
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = C.fish[f.glyphIdx % C.fish.length];
+        ctx.fillText(glyph, f.x * CHAR_W, f.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Roaming predator ───────────────────────────────────────────────────────────
+const FEAR_RADIUS = 14;                       // cols; fish within this FLEE
+const PREDATOR_GLYPH_RIGHT = '}=))°>';
+const PREDATOR_GLYPH_LEFT  = '<°((={';
+
+let predator = null;          // {dir, x, y, vx, struck}
+let predatorTimer = 0;        // ms until the next predator event
+let respawnTimer = -1;        // ms until a caught fish is replaced; <0 = inactive
+
+function schedulePredator() {
+    const base = 75000 / Math.max(0.0001, P_PREDATOR_RATE);   // ~75s at rate 1
+    predatorTimer = base * (0.6 + Math.random() * 0.8);
+}
+
+function startPredator() {
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    predator = {
+        dir,
+        x: dir === 1 ? -8 : cols + 8,
+        y: rows * (0.25 + Math.random() * 0.4),
+        vx: dir * (0.045 + Math.random() * 0.02),
+        struck: false,
+    };
+}
+
+function nearestKelpCol(x) {
+    if (!kelpStrands.length) return -1;
+    let best = -1, bd = Infinity;
+    for (const k of kelpStrands) {
+        const d = Math.abs(k.baseCol - x);
+        if (d < bd) { bd = d; best = k.baseCol; }
+    }
+    return best;
+}
+
+function catchFish(f) {
+    const idx = fishes.indexOf(f);
+    if (idx >= 0) fishes.splice(idx, 1);
+    respawnTimer = 4000 + Math.random() * 3000;
+}
+
+function spawnReplacementFish() {
+    const swimTop = 1, swimBottom = Math.max(swimTop + 2, sandRow - 2);
+    const fromLeft = Math.random() < 0.5;
+    fishes.push({
+        x: fromLeft ? -2 : cols + 2,
+        y: swimTop + Math.random() * (swimBottom - swimTop),
+        vx: (fromLeft ? 1 : -1) * 0.03, vy: 0,
+        glyphIdx: Math.floor(Math.random() * FISH_GLYPHS_RIGHT.length),
+        wanderAngle: Math.random() * Math.PI * 2,
+        swimTop, swimBottom, state: 'SCHOOL',
+    });
+}
+
+function updateRespawn(scaledDt) {
+    if (respawnTimer < 0) return;
+    respawnTimer -= scaledDt;
+    if (respawnTimer <= 0) {
+        if (fishes.length < P_FISH_COUNT) {
+            spawnReplacementFish();
+            respawnTimer = fishes.length < P_FISH_COUNT ? 4000 + Math.random() * 3000 : -1;
+        } else {
+            respawnTimer = -1;
+        }
+    }
+}
+
+function updatePredator(scaledDt) {
+    if (P_PREDATOR_RATE <= 0) return;
+    if (!predator) {
+        predatorTimer -= scaledDt;
+        if (predatorTimer <= 0 && fishes.length > 0) startPredator();
+        return;
+    }
+    const p = predator;
+    p.x += p.vx * scaledDt;
+    p.y += Math.sin(animTime * 0.6) * 0.02 * (scaledDt / 16.67);
+
+    // Rare catch: at most one fish, only while crossing the central band
+    if (!p.struck && p.x > cols * 0.3 && p.x < cols * 0.7) {
+        const mouthX = p.x + p.dir * 3;
+        for (const f of fishes) {
+            const dx = f.x - mouthX, dy = f.y - p.y;
+            if (dx * dx + dy * dy < 4) {
+                if (Math.random() < 0.15) { catchFish(f); p.struck = true; }
+                break;
+            }
+        }
+    }
+
+    // Exit on the far edge → schedule the next event
+    if ((p.dir === 1 && p.x > cols + 10) || (p.dir === -1 && p.x < -10)) {
+        predator = null;
+        schedulePredator();
+    }
+}
+
+function drawPredator() {
+    if (!predator) return;
+    const p = predator;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = C.predator;
+    ctx.fillText(p.dir === 1 ? PREDATOR_GLYPH_RIGHT : PREDATOR_GLYPH_LEFT,
+                 p.x * CHAR_W, p.y * CHAR_H);
+    ctx.globalAlpha = 1;
+}
+
+// ─── Feeding events (food flakes) ───────────────────────────────────────────────
+const EAT_RADIUS = 1.5;             // cols; fish consumes a flake within this
+const FOOD_ATTRACT_RADIUS = 30;     // cols; fish switches to FEED for flakes within this
+const FOOD_CHARS = ['.', ','];
+
+let foodFlakes = [];                // {x,y,vx,vy,settled,fade,ch}
+let feedTimer = 0;
+
+function scheduleFeed() {
+    const base = 45000 / Math.max(0.0001, P_FEED_RATE);   // ~45s at rate 1
+    feedTimer = base * (0.6 + Math.random() * 0.8);
+}
+
+function startFeed() {
+    const count = 8 + Math.floor(Math.random() * 8);
+    const spanStart = cols * (0.2 + Math.random() * 0.3);
+    const spanW = cols * 0.3;
+    for (let i = 0; i < count; i++) {
+        foodFlakes.push({
+            x: spanStart + Math.random() * spanW,
+            y: -1 - Math.random() * 2,
+            vx: (Math.random() - 0.5) * 0.004,
+            vy: 0.006 + Math.random() * 0.005,
+            settled: false, fade: 1,
+            ch: FOOD_CHARS[Math.floor(Math.random() * FOOD_CHARS.length)],
+        });
+    }
+}
+
+function nearestFood(f) {
+    let best = null, bd = FOOD_ATTRACT_RADIUS * FOOD_ATTRACT_RADIUS;
+    for (const fl of foodFlakes) {
+        if (fl.settled) continue;
+        const dx = fl.x - f.x, dy = fl.y - f.y, d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; best = fl; }
+    }
+    return best;
+}
+
+function updateFood(scaledDt) {
+    if (P_FEED_RATE <= 0) return;
+    if (foodFlakes.length === 0) {
+        feedTimer -= scaledDt;
+        if (feedTimer <= 0) { startFeed(); scheduleFeed(); }
+        return;
+    }
+    for (let i = foodFlakes.length - 1; i >= 0; i--) {
+        const fl = foodFlakes[i];
+        if (fl.settled) {
+            fl.fade -= scaledDt / 3000;
+            if (fl.fade <= 0) { foodFlakes.splice(i, 1); }
+        } else {
+            fl.vx += Math.sin(animTime * 1.5 + i) * 0.0004 * (scaledDt / 16.67);
+            fl.x += fl.vx * scaledDt;
+            fl.y += fl.vy * scaledDt;
+            if (fl.y >= sandRow - 1) { fl.y = sandRow - 1; fl.settled = true; }
+        }
+    }
+}
+
+function drawFood() {
+    if (!foodFlakes.length) return;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = C.food;
+    for (const fl of foodFlakes) {
+        ctx.globalAlpha = fl.settled ? fl.fade * 0.7 : 0.9;
+        ctx.fillText(fl.ch, fl.x * CHAR_W, fl.y * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Bottom-dwellers (sand crawlers) ────────────────────────────────────────────
+const CRAB_GLYPH = '>(°°)<';
+const CRAB_WIDTH = CRAB_GLYPH.length;
+let crawlers = [];
+
+function generateCrawlers() {
+    crawlers = [];
+    const count = 2;
+    for (let i = 0; i < count; i++) {
+        crawlers.push({
+            x: 2 + Math.random() * Math.max(1, cols - CRAB_WIDTH - 4),
+            dir: Math.random() < 0.5 ? 1 : -1,
+            speed: 0.004 + Math.random() * 0.003,
+            moveT: 2000 + Math.random() * 3000,
+            pauseT: 0,
+            paused: false,
+        });
+    }
+}
+
+function updateAndDrawCrawlers(scaledDt) {
+    if (!crawlers.length) return;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = C.crawler;
+    const nightSlow = lightLevel < NIGHT_REST_THRESHOLD ? 0.5 : 1;
+
+    for (const c of crawlers) {
+        if (c.paused) {
+            c.pauseT -= scaledDt;
+            if (c.pauseT <= 0) {
+                c.paused = false;
+                c.moveT = 2000 + Math.random() * 3000;
+                if (Math.random() < 0.4) c.dir *= -1;
+            }
+        } else {
+            c.x += c.dir * c.speed * scaledDt * nightSlow;
+            c.moveT -= scaledDt;
+            if (c.moveT <= 0) { c.paused = true; c.pauseT = 800 + Math.random() * 1500; }
+            if (c.x < 1) { c.x = 1; c.dir = 1; }
+            if (c.x > cols - CRAB_WIDTH - 1) { c.x = cols - CRAB_WIDTH - 1; c.dir = -1; }
+        }
+        ctx.fillText(CRAB_GLYPH, c.x * CHAR_W, (sandRow - 1) * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Bubble particle pool (aerator) ─────────────────────────────────────────────
+const MAX_BUBBLES = 120;
+const bX      = new Float32Array(MAX_BUBBLES);
+const bY      = new Float32Array(MAX_BUBBLES);
+const bVX     = new Float32Array(MAX_BUBBLES);
+const bVY     = new Float32Array(MAX_BUBBLES);
+const bAge    = new Float32Array(MAX_BUBBLES);
+const bMaxAge = new Float32Array(MAX_BUBBLES);
+const bAlive  = new Uint8Array(MAX_BUBBLES);
+
+let AERATOR_COL = 0;
+let AERATOR_ROW = 0;
+let bubbleRing = 0;
+let bubbleSpawnAccum = 0;
+
+function placeAerator() {
+    AERATOR_COL = Math.floor(cols * 0.78);
+    AERATOR_ROW = sandRow - 1;
+}
+
+function spawnBubble() {
+    let b = bubbleRing;
+    let skips = 0;
+    while (bAlive[b] && skips < 10) { b = (b + 1) % MAX_BUBBLES; skips++; }
+    bubbleRing = (b + 1) % MAX_BUBBLES;
+
+    bAlive[b]  = 1;
+    bX[b]      = AERATOR_COL + (Math.random() - 0.5) * 1.2;
+    bY[b]      = AERATOR_ROW;
+    bVX[b]     = (Math.random() - 0.5) * 0.004;
+    bVY[b]     = -(0.018 + Math.random() * 0.014);
+    bAge[b]    = 0;
+    bMaxAge[b] = 4000 + Math.random() * 3000;
+}
+
+const BUBBLE_CHARS = ['o', 'O', '°', '.'];
+
+function updateAndDrawBubbles(scaledDt) {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (let i = 0; i < MAX_BUBBLES; i++) {
+        if (!bAlive[i]) continue;
+
+        bAge[i] += scaledDt;
+        if (bAge[i] >= bMaxAge[i] || bY[i] < -1) { bAlive[i] = 0; continue; }
+
+        bVX[i] += Math.sin(bAge[i] * 0.004 + i) * 0.0006 * (scaledDt / 16.67);
+        bX[i]  += bVX[i] * scaledDt;
+        bY[i]  += bVY[i] * scaledDt;
+
+        const ageNorm = bAge[i] / bMaxAge[i];
+        const alpha = 0.85 * (1 - ageNorm * 0.3);
+        const charIdx = ageNorm < 0.5 ? 0 : (ageNorm < 0.8 ? 1 : 2);
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = C.bubble;
+        ctx.fillText(BUBBLE_CHARS[charIdx], bX[i] * CHAR_W, bY[i] * CHAR_H);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function spawnBubbles(scaledDt) {
+    if (P_BUBBLE_RATE <= 0) return;
+    const baseRate = 2.0 * P_BUBBLE_RATE;
+    bubbleSpawnAccum += baseRate * scaledDt / 1000;
+    while (bubbleSpawnAccum >= 1.0) {
+        bubbleSpawnAccum -= 1.0;
+        spawnBubble();
+    }
+}
+
+// ─── Render loop ───────────────────────────────────────────────────────────────
+let lastTimestamp = 0;
+let animTime = 0;
+
+function render(t) {
+    const dt      = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
+    lastTimestamp = t;
+    const scaledDt = dt * P_SPEED;
+    animTime      += scaledDt * 0.001;
+
+    updateDayNight(scaledDt);
+
+    drawBackground();
+    drawSunbeams(lightLevel);
+    updateAndDrawPlankton(scaledDt, lightLevel);
+    drawSandyBottom();
+    updateAndDrawCrawlers(scaledDt);
+    drawKelp(animTime);
+    updateAndDrawBubbles(scaledDt);
+    updateFood(scaledDt);
+    drawFood();
+    updatePredator(scaledDt);
+    updateRespawn(scaledDt);
+    updateAndDrawFish(scaledDt);
+    drawPredator();
+    spawnBubbles(scaledDt);
+
+    requestAnimationFrame(render);
+}
+
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        regenerateSandPattern();
+        generateKelp();
+        generateFish();
+        placeAerator();
+        generateSunbeams();
+        generatePlankton();
+        schedulePredator();
+        scheduleFeed();
+        generateCrawlers();
+        requestAnimationFrame(render);
+    });
+}
+
+if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(startAnimation, 4000);
+else setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

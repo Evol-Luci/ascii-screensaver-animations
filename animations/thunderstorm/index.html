@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Thunderstorm</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #020204;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #storm-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(10, 8, 22, 0.92);
+            border: 1px solid rgba(120, 100, 200, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #8070a0;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #a090d0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #504070;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(120, 100, 200, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #9080b0; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="storm-canvas"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_INTENSITY  = parseFloat(_params.get('intensity')  || '1');
+const P_WIND       = parseFloat(_params.get('wind')       || '0.3');
+const P_LIGHTNING  = parseFloat(_params.get('lightning')  || '1');
+const P_PALETTE    = _params.get('palette') || 'tempest';
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Thunderstorm</h2>
+        <p class="credits-label">Animation</p>
+        <p>Dynamic rain, lightning, and<br>storm clouds in ASCII.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+const canvas = document.getElementById('storm-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 14;
+let CHAR_W = 8.4;
+let CHAR_H = 17.5;
+let cols = 0, rows = 0;
+
+function measureFont() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+}
+
+function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    measureFont();
+    cols = Math.floor(canvas.width  / CHAR_W);
+    rows = Math.floor(canvas.height / CHAR_H);
+}
+
+window.addEventListener('resize', resize);
+
+const PALETTES = {
+    tempest: {
+        skyDark:   [4, 4, 14],
+        skyCloud:  [16, 18, 36],
+        rain:      '#506090',
+        rainBright:'#8090c0',
+        lightning: '#c0c0ff',
+        flashTint: [36, 36, 70],
+        cloud:     '#14142a',
+        cloudLight:'#282848',
+        ground:    '#08080e',
+    },
+    tropical: {
+        skyDark:   [3, 12, 16],
+        skyCloud:  [10, 26, 34],
+        rain:      '#408070',
+        rainBright:'#70b090',
+        lightning: '#c0ffe0',
+        flashTint: [22, 54, 44],
+        cloud:     '#0c2018',
+        cloudLight:'#183830',
+        ground:    '#06100c',
+    },
+    desert: {
+        skyDark:   [16, 10, 4],
+        skyCloud:  [36, 24, 14],
+        rain:      '#b07020',
+        rainBright:'#d09040',
+        lightning: '#ffe060',
+        flashTint: [56, 40, 16],
+        cloud:     '#24180e',
+        cloudLight:'#3c2818',
+        ground:    '#100c06',
+    },
+    arctic: {
+        skyDark:   [8, 12, 20],
+        skyCloud:  [24, 32, 46],
+        rain:      '#7090b0',
+        rainBright:'#a0c0e0',
+        lightning: '#dce4ff',
+        flashTint: [32, 40, 62],
+        cloud:     '#18202e',
+        cloudLight:'#2c3850',
+        ground:    '#0a0e14',
+    },
+    mono: {
+        skyDark:   [6, 6, 6],
+        skyCloud:  [20, 20, 20],
+        rain:      '#606060',
+        rainBright:'#909090',
+        lightning: '#e0e0e0',
+        flashTint: [34, 34, 34],
+        cloud:     '#121212',
+        cloudLight:'#282828',
+        ground:    '#080808',
+    },
+};
+
+const PAL = PALETTES[P_PALETTE] || PALETTES.tempest;
+
+const RAIN_CHARS = ['/', '│', '╱', '╲', '┆', '┊'];
+
+class Raindrop {
+    constructor() {
+        this.reset();
+    }
+    reset() {
+        this.x = Math.random() * (cols + 15) - 7;
+        this.y = Math.random() * -rows * 1.5;
+        this.speed = 2.5 + Math.random() * 4;
+        this.length = 3 + Math.floor(Math.random() * 7);
+        this.char = RAIN_CHARS[Math.floor(Math.random() * RAIN_CHARS.length)];
+        this.bright = Math.random() < 0.12;
+        this.wind = P_WIND + (Math.random() - 0.5) * 0.4;
+        this.heavy = Math.random() < 0.08 * P_INTENSITY;
+    }
+}
+
+const MAX_DROPS = 600;
+let drops = [];
+for (let i = 0; i < MAX_DROPS; i++) drops.push(new Raindrop());
+
+class Cloud {
+    constructor() {
+        this.x = Math.random() * (cols + 30) - 15;
+        this.y = Math.floor(Math.random() * (rows * 0.2));
+        this.w = 12 + Math.floor(Math.random() * 24);
+        this.h = 2 + Math.floor(Math.random() * 4);
+        this.speed = 0.015 + Math.random() * 0.035;
+        this.density = 0.3 + Math.random() * 0.4;
+        this.bumpiness = Math.random() * 3 + 2;
+        this.bottomHeavy = Math.random() < 0.5;
+    }
+}
+
+let clouds = [];
+for (let i = 0; i < 10; i++) clouds.push(new Cloud());
+
+const CLOUD_CHARS = [' ', '░', '▒', '▓', '█'];
+
+class Lightning {
+    constructor(startX, startY, isConsecutive = false) {
+        this.segments = [];
+        this.branches = [];
+        this.life = 8 + Math.floor(Math.random() * 8);
+        this.age = 0;
+        this.brightness = 0.85 + Math.random() * 0.15;
+        this.flashAfterglow = 1.0;
+        this.generate(startX, startY, isConsecutive);
+    }
+
+    generate(sx, sy, isConsecutive) {
+        let x = sx;
+        let y = sy;
+        // Allow bolts to sometimes strike closer to the ground
+        const endY = rows - Math.floor(Math.random() * (rows * 0.15));
+        this.segments.push({x, y});
+        
+        // Add an overall horizontal bias to the main bolt for more natural slanting
+        const mainBias = (Math.random() - 0.5) * (isConsecutive ? 8 : 5);
+        
+        while (y < endY) {
+            // More erratic vertical jumps
+            y += 1 + Math.floor(Math.random() * 3);
+            
+            // If consecutive, spread significantly more horizontally to create bridges
+            let spread = isConsecutive ? 19 : 11;
+            let offset = isConsecutive ? 9 : 5;
+            x += Math.floor(Math.random() * spread) - offset + mainBias;
+            
+            x = Math.max(0, Math.min(cols - 1, x));
+            this.segments.push({x, y});
+
+            // Increased chance to branch, heavily increased if consecutive bridging
+            let branchProb = isConsecutive ? 0.6 : 0.35;
+            if (Math.random() < branchProb) {
+                let bx = x, by = y;
+                
+                // Longer branches, especially if consecutive (to bridge to the other bolt)
+                let maxLen = isConsecutive ? 28 : 16;
+                const bLen = 4 + Math.floor(Math.random() * maxLen);
+                
+                // Flatter branches spread further horizontally
+                const bDir = (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random() * (isConsecutive ? 4.5 : 2.5));
+                for (let b = 0; b < bLen; b++) {
+                    bx += Math.floor(Math.random() * 3) * Math.sign(bDir) + bDir;
+                    // Make bridging branches much flatter so they reach sideways
+                    let fall = isConsecutive ? (Math.random() < 0.4 ? 0 : 1) : (1 + Math.floor(Math.random() * 2));
+                    by += fall;
+                    
+                    bx = Math.max(0, Math.min(cols - 1, bx));
+                    if (by < rows) this.branches.push({x: bx, y: by});
+                    
+                    // Sub-branches for extreme complexity
+                    if (Math.random() < 0.15) {
+                        let sbx = bx, sby = by;
+                        const sbLen = 2 + Math.floor(Math.random() * 6);
+                        const sbDir = -Math.sign(bDir) * (1 + Math.random() * 2); // often branch opposite direction
+                        for (let sb = 0; sb < sbLen; sb++) {
+                            sbx += sbDir + (Math.random() - 0.5) * 3;
+                            sby += 1;
+                            sbx = Math.max(0, Math.min(cols - 1, sbx));
+                            if (sby < rows) this.branches.push({x: sbx, y: sby});
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+let lightnings = [];
+let flashIntensity = 0;
+let afterglow = 0;
+let lightningTimer = 0;
+let thunderPulse = 0;
+
+let consecutiveStrikesRemaining = 0;
+let lastStrikeX = -1;
+
+function maybeLightning() {
+    lightningTimer--;
+    if (lightningTimer <= 0) {
+        let isConsecutive = false;
+        
+        if (consecutiveStrikesRemaining > 0) {
+            consecutiveStrikesRemaining--;
+            isConsecutive = true;
+            // Short interval for back-to-back strikes (e.g., 2 to 12 frames)
+            lightningTimer = 2 + Math.floor(Math.random() * 10);
+        } else {
+            // Normal wait time
+            const interval = Math.floor((150 + Math.random() * 350) / P_LIGHTNING / P_INTENSITY);
+            lightningTimer = interval;
+            
+            // 20% chance to initiate a flurry of back-to-back strikes
+            if (Math.random() < 0.2) {
+                consecutiveStrikesRemaining = 1 + Math.floor(Math.random() * 3);
+            }
+        }
+
+        let sx = Math.floor(Math.random() * cols);
+        // If consecutive, spawn somewhat near the previous strike to simulate bridging/clustering
+        if (isConsecutive && lastStrikeX !== -1) {
+            sx = lastStrikeX + (Math.floor(Math.random() * 40) - 20);
+            sx = Math.max(0, Math.min(cols - 1, sx));
+        }
+        
+        const sy = Math.floor(Math.random() * rows * 0.12);
+        const bolt = new Lightning(sx, sy, isConsecutive);
+        lightnings.push(bolt);
+        
+        lastStrikeX = sx;
+        flashIntensity = 0.8 + Math.random() * 0.2;
+        afterglow = 0.4 + Math.random() * 0.2;
+        thunderPulse = 1.0;
+    }
+}
+
+let animTime = 0;
+
+function render() {
+    const flash = Math.max(flashIntensity, afterglow * 0.4);
+    const bgR = PAL.skyDark[0] + PAL.flashTint[0] * flash;
+    const bgG = PAL.skyDark[1] + PAL.flashTint[1] * flash;
+    const bgB = PAL.skyDark[2] + PAL.flashTint[2] * flash;
+    ctx.fillStyle = `rgb(${Math.floor(bgR)},${Math.floor(bgG)},${Math.floor(bgB)})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (const cloud of clouds) {
+        cloud.x += cloud.speed * (1 + P_WIND * 0.3);
+        if (cloud.x > cols + cloud.w + 10) cloud.x = -cloud.w - 10;
+
+        for (let dy = 0; dy < cloud.h; dy++) {
+            for (let dx = 0; dx < cloud.w; dx++) {
+                const cx = Math.floor(cloud.x) + dx;
+                const cy = cloud.y + dy;
+                if (cx < 0 || cx >= cols || cy < 0 || cy >= rows) continue;
+
+                const nx = (dx - cloud.w / 2) / (cloud.w / 2);
+                const ny = (dy - cloud.h / 2) / (cloud.h / 2);
+                const dist = Math.sqrt(nx * nx + ny * ny);
+                const bumpMod = Math.sin(dx * 0.5 + cloud.bumpiness) * 0.15;
+                const adjustedDist = Math.sqrt(nx * nx + (ny + bumpMod) * (ny + bumpMod));
+                if (adjustedDist > 1) continue;
+
+                const ci = Math.min(CLOUD_CHARS.length - 1, Math.floor((1 - adjustedDist) * cloud.density * CLOUD_CHARS.length));
+                if (ci === 0) continue;
+
+                const flashAlpha = flash * 0.4;
+                const alpha = Math.min(1, (1 - adjustedDist) * cloud.density * 0.6 + flashAlpha);
+                ctx.globalAlpha = alpha;
+
+                const cFlash = PAL.skyCloud;
+                const r = Math.floor(cFlash[0] + (255 - cFlash[0]) * flash * 0.6);
+                const g = Math.floor(cFlash[1] + (255 - cFlash[1]) * flash * 0.6);
+                const b = Math.floor(cFlash[2] + (255 - cFlash[2]) * flash * 0.6);
+                ctx.fillStyle = `rgb(${r},${g},${b})`;
+                ctx.fillText(CLOUD_CHARS[ci], cx * CHAR_W, cy * CHAR_H);
+            }
+        }
+    }
+
+    for (const bolt of lightnings) {
+        const lifeFactor = Math.max(0, 1 - bolt.age / bolt.life);
+        const alpha = lifeFactor * bolt.brightness;
+        if (alpha <= 0) continue;
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < bolt.segments.length; i++) {
+            const seg = bolt.segments[i];
+            ctx.fillText('│', seg.x * CHAR_W, seg.y * CHAR_H);
+        }
+
+        ctx.globalAlpha = alpha * 0.6;
+        ctx.fillStyle = PAL.lightning;
+        for (let i = 0; i < bolt.segments.length; i++) {
+            const seg = bolt.segments[i];
+            ctx.fillText('│', seg.x * CHAR_W, seg.y * CHAR_H);
+            if (i > 0) {
+                const prev = bolt.segments[i - 1];
+                const dx = seg.x - prev.x;
+                if (dx > 0) ctx.fillText('╲', prev.x * CHAR_W + CHAR_W * 0.5, prev.y * CHAR_H);
+                else if (dx < 0) ctx.fillText('╱', prev.x * CHAR_W - CHAR_W * 0.5, prev.y * CHAR_H);
+            }
+        }
+
+        if (bolt.branches.length > 0) {
+            ctx.globalAlpha = alpha * 0.35;
+            ctx.fillStyle = PAL.lightning;
+            const branchChars = ['│', '╲', '╱', '┆', '⚡'];
+            for (const br of bolt.branches) {
+                // Add varied branch characters for a more erratic look
+                const bChar = branchChars[Math.floor(Math.random() * branchChars.length)];
+                ctx.fillText(bChar, br.x * CHAR_W, br.y * CHAR_H);
+            }
+        }
+
+        if (lifeFactor > 0.7) {
+            ctx.globalAlpha = (lifeFactor - 0.7) / 0.3 * 0.15;
+            ctx.fillStyle = '#e0e0ff';
+            for (const seg of bolt.segments) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const gx = seg.x + dx, gy = seg.y + dy;
+                        if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+                            ctx.fillText('░', gx * CHAR_W, gy * CHAR_H);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    const dropCount = Math.min(drops.length, Math.floor(MAX_DROPS * P_INTENSITY * (0.5 + 0.5 * Math.sin(animTime * 0.015))));
+    const rainAlpha = 0.2 + flash * 0.4;
+    for (let i = 0; i < dropCount; i++) {
+        const drop = drops[i];
+        drop.y += drop.speed * P_INTENSITY;
+        drop.x += drop.wind;
+
+        if (drop.y > rows + 3 || drop.x < -8 || drop.x > cols + 8) {
+            drop.reset();
+            continue;
+        }
+
+        ctx.globalAlpha = rainAlpha;
+
+        if (drop.heavy) {
+            ctx.fillStyle = PAL.rainBright;
+            const hChars = ['█', '▓', '▒'];
+            ctx.fillText(hChars[Math.floor(Math.random() * 3)], Math.floor(drop.x) * CHAR_W, Math.floor(drop.y) * CHAR_H);
+            continue;
+        }
+
+        ctx.fillStyle = drop.bright ? PAL.rainBright : PAL.rain;
+
+        for (let seg = 0; seg < drop.length; seg++) {
+            const dy = drop.y - seg * 0.5;
+            if (dy < 0) continue;
+            const dx = drop.x + seg * drop.wind * 0.2;
+            const ch = seg < 2 && drop.bright ? '│' : drop.char;
+            ctx.fillText(ch, Math.floor(dx) * CHAR_W, Math.floor(dy) * CHAR_H);
+        }
+    }
+
+    const groundY = rows - 2;
+    if (groundY >= 0) {
+        ctx.globalAlpha = 0.08 + flash * 0.08;
+        ctx.fillStyle = PAL.ground;
+        ctx.fillRect(0, groundY * CHAR_H, canvas.width, FONT_SIZE);
+    }
+
+    if (groundY >= 0) {
+        for (let gx = 0; gx < cols; gx += 1 + Math.floor(Math.random() * 2)) {
+            const splash = Math.random() < 0.04 * P_INTENSITY;
+            if (splash) {
+                ctx.globalAlpha = 0.15 + afterglow * 0.1;
+                ctx.fillStyle = PAL.rain;
+                ctx.fillText('~', gx * CHAR_W, groundY * CHAR_H);
+                if (Math.random() < 0.3) ctx.fillText('°', (gx + (Math.random() < 0.5 ? 1 : -1)) * CHAR_W, (groundY - 1) * CHAR_H);
+            }
+        }
+    }
+
+    if (thunderPulse > 0.01) {
+        ctx.globalAlpha = thunderPulse * 0.06;
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 5; i++) {
+            const rx = Math.floor(Math.random() * cols);
+            const ry = Math.floor(rows * 0.2 + Math.random() * rows * 0.6);
+            ctx.fillText('*', rx * CHAR_W, ry * CHAR_H);
+        }
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+function update() {
+    animTime++;
+    maybeLightning();
+    for (const bolt of lightnings) bolt.age++;
+    lightnings = lightnings.filter(b => b.age < b.life);
+    flashIntensity *= 0.82;
+    if (flashIntensity < 0.01) flashIntensity = 0;
+    afterglow *= 0.94;
+    if (afterglow < 0.01) afterglow = 0;
+    thunderPulse *= 0.88;
+    if (thunderPulse < 0.01) thunderPulse = 0;
+}
+
+function loop() {
+    update();
+    render();
+    requestAnimationFrame(loop);
+}
+
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        lightningTimer = Math.floor(80 + Math.random() * 160);
+        requestAnimationFrame(loop);
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

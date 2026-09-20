@@ -1,0 +1,53 @@
+{
+  "id": "thunderstorm",
+  "name": "Thunderstorm",
+  "description": "Dynamic rain, lightning bolts, and storm clouds in ASCII.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "intensity",
+      "type": "range",
+      "label": "Intensity",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 2,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "wind",
+      "type": "range",
+      "label": "Wind",
+      "defaultValue": 0.3,
+      "min": -1,
+      "max": 1,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "lightning",
+      "type": "range",
+      "label": "Lightning",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "tempest",
+      "options": [
+        "tempest",
+        "tropical",
+        "desert",
+        "arctic",
+        "mono"
+      ]
+    }
+  ]
+}

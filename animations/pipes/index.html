@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Pipes</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #020208;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #pipes-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(6, 8, 20, 0.92);
+            border: 1px solid rgba(40, 140, 220, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #5090c0;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #40a0e0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #2a5070;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(40, 140, 220, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #4090c0; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="pipes-canvas"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED    = parseFloat(_params.get('speed')    || '1');
+const P_PALETTE  = _params.get('palette') || 'blue';
+const P_DENSITY  = parseInt(_params.get('density')    || '3', 10);
+const P_FADING   = parseInt(_params.get('fading')     || '1', 10);
+const P_SPAWNRATE = parseFloat(_params.get('spawnRate') || '1');
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Pipes</h2>
+        <p class="credits-label">Animation</p>
+        <p>Growing pipe network using<br>Unicode box-drawing characters.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+const canvas = document.getElementById('pipes-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 16;
+let CHAR_W = 9.6;
+let CHAR_H = 20;
+let cols = 0, rows = 0;
+let pCols = 0, pRows = 0;
+
+function measureFont() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+}
+
+function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    measureFont();
+    cols = Math.floor(canvas.width  / CHAR_W);
+    rows = Math.floor(canvas.height / CHAR_H);
+    pCols = Math.floor(cols / 3);
+    pRows = Math.floor(rows / 3);
+    resetGrid();
+}
+
+window.addEventListener('resize', resize);
+
+
+const PALETTES = {
+    blue: {
+        colors: ['#0a2040','#103060','#184880','#2060a0','#3880c0','#50a0e0'],
+        head: '#90d0ff',
+        glow: '#184880',
+        bg: '#02020a',
+    },
+    green: {
+        colors: ['#0a2018','#103820','#185030','#207040','#309060','#50b080'],
+        head: '#80e0a0',
+        glow: '#185030',
+        bg: '#020a04',
+    },
+    amber: {
+        colors: ['#201808','#382810','#503818','#704820','#906030','#b08040'],
+        head: '#ffc860',
+        glow: '#503818',
+        bg: '#080602',
+    },
+    neon: {
+        colors: ['#200820','#381038','#501850','#702070','#903090','#b050b0'],
+        head: '#ff80ff',
+        glow: '#501850',
+        bg: '#08020a',
+    },
+    mono: {
+        colors: ['#101010','#202020','#303030','#484848','#606060','#808080'],
+        head: '#c0c0c0',
+        glow: '#303030',
+        bg: '#020202',
+    },
+};
+
+const PAL = PALETTES[P_PALETTE] || PALETTES.blue;
+
+function hexToHsl(hex) {
+    let r = parseInt(hex.slice(1,3),16)/255;
+    let g = parseInt(hex.slice(3,5),16)/255;
+    let b = parseInt(hex.slice(5,7),16)/255;
+    const max = Math.max(r,g,b), min = Math.min(r,g,b);
+    let h = 0, s = 0, l = (max+min)/2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+        switch(max) {
+            case r: h = ((g-b)/d + (g<b?6:0))/6; break;
+            case g: h = ((b-r)/d + 2)/6; break;
+            case b: h = ((r-g)/d + 4)/6; break;
+        }
+    }
+    return [h*360, s*100, l*100];
+}
+
+function hslToHex(h, s, l) {
+    h /= 360; s /= 100; l /= 100;
+    let r, g, b;
+    if (s === 0) {
+        r = g = b = l;
+    } else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q-p)*6*t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q-p)*(2/3-t)*6;
+            return p;
+        };
+        const q = l < 0.5 ? l*(1+s) : l+s-l*s;
+        const p = 2*l - q;
+        r = hue2rgb(p, q, h+1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h-1/3);
+    }
+    const toHex = v => Math.round(Math.max(0, Math.min(255, v*255))).toString(16).padStart(2,'0');
+    return '#' + toHex(r) + toHex(g) + toHex(b);
+}
+
+const DIR = { N: 0, E: 1, S: 2, W: 3 };
+const DX = [0, 1, 0, -1];
+const DY = [-1, 0, 1, 0];
+const OPP = [2, 3, 0, 1];
+
+let grid = null;
+let pipeList = [];
+
+const EXIT_N = 1, EXIT_E = 2, EXIT_S = 4, EXIT_W = 8;
+
+function exitFlag(dir) { return 1 << dir; }
+
+
+function resetGrid() {
+    grid = new Array(pRows);
+    for (let y = 0; y < pRows; y++) {
+        grid[y] = new Array(pCols);
+        for (let x = 0; x < pCols; x++) {
+            grid[y][x] = {
+                exits: 0, pipeId: -1, age: 0, headAge: 0,
+                baseColor: null, hlColor: null, shadowColor: null, sphereColor: null
+            };
+        }
+    }
+    pipeList = [];
+}
+
+class Pipe {
+    constructor(id) {
+        this.id = id;
+        this.x = Math.floor(Math.random() * pCols);
+        this.y = Math.floor(Math.random() * pRows);
+        this.dir = Math.floor(Math.random() * 4);
+        this.alive = true;
+        this.age   = 0;
+
+        const baseHex = PAL.colors[Math.floor(Math.random() * PAL.colors.length)];
+        const [h, s, l] = hexToHsl(baseHex);
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const lOff = (Math.random() - 0.5) * 16;
+        const sOff = (Math.random() - 0.5) * 20;
+        const ls = clamp(s + sOff, 0, 100);
+        const ll = clamp(l + lOff, 0, 100);
+        this.baseColor   = hslToHex(h, ls, ll);
+        this.hlColor     = hslToHex(h, ls, clamp(ll + 20, 0, 100));
+        this.shadowColor = hslToHex(h, ls, clamp(ll - 30, 0, 100));
+        this.sphereColor = hslToHex(h, ls, clamp(ll + 10, 0, 100));
+
+        this.placeInitial();
+    }
+
+    _writeCell(x, y, isHead) {
+        const cell = grid[y][x];
+        cell.pipeId      = this.id;
+        cell.age         = this.age;
+        cell.baseColor   = this.baseColor;
+        cell.hlColor     = this.hlColor;
+        cell.shadowColor = this.shadowColor;
+        cell.sphereColor = this.sphereColor;
+        cell.headAge     = isHead ? 0 : -1;
+    }
+
+    placeInitial() {
+        if (this.x < 0 || this.x >= pCols || this.y < 0 || this.y >= pRows) {
+            this.alive = false;
+            return;
+        }
+        const cell = grid[this.y][this.x];
+        if (cell.pipeId >= 0) {
+            this.alive = false;
+            return;
+        }
+        cell.exits = exitFlag(OPP[this.dir]);
+        this._writeCell(this.x, this.y, true);
+    }
+
+    step() {
+        if (!this.alive) return;
+        this.age++;
+
+        const possibleDirs = [];
+        for (let d = 0; d < 4; d++) {
+            const nx = this.x + DX[d];
+            const ny = this.y + DY[d];
+            if (nx < 0 || nx >= pCols || ny < 0 || ny >= pRows) continue;
+            if (grid[ny][nx].pipeId >= 0) continue;
+            possibleDirs.push(d);
+        }
+
+        if (possibleDirs.length === 0) {
+            this.alive = false;
+            return;
+        }
+
+        let nextDir;
+        if (possibleDirs.includes(this.dir) && Math.random() < 0.70) {
+            nextDir = this.dir;
+        } else {
+            nextDir = possibleDirs[Math.floor(Math.random() * possibleDirs.length)];
+        }
+
+        const nx = this.x + DX[nextDir];
+        const ny = this.y + DY[nextDir];
+
+        // Retire current cell as body
+        const curCell = grid[this.y][this.x];
+        curCell.exits |= exitFlag(nextDir);
+        curCell.headAge = -1;
+
+        // Advance to new cell
+        this.x = nx;
+        this.y = ny;
+        this.dir = nextDir;
+
+        const newCell = grid[ny][nx];
+        newCell.exits = exitFlag(OPP[nextDir]);
+        this._writeCell(nx, ny, true);
+    }
+}
+
+function renderUnit(lx, ly, cell) {
+    const px = lx * 3 * CHAR_W;
+    const py = ly * 3 * CHAR_H;
+    const exits = cell.exits;
+    const isHead = cell.headAge >= 0;
+
+    const hasH = !!(exits & (EXIT_E | EXIT_W));
+    const hasV = !!(exits & (EXIT_N | EXIT_S));
+    const pureH = !isHead && hasH && !hasV;
+    const pureV = !isHead && !hasH && hasV;
+
+    const { baseColor, hlColor, shadowColor, sphereColor } = cell;
+
+    if (pureH) {
+        ctx.fillStyle = hlColor;
+        ctx.fillText('▀', px,            py);
+        ctx.fillText('▀', px + CHAR_W,   py);
+        ctx.fillText('▀', px + CHAR_W*2, py);
+
+        ctx.fillStyle = baseColor;
+        ctx.fillText('█', px,            py + CHAR_H);
+        ctx.fillText('█', px + CHAR_W,   py + CHAR_H);
+        ctx.fillText('█', px + CHAR_W*2, py + CHAR_H);
+
+        ctx.fillStyle = shadowColor;
+        ctx.fillText('▄', px,            py + CHAR_H*2);
+        ctx.fillText('▄', px + CHAR_W,   py + CHAR_H*2);
+        ctx.fillText('▄', px + CHAR_W*2, py + CHAR_H*2);
+
+    } else if (pureV) {
+        for (let r = 0; r < 3; r++) {
+            ctx.fillStyle = hlColor;
+            ctx.fillText('▌', px,            py + r*CHAR_H);
+            ctx.fillStyle = baseColor;
+            ctx.fillText('█', px + CHAR_W,   py + r*CHAR_H);
+            ctx.fillStyle = shadowColor;
+            ctx.fillText('▐', px + CHAR_W*2, py + r*CHAR_H);
+        }
+
+    } else {
+        // Sphere joint (turn, T, cross, dead-end, or active head)
+        const savedAlpha = ctx.globalAlpha;
+
+        // Ambient bleed around sphere
+        ctx.globalAlpha = savedAlpha * 0.15;
+        ctx.fillStyle = sphereColor;
+        for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+                if (r === 1 && c === 1) continue;
+                ctx.fillText('░', px + c*CHAR_W, py + r*CHAR_H);
+            }
+        }
+
+        // Pipe connectors bridging into sphere from each exit direction
+        ctx.globalAlpha = savedAlpha;
+        ctx.fillStyle = baseColor;
+        if (exits & EXIT_W) ctx.fillText('█', px,            py + CHAR_H);
+        if (exits & EXIT_E) ctx.fillText('█', px + CHAR_W*2, py + CHAR_H);
+        if (exits & EXIT_N) ctx.fillText('█', px + CHAR_W,   py);
+        if (exits & EXIT_S) ctx.fillText('█', px + CHAR_W,   py + CHAR_H*2);
+
+        // Center sphere with glow
+        const glowR = isHead ? 12 + 4 * Math.sin(frameAge * 0.1) : 9;
+        ctx.shadowColor = sphereColor;
+        ctx.shadowBlur  = glowR;
+        ctx.fillStyle   = sphereColor;
+        ctx.fillText('◉', px + CHAR_W, py + CHAR_H);
+        ctx.shadowBlur  = 0;
+    }
+}
+
+let spawnCounter = 0;
+let nextPipeId = 0;
+
+function spawnPipe() {
+    const aliveCount = pipeList.filter(p => p.alive).length;
+    if (aliveCount < Math.max(1, P_DENSITY)) {
+        const pipe = new Pipe(nextPipeId++);
+        if (pipe.alive) pipeList.push(pipe);
+    }
+}
+
+let frameAge = 0;
+
+function render() {
+    ctx.fillStyle = PAL.bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (let ly = 0; ly < pRows; ly++) {
+        for (let lx = 0; lx < pCols; lx++) {
+            const cell = grid[ly][lx];
+            if (cell.pipeId < 0 || !cell.baseColor) continue;
+
+            const ageDiff = frameAge - cell.age;
+            let alpha = 1;
+            if (P_FADING && ageDiff > 200) {
+                alpha = Math.max(0, 1 - (ageDiff - 200) * 0.0008 * P_SPEED);
+            }
+            if (alpha <= 0) {
+                cell.pipeId      = -1;
+                cell.exits       = 0;
+                cell.baseColor   = null;
+                cell.hlColor     = null;
+                cell.shadowColor = null;
+                cell.sphereColor = null;
+                continue;
+            }
+
+            ctx.globalAlpha = alpha;
+            renderUnit(lx, ly, cell);
+        }
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+function loop() {
+    frameAge++;
+
+    for (const pipe of pipeList) {
+        if (pipe.alive) pipe.step();
+    }
+
+    spawnCounter += P_SPAWNRATE;
+    while (spawnCounter >= 1) {
+        spawnCounter -= 1;
+        spawnPipe();
+    }
+
+    if (pipeList.length > P_DENSITY * 20) {
+        pipeList = pipeList.filter(p => p.alive);
+        const aliveIds = new Set(pipeList.map(p => p.id));
+        for (let y = 0; y < pRows; y++) {
+            for (let x = 0; x < pCols; x++) {
+                const cell = grid[y][x];
+                if (cell.pipeId >= 0 && !aliveIds.has(cell.pipeId)) {
+                    cell.pipeId      = -1;
+                    cell.exits       = 0;
+                    cell.baseColor   = null;
+                    cell.hlColor     = null;
+                    cell.shadowColor = null;
+                    cell.sphereColor = null;
+                }
+            }
+        }
+    }
+
+    render();
+    requestAnimationFrame(loop);
+}
+
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        spawnCounter = P_DENSITY;
+        requestAnimationFrame(loop);
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

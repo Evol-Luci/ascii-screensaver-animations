@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Spider Web</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #web-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(10, 10, 18, 0.92);
+            border: 1px solid rgba(150, 170, 200, 0.4);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #a8b8d0;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #c8d8f0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #7888a0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(150, 170, 200, 0.3);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #a8c0e8; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="web-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED         = parseFloat(_params.get('speed')        || '1');
+const P_PALETTE       = _params.get('palette')                 || 'moonlit';
+const P_PACING        = _params.get('pacing')                  || 'medium';
+const P_WEB_SWAY      = parseFloat(_params.get('webSway')      || '1');
+const P_DEW_DENSITY   = parseFloat(_params.get('dewDensity')   || '1');
+const P_PREY_RATE     = parseFloat(_params.get('preyRate')     || '1');
+const P_PREDATOR_RATE = parseFloat(_params.get('predatorRate') || '1');
+const P_MOON_GLOW     = parseFloat(_params.get('moonGlow')     || '1');
+
+const PACING_BUILD_SECONDS = { brisk: 180, medium: 480, slow: 900, glacial: 1800 };
+const BUILD_SECONDS = PACING_BUILD_SECONDS[P_PACING] || PACING_BUILD_SECONDS.medium;
+
+const PALETTES = {
+    moonlit: { strand: '#8a9bb8', dew: '#cfe0ff', spider: '#3a2e26', highlight: '#ffffff',
+        prey: '#d8c2a0', predator: '#e8d040', firefly: '#fff2a0', moon: 'rgba(150,170,210,ALPHA)', bundle: '#eef2ff' },
+    dawn:    { strand: '#c9a0a8', dew: '#ffd8c0', spider: '#4a2e28', highlight: '#fff0e0',
+        prey: '#e0c0a8', predator: '#ff8a5a', firefly: '#ffd9a0', moon: 'rgba(210,160,150,ALPHA)', bundle: '#fff2e8' },
+    amber:   { strand: '#b8924a', dew: '#ffe0a0', spider: '#3a2410', highlight: '#fff8d0',
+        prey: '#d8b878', predator: '#ff6a30', firefly: '#ffe080', moon: 'rgba(210,170,90,ALPHA)', bundle: '#fff6e0' },
+    frost:   { strand: '#a8d0e0', dew: '#e0f8ff', spider: '#283848', highlight: '#ffffff',
+        prey: '#bcd0d8', predator: '#6affd0', firefly: '#d0fff8', moon: 'rgba(150,200,220,ALPHA)', bundle: '#f0ffff' },
+    mono:    { strand: '#888888', dew: '#dddddd', spider: '#222222', highlight: '#ffffff',
+        prey: '#aaaaaa', predator: '#ffffff', firefly: '#eeeeee', moon: 'rgba(180,180,180,ALPHA)', bundle: '#f4f4f4' },
+};
+
+const CURRENT_PALETTE = PALETTES[P_PALETTE] || PALETTES.moonlit;
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Spider Web</h2>
+        <p class="credits-label">Animation</p>
+        <p>Procedural web with dew<br>and a wandering spider.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('web-canvas');
+const ctx    = canvas.getContext('2d');
+const FONT_SIZE = 15;
+let W = 0, H = 0;
+const FONT = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+
+let hub = { x: 0, y: 0 };
+let R = 0;
+const SPOKE_COUNT = 12;
+const RING_COUNT  = 9;
+let nodes = [];
+let edges = [];
+let buildQueue = [];
+
+function nodeIndex(s, r) { return r === 0 ? 0 : 1 + s * RING_COUNT + (r - 1); }
+function nodePos(i) { const n = nodes[i]; return { x: n.rx + n.dx, y: n.ry + n.dy }; }
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    buildGraph();
+    if (dewNodes.length) seedDew();
+}
+window.addEventListener('resize', resize);
+
+function buildGraph() {
+    hub = { x: W * 0.30, y: H * 0.50 };
+    R = Math.min(W * 0.26, H * 0.42);
+    nodes = [{ rx: hub.x, ry: hub.y, dx: 0, dy: 0, dist: 0, spoke: -1, ring: 0 }];
+    for (let s = 0; s < SPOKE_COUNT; s++) {
+        const ang = (2 * Math.PI * s) / SPOKE_COUNT;
+        for (let r = 1; r <= RING_COUNT; r++) {
+            const dist = R * Math.pow(r / RING_COUNT, 0.85);
+            nodes.push({
+                rx: hub.x + Math.cos(ang) * dist,
+                ry: hub.y + Math.sin(ang) * dist,
+                dx: 0, dy: 0, dist, spoke: s, ring: r,
+            });
+        }
+    }
+    edges = [];
+    // FRAME: outer polygon connecting spoke tips
+    for (let s = 0; s < SPOKE_COUNT; s++) {
+        edges.push({ a: nodeIndex(s, RING_COUNT), b: nodeIndex((s + 1) % SPOKE_COUNT, RING_COUNT), type: 'FRAME', built: false });
+    }
+    // SPOKE: hub outward along each spoke
+    for (let s = 0; s < SPOKE_COUNT; s++) {
+        for (let r = 1; r <= RING_COUNT; r++) {
+            edges.push({ a: nodeIndex(s, r - 1), b: nodeIndex(s, r), type: 'SPOKE', built: false });
+        }
+    }
+    // SPIRAL: concentric capture rings (inner rings only; outer ring is the frame)
+    for (let r = RING_COUNT - 1; r >= 1; r--) {
+        for (let s = 0; s < SPOKE_COUNT; s++) {
+            edges.push({ a: nodeIndex(s, r), b: nodeIndex((s + 1) % SPOKE_COUNT, r), type: 'SPIRAL', built: false });
+        }
+    }
+    // Build order = array order above (FRAME, then SPOKES, then SPIRAL outer→in).
+    buildQueue = edges.map((_, i) => i);
+}
+
+function drawWeb() {
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = CURRENT_PALETTE.strand;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    for (const e of edges) {
+        if (!e.built) continue;
+        const A = nodePos(e.a), B = nodePos(e.b);
+        ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+}
+
+// ─── Wind & ripple ──────────────────────────────────────────────────────────────
+let gusts = [];     // {t0, dir, speed, strength}
+let ripples = [];   // {x, y, t0, strength}
+let gustTimer = 0;
+
+function injectGust() {
+    gusts.push({ t0: tSec, dir: (Math.random() < 0.5 ? -1 : 1), speed: 380 + Math.random() * 220, strength: (6 + Math.random() * 10) * P_WEB_SWAY });
+}
+function injectRipple(x, y, strength) { ripples.push({ x, y, t0: tSec, strength }); }
+
+function updateWind() {
+    gustTimer -= dtSec;
+    if (gustTimer <= 0) { injectGust(); gustTimer = 6 + Math.random() * 10; }
+    gusts   = gusts.filter(g => tSec - g.t0 < 3.5);
+    ripples = ripples.filter(rp => tSec - rp.t0 < 1.4);
+
+    for (let i = 1; i < nodes.length; i++) {  // node 0 (hub) stays fixed
+        const n = nodes[i];
+        // baseline sway: outer nodes move more, phase by distance
+        const amp = (1.2 + n.dist * 0.012) * P_WEB_SWAY;
+        let dx = Math.sin(tSec * 0.7 + n.dist * 0.05) * amp;
+        let dy = Math.cos(tSec * 0.5 + n.dist * 0.04) * amp * 0.5;
+        // gusts: Gaussian pulse travelling outward from hub
+        for (const g of gusts) {
+            const front = (tSec - g.t0) * g.speed;
+            const d = n.dist - front;
+            const env = Math.exp(-(d * d) / (2 * 70 * 70)) * Math.exp(-(tSec - g.t0) * 0.9);
+            dx += g.dir * g.strength * env;
+            dy += g.dir * g.strength * env * 0.3;
+        }
+        // ripples: local radial transient
+        for (const rp of ripples) {
+            const ddx = n.rx - rp.x, ddy = n.ry - rp.y;
+            const dd = Math.hypot(ddx, ddy);
+            if (dd > 90) continue;
+            const age = tSec - rp.t0;
+            const osc = Math.sin(age * 22 - dd * 0.12) * Math.exp(-age * 3) * Math.exp(-dd * 0.02);
+            const k = rp.strength * osc;
+            if (dd > 0.001) { dx += (ddx / dd) * k; dy += (ddy / dd) * k; }
+        }
+        n.dx = dx; n.dy = dy;
+    }
+}
+
+// ─── Spider + construction ──────────────────────────────────────────────────────
+const SPIDER_CHAR = 'Ø';
+let spider = { x: 0, y: 0, state: 'BUILD', targetEdge: -1, wrapTimer: 0, hideTimer: 0 };
+let buildAccum = 0;        // edges allowed to spin so far (fractional)
+let edgesSpun = 0;
+
+function nextBuildTarget() { return buildQueue.length ? buildQueue[0] : -1; }
+
+// the endpoint of an edge that is NOT yet reachable (the one further from hub / unbuilt)
+function farEndpoint(edgeIdx) {
+    const e = edges[edgeIdx];
+    const da = nodes[e.a].dist, db = nodes[e.b].dist;
+    return da >= db ? e.a : e.b;
+}
+
+function updateSpider() {
+    if (predator) {
+        const corner = hideCorner();
+        spider.state = (seekToward(corner.x, corner.y, 220)) ? 'HIDE' : 'FLEE';
+        return;
+    }
+    if (spider.state === 'HIDE') spider.state = buildQueue.length ? 'BUILD' : 'PATROL';
+
+    const target = stuckPrey();
+    if (target && spider.state !== 'WRAP') {
+        spider.state = 'APPROACH';
+        const np = nodePos(target.node);
+        if (seekToward(np.x, np.y, 150)) { spider.state = 'WRAP'; spider.wrapTimer = 0; spider._wrapNode = target.node; spider._wrapPrey = target; }
+        return;
+    }
+    if (spider.state === 'WRAP') {
+        spider.wrapTimer += dtSec;
+        const np = nodePos(spider._wrapNode); injectRipple(np.x, np.y, 4);
+        if (spider.wrapTimer > 1.0) {
+            const idx = prey.indexOf(spider._wrapPrey);
+            if (idx >= 0) prey.splice(idx, 1);
+            addBundle(spider._wrapNode);
+            spider.state = buildQueue.length ? 'BUILD' : 'PATROL';
+        }
+        return;
+    }
+
+    // pacing: how many edges may be spun by now
+    const edgesPerSec = edges.length / BUILD_SECONDS;
+    if (buildQueue.length) buildAccum += edgesPerSec * dtSec;
+
+    if (spider.state === 'BUILD' || spider.state === 'PATROL') {
+        if (buildQueue.length && buildAccum >= edgesSpun + 1) {
+            spider.state = 'BUILD';
+            if (spider.targetEdge < 0) spider.targetEdge = nextBuildTarget();
+            const tip = nodePos(farEndpoint(spider.targetEdge));
+            const arrived = seekToward(tip.x, tip.y, edgeSpeed());
+            if (arrived) {
+                edges[spider.targetEdge].built = true;
+                buildQueue.shift();
+                edgesSpun++;
+                injectRipple(tip.x, tip.y, 5);
+                spider.targetEdge = -1;
+            }
+        } else if (!buildQueue.length) {
+            spider.state = 'PATROL';
+            patrolWander();
+        } else {
+            // waiting for pacing to allow the next edge: idle near hub
+            seekToward(hub.x, hub.y, edgeSpeed() * 0.4);
+        }
+    }
+}
+
+function edgeSpeed() {  // px/sec, fast enough to keep pace with edgesPerSec
+    return Math.max(120, (edges.length / BUILD_SECONDS) * 60);
+}
+
+// move spider toward (tx,ty); returns true when within threshold
+function seekToward(tx, ty, speed) {
+    const dx = tx - spider.x, dy = ty - spider.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 4) return true;
+    const step = Math.min(d, speed * dtSec);
+    spider.x += (dx / d) * step;
+    spider.y += (dy / d) * step;
+    return false;
+}
+
+let patrolTarget = null;
+function patrolWander() {
+    if (!patrolTarget || seekToward(patrolTarget.x, patrolTarget.y, 60)) {
+        const i = 1 + Math.floor(Math.random() * (nodes.length - 1));
+        patrolTarget = nodePos(i);
+    }
+}
+
+function drawSpider() {
+    ctx.fillStyle = CURRENT_PALETTE.spider;
+    ctx.globalAlpha = 1;
+    ctx.fillText(SPIDER_CHAR, spider.x, spider.y);
+}
+
+// ─── Prey + bundles ─────────────────────────────────────────────────────────────
+const PREY_GLYPH = { moth: 'M', fly: 'x', gnat: '.' };
+let prey = [];          // {kind, x, y, vx, vy, stuck, node, struggleT, escapeAt, big}
+let bundles = [];       // {node, born, alpha}
+const MAX_BUNDLES = 12;
+let preyTimer = 0;
+
+function spawnPrey() {
+    const kinds = ['moth', 'moth', 'fly', 'gnat'];
+    const kind = kinds[Math.floor(Math.random() * kinds.length)];
+    const big = kind === 'moth' && Math.random() < 0.35;
+    prey.push({
+        kind, big,
+        x: W + 10,
+        y: H * (0.15 + Math.random() * 0.7),
+        vx: -(20 + Math.random() * 30),
+        vy: (Math.random() - 0.5) * 20,
+        stuck: false, node: -1, struggleT: 0, escapeAt: 0,
+    });
+}
+
+function nodeHasBuiltEdge(i) {
+    for (const e of edges) if (e.built && (e.a === i || e.b === i)) return true;
+    return false;
+}
+
+function nearestBuiltSpiralNode(x, y) {
+    let best = -1, bestD = 60;  // px capture radius
+    for (let i = 1; i < nodes.length; i++) {
+        if (nodes[i].ring === RING_COUNT) continue;             // skip frame ring
+        // node counts as catchable only if it has a built incident edge
+        if (!nodeHasBuiltEdge(i)) continue;
+        const p = nodePos(i);
+        const d = Math.hypot(p.x - x, p.y - y);
+        if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+}
+
+function tearAround(node, count) {
+    let torn = 0;
+    for (let i = 0; i < edges.length && torn < count; i++) {
+        const e = edges[i];
+        if (e.built && e.type === 'SPIRAL' && (e.a === node || e.b === node)) {
+            e.built = false; buildQueue.push(i); torn++;
+        }
+    }
+}
+
+function updatePrey() {
+    preyTimer -= dtSec;
+    if (preyTimer <= 0) { spawnPrey(); preyTimer = (5 + Math.random() * 8) / Math.max(0.01, P_PREY_RATE); }
+
+    for (let i = prey.length - 1; i >= 0; i--) {
+        const p = prey[i];
+        if (p.stuck) {
+            p.struggleT += dtSec;
+            if (p.struggleT % 0.4 < dtSec) {
+                const np = nodePos(p.node);
+                injectRipple(np.x, np.y, p.big ? 12 : 6);
+                if (p.big) tearAround(p.node, 1);            // large prey tears strands
+            }
+            if (tSec >= p.escapeAt) { prey.splice(i, 1); }    // escaped (no kill); bundle handled on wrap
+            continue;
+        }
+        p.x += p.vx * dtSec; p.y += p.vy * dtSec;
+        if (p.x < -20 || p.y < -20 || p.y > H + 20) { prey.splice(i, 1); continue; }
+        const node = nearestBuiltSpiralNode(p.x, p.y);
+        if (node >= 0 && Math.random() < 0.5) {
+            p.stuck = true; p.node = node; p.struggleT = 0;
+            p.escapeAt = tSec + (p.big ? 9 : 18);
+            const np = nodePos(node); p.x = np.x; p.y = np.y;
+            injectRipple(np.x, np.y, p.big ? 14 : 8);
+        }
+    }
+}
+
+function stuckPrey() {
+    let best = null, bestAge = -1;
+    for (const p of prey) if (p.stuck && p.struggleT > bestAge) { best = p; bestAge = p.struggleT; }
+    return best;
+}
+
+function drawPrey() {
+    for (const p of prey) {
+        ctx.globalAlpha = p.stuck ? (0.6 + 0.4 * Math.abs(Math.sin(p.struggleT * 10))) : 0.85;
+        ctx.fillStyle = CURRENT_PALETTE.prey;
+        ctx.fillText(PREY_GLYPH[p.kind], p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function addBundle(node) {
+    bundles.push({ node, born: tSec, alpha: 1 });
+    if (bundles.length > MAX_BUNDLES) bundles.shift();
+}
+function drawBundles() {
+    for (const b of bundles) {
+        const p = nodePos(b.node);
+        ctx.globalAlpha = 0.8 * b.alpha;
+        ctx.fillStyle = CURRENT_PALETTE.bundle;
+        ctx.fillText('§', p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Predators (spider always survives) ─────────────────────────────────────────
+let predator = null;       // current event or null
+let predatorTimer = 0;
+
+function scheduleNextPredator() {
+    predatorTimer = (35 + Math.random() * 50) / Math.max(0.01, P_PREDATOR_RATE);
+}
+
+function hideCorner() {
+    // outer frame node nearest the hub-left edge = a safe corner
+    let best = nodeIndex(0, RING_COUNT), bestX = Infinity;
+    for (let s = 0; s < SPOKE_COUNT; s++) {
+        const i = nodeIndex(s, RING_COUNT), p = nodePos(i);
+        if (p.x < bestX) { bestX = p.x; best = i; }
+    }
+    return nodePos(best);
+}
+
+function updatePredators() {
+    if (!predator) {
+        predatorTimer -= dtSec;
+        if (predatorTimer <= 0 && buildQueue.length < edges.length) {
+            const roll = Math.random();
+            if (roll < 0.5) startWaspRaid();
+            else startBirdStrike();
+        }
+        return;
+    }
+    if (predator.type === 'wasp') updateWasp();
+    else if (predator.type === 'bird') updateBird();
+}
+
+function startWaspRaid() {
+    predator = { type: 'wasp', x: W + 20, y: H * (0.2 + Math.random() * 0.5), t0: tSec, phase: 'IN', cx: hub.x + R * 0.5, cy: hub.y };
+}
+
+function updateWasp() {
+    const p = predator;
+    if (p.phase === 'IN') {
+        p.x += (p.cx - p.x) * 2 * dtSec; p.y += (p.cy - p.y) * 2 * dtSec;
+        if (tSec - p.t0 > 1) p.phase = 'LOITER';
+    } else if (p.phase === 'LOITER') {
+        p.x = p.cx + Math.cos(tSec * 4) * 40;
+        p.y = p.cy + Math.sin(tSec * 3) * 30;
+        if (tSec - p.t0 > 5) p.phase = 'OUT';
+    } else {
+        p.x += 180 * dtSec;
+        if (p.x > W + 30) { predator = null; scheduleNextPredator(); }
+    }
+}
+
+function startBirdStrike() {
+    predator = { type: 'bird', x: -30, y: hub.y + (Math.random() - 0.5) * R, t0: tSec, phase: 'WARN' };
+}
+
+function tearBand(yCenter, halfHeight) {
+    for (let i = 0; i < edges.length; i++) {
+        const e = edges[i];
+        if (!e.built) continue;
+        const ay = nodes[e.a].ry, by = nodes[e.b].ry;
+        const my = (ay + by) / 2;
+        const mx = (nodes[e.a].rx + nodes[e.b].rx) / 2;
+        if (Math.abs(my - yCenter) < halfHeight && mx < hub.x + R) {
+            e.built = false; buildQueue.push(i);
+            injectRipple(mx, my, 16);
+        }
+    }
+}
+
+function updateBird() {
+    const p = predator;
+    if (p.phase === 'WARN') {                 // ~1s telegraph: bird waits at edge
+        if (tSec - p.t0 > 1) { p.phase = 'STRIKE'; p.struck = false; }
+    } else if (p.phase === 'STRIKE') {
+        p.x += 900 * dtSec;
+        if (!p.struck && p.x > hub.x) { tearBand(p.y, R * 0.22); p.struck = true; }
+        if (p.x > W + 30) { predator = null; scheduleNextPredator(); }
+    }
+}
+
+function drawPredators() {
+    if (!predator) return;
+    if (predator.type === 'bird' && predator.phase === 'WARN') {
+        ctx.globalAlpha = 0.25 + 0.25 * Math.sin(tSec * 30);
+        ctx.fillStyle = CURRENT_PALETTE.predator;
+        ctx.fillText('»', 12, predator.y);
+        ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = CURRENT_PALETTE.predator;
+    ctx.fillText(predator.type === 'wasp' ? '%' : '>', predator.x, predator.y);
+}
+
+// ─── Atmosphere ─────────────────────────────────────────────────────────────────
+function drawMoon() {
+    if (P_MOON_GLOW <= 0) return;
+    const g = ctx.createRadialGradient(hub.x, hub.y, 0, hub.x, hub.y, R * 1.8);
+    const m = CURRENT_PALETTE.moon;
+    g.addColorStop(0, m.replace('ALPHA', String(0.18 * P_MOON_GLOW)));
+    g.addColorStop(1, m.replace('ALPHA', '0'));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+}
+
+let fireflies = [];
+let fireflyTimer = 0;
+function updateFireflies() {
+    fireflyTimer -= dtSec;
+    if (fireflyTimer <= 0 && fireflies.length < 4) {
+        fireflies.push({ x: W + 10, y: H * Math.random(), vx: -(15 + Math.random() * 20), vy: 0, ph: Math.random() * 6 });
+        fireflyTimer = 8 + Math.random() * 12;
+    }
+    for (let i = fireflies.length - 1; i >= 0; i--) {
+        const f = fireflies[i];
+        f.x += f.vx * dtSec;
+        f.y += Math.sin(tSec + f.ph) * 12 * dtSec;
+        if (f.x < -10) fireflies.splice(i, 1);
+    }
+}
+function drawFireflies() {
+    for (const f of fireflies) {
+        ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(tSec * 3 + f.ph));
+        ctx.fillStyle = CURRENT_PALETTE.firefly;
+        ctx.fillText('*', f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+}
+
+let dewNodes = [];
+function seedDew() {
+    dewNodes = [];
+    for (let i = 1; i < nodes.length; i++) {
+        if (nodes[i].ring === RING_COUNT) continue;
+        if (Math.random() < 0.30 * P_DEW_DENSITY) dewNodes.push({ node: i, ph: Math.random() * 6 });
+    }
+}
+function drawDew() {
+    for (const d of dewNodes) {
+        if (!nodeHasBuiltEdge(d.node)) continue;     // only on built strands
+        const p = nodePos(d.node);
+        const pulse = 0.5 + 0.5 * Math.sin(tSec * 1.6 + d.ph);
+        ctx.globalAlpha = 0.4 + 0.5 * pulse;
+        ctx.fillStyle = pulse > 0.85 ? CURRENT_PALETTE.highlight : CURRENT_PALETTE.dew;
+        ctx.fillText('°', p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Render loop ────────────────────────────────────────────────────────────────
+let raf = null, startTime = 0, lastFrameTime = 0;
+let tSec = 0, dtSec = 0;
+
+function loop() {
+    const now = performance.now();
+    tSec  = (now - startTime) / 1000 * P_SPEED;
+    dtSec = (lastFrameTime ? Math.min(0.1, (now - lastFrameTime) / 1000) : 0) * P_SPEED;
+    lastFrameTime = now;
+
+    ctx.clearRect(0, 0, W, H);
+    drawMoon();
+    updateWind();
+    updateSpider();
+    updatePrey();
+    updatePredators();
+    updateFireflies();
+    drawWeb();
+    drawBundles();
+    drawDew();
+    drawPrey();
+    drawPredators();
+    drawFireflies();
+    drawSpider();
+    raf = requestAnimationFrame(loop);
+}
+
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        ctx.font = FONT;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        resize();
+        seedDew();
+        spider.x = hub.x; spider.y = hub.y;
+        scheduleNextPredator();
+        startTime = performance.now();
+        loop();
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

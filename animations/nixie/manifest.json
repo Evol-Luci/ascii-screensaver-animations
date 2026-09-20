@@ -1,0 +1,75 @@
+{
+  "id": "nixie",
+  "name": "Nixie",
+  "description": "Vintage nixie tube clock with cathode poisoning, neon glow bloom, and per-tube flicker. Inspired by joeparadiso/nixie-tube-clock.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "glowColor",
+      "type": "select",
+      "label": "Glow Color",
+      "defaultValue": "amber",
+      "options": [
+        "amber",
+        "red",
+        "green",
+        "blue",
+        "white",
+        "purple"
+      ]
+    },
+    {
+      "key": "flickerIntensity",
+      "type": "range",
+      "label": "Flicker Intensity",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "poisoningSpeed",
+      "type": "range",
+      "label": "Poisoning Speed",
+      "defaultValue": 1.5,
+      "min": 0.5,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "showSeconds",
+      "type": "select",
+      "label": "Show Seconds",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
+    },
+    {
+      "key": "tubeStyle",
+      "type": "select",
+      "label": "Tube Style",
+      "defaultValue": "classic",
+      "options": [
+        "classic",
+        "slim",
+        "wide"
+      ]
+    },
+    {
+      "key": "tubeColons",
+      "type": "select",
+      "label": "Tube Colons",
+      "defaultValue": 0,
+      "options": [
+        0,
+        1
+      ]
+    }
+  ]
+}

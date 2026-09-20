@@ -1,0 +1,62 @@
+{
+  "id": "blackhole",
+  "name": "Black Hole",
+  "description": "Accretion disk animation with jet toggle, disk size, and inclination.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "fire",
+      "options": [
+        "fire",
+        "cool",
+        "plasma",
+        "mono"
+      ]
+    },
+    {
+      "key": "diskSize",
+      "type": "range",
+      "label": "Disk Size",
+      "defaultValue": 1,
+      "min": 0.4,
+      "max": 2,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "jets",
+      "type": "select",
+      "label": "Jets",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
+    },
+    {
+      "key": "inclination",
+      "type": "range",
+      "label": "Inclination",
+      "defaultValue": 0.36,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "integer": false
+    }
+  ]
+}

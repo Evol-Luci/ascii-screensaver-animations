@@ -1,0 +1,109 @@
+{
+  "id": "planet",
+  "name": "Planet",
+  "description": "Rotating planet sphere with atmosphere, optional rings, and polar aurora.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 0.5,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "planetColor",
+      "type": "select",
+      "label": "Planet Color",
+      "defaultValue": "earth",
+      "options": [
+        "earth",
+        "mars",
+        "ice",
+        "gas",
+        "lava",
+        "ocean",
+        "mono"
+      ]
+    },
+    {
+      "key": "planetSize",
+      "type": "range",
+      "label": "Planet Size",
+      "defaultValue": 1,
+      "min": 0.3,
+      "max": 1.5,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "rings",
+      "type": "select",
+      "label": "Rings",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
+    },
+    {
+      "key": "atmosphereColor",
+      "type": "select",
+      "label": "Atmosphere Color",
+      "defaultValue": "cyan",
+      "options": [
+        "cyan",
+        "amber",
+        "violet",
+        "green",
+        "red",
+        "white"
+      ]
+    },
+    {
+      "key": "atmosphereDensity",
+      "type": "range",
+      "label": "Atmosphere Density",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "atmosphereTurbulence",
+      "type": "range",
+      "label": "Atmosphere Turbulence",
+      "defaultValue": 0.6,
+      "min": 0,
+      "max": 2,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "atmosphereDirection",
+      "type": "range",
+      "label": "Atmosphere Direction",
+      "defaultValue": 0.3,
+      "min": -1,
+      "max": 1,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "aurora",
+      "type": "select",
+      "label": "Aurora",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
+    }
+  ]
+}

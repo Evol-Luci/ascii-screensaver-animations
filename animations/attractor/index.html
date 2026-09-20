@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Attractor</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a12; overflow: hidden; width: 100vw; height: 100vh; }
+    body.screensaver-mode { cursor: none; }
+    #scene { display: block; opacity: 0; transition: opacity 2s ease-in; }
+    .credits-popup {
+      position: fixed; bottom: 32px; right: 32px;
+      background: rgba(10,10,18,0.92); border: 1px solid rgba(150,170,200,0.4);
+      border-radius: 8px; padding: 20px 24px;
+      font-family: 'JetBrains Mono','Courier New',monospace;
+      font-size: 12px; color: #a8b8d0; max-width: 280px;
+      opacity: 0; transition: opacity 2s ease-in-out; z-index: 100; line-height: 1.6;
+    }
+    .credits-popup.visible { opacity: 1; }
+    .credits-popup h2 { font-size: 14px; font-weight: 700; color: #c8d8f0;
+      letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+    .credits-popup .credits-label { font-size: 10px; color: #7888a0;
+      text-transform: uppercase; letter-spacing: 1px; margin: 10px 0 4px; }
+    .credits-popup hr { border: none; border-top: 1px solid rgba(150,170,200,0.3); margin: 12px 0; }
+    .credits-popup a { color: #a8c0e8; text-decoration: none; }
+  </style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+// Per-animation params
+const P_SPEED          = parseFloat(_params.get('speed')         || '1.0');
+const P_CYCLE_TIME     = parseFloat(_params.get('cycleTime')     || '30');
+const P_TRAIL_LENGTH   = parseInt(_params.get('trailLength')     || '800', 10);
+const P_ROTATION_SPEED = parseFloat(_params.get('rotationSpeed') || '0.1');
+const P_PALETTE        = _params.get('palette')                  || 'ice';
+const P_SYSTEM         = _params.get('system') || '';   // optional pin (Task 2 uses for ?system=)
+
+const config = {
+  speed: P_SPEED,
+  cycleTime: P_CYCLE_TIME,
+  trailLength: P_TRAIL_LENGTH,
+  rotationSpeed: P_ROTATION_SPEED,
+  palette: P_PALETTE,
+};
+
+if (SCREENSAVER_MODE) {
+  document.body.classList.add('screensaver-mode');
+  const credits = document.createElement('div');
+  credits.className = 'credits-popup';
+  credits.innerHTML = `
+    <h2>ASCII Attractor</h2>
+    <p class="credits-label">Animation</p>
+    <p>A particle tracing a real strange-attractor equation.</p>
+    <hr>
+    <p class="credits-label">Screensaver Framework</p>
+    <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+    <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>`;
+  document.body.appendChild(credits);
+  setTimeout(() => credits.classList.add('visible'), 500);
+  setTimeout(() => credits.classList.remove('visible'), 30500);
+  setTimeout(() => credits.remove(), 32500);
+
+  let armed = false;
+  setTimeout(() => { armed = true; }, 1500);
+  const dismiss = () => {
+    if (!armed) return;
+    try { window.close(); } catch (e) {}
+    document.body.innerHTML = '';
+    document.body.style.background = '#000';
+  };
+  window.addEventListener('keydown', dismiss);
+  window.addEventListener('mousedown', dismiss);
+  window.addEventListener('mousemove', (() => {
+    let lastX = -1, lastY = -1, moveCount = 0;
+    return (e) => {
+      if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+      if (e.clientX === lastX && e.clientY === lastY) return;
+      lastX = e.clientX; lastY = e.clientY;
+      if (++moveCount > 10) dismiss();
+    };
+  })());
+}
+
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d');
+let width, height, cx, cy, viewScale, scale;
+
+// --- Attractor systems ---
+// Each: deriv(x,y,z)->{dx,dy,dz}; seed point; center (subtracted before projection);
+// spread (half-extent used to normalize to ~unit); spdRef (speed mapped to glyph-ramp top).
+const SYSTEMS = {
+  lorenz: {
+    deriv(x, y, z) {
+      const s = 10, r = 28, b = 8 / 3;
+      return { dx: s * (y - x), dy: x * (r - z) - y, dz: x * y - b * z };
+    },
+    seed: { x: 0.1, y: 0, z: 0 },
+    center: { x: 0, y: 0, z: 25 },
+    spread: 30,
+    spdRef: 120,
+  },
+  rossler: {
+    deriv(x, y, z) {
+      const a = 0.2, b = 0.2, c = 5.7;
+      return { dx: -(y + z), dy: x + a * y, dz: b + z * (x - c) };
+    },
+    seed: { x: 4, y: -5.5, z: 0.06 },   // on the attractor — origin seed has a multi-second invisible transient
+    center: { x: 0, y: 0, z: 6 },
+    spread: 22,
+    spdRef: 25,
+  },
+};
+
+// --- Ring buffer (typed arrays; oldest overwritten, never shifted) ---
+const N = Math.max(50, P_TRAIL_LENGTH);
+const bufX = new Float32Array(N);
+const bufY = new Float32Array(N);
+const bufZ = new Float32Array(N);
+const bufS = new Float32Array(N);
+let head = 0;    // next write index
+let count = 0;   // number of valid entries
+
+// --- State ---
+let sysName = (P_SYSTEM && SYSTEMS[P_SYSTEM])
+  ? P_SYSTEM
+  : (Math.random() < 0.5 ? 'lorenz' : 'rossler');
+let sys = SYSTEMS[sysName];
+let pt = { x: sys.seed.x, y: sys.seed.y, z: sys.seed.z };
+let camA = 0;
+let cycleTimer = 0;
+
+const DT = 0.005;                  // fixed Euler substep — keeps Lorenz stable
+const RAMP = ' .:-=+*#%@';         // speed → glyph density
+
+const PALETTES = {
+  ice:   '160,220,255',
+  ember: '255,170,70',
+  mono:  '200,210,230',
+};
+
+function recomputeScale() {
+  viewScale = Math.min(width, height) * 0.5 * 0.8;
+  scale = viewScale / sys.spread;
+}
+
+function applySystem(name) {
+  sysName = name;
+  sys = SYSTEMS[name];
+  pt = { x: sys.seed.x, y: sys.seed.y, z: sys.seed.z };
+  head = 0;
+  count = 0;
+  cycleTimer = 0;
+  recomputeScale();
+}
+
+function resize() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  cx = width / 2;
+  cy = height / 2;
+  recomputeScale();
+}
+window.addEventListener('resize', resize);
+
+function update(dt) {
+  camA += config.rotationSpeed * dt;
+  cycleTimer += dt;
+  if (!P_SYSTEM && cycleTimer >= config.cycleTime) {
+    applySystem(sysName === 'lorenz' ? 'rossler' : 'lorenz');
+  }
+
+  const steps = Math.max(1, Math.round(6 * config.speed));
+  for (let i = 0; i < steps; i++) {
+    const d = sys.deriv(pt.x, pt.y, pt.z);
+    pt.x += d.dx * DT;
+    pt.y += d.dy * DT;
+    pt.z += d.dz * DT;
+    const spd = Math.hypot(d.dx, d.dy, d.dz);
+    bufX[head] = pt.x; bufY[head] = pt.y; bufZ[head] = pt.z; bufS[head] = spd;
+    head = (head + 1) % N;
+    if (count < N) count++;
+  }
+}
+
+function colorFor(age, sn, alpha) {
+  if (config.palette === 'spectrum') {
+    const hue = (age * 300 + camA * 30) % 360;
+    return `hsla(${hue}, 90%, ${(50 + sn * 25).toFixed(0)}%, ${alpha})`;
+  }
+  const rgb = PALETTES[config.palette] || PALETTES.ice;
+  return `rgba(${rgb}, ${alpha})`;
+}
+
+function render() {
+  // Phosphor decay: translucent black instead of clearing.
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.font = '15px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const cosA = Math.cos(camA), sinA = Math.sin(camA);
+  const c = sys.center;
+
+  for (let k = 0; k < count; k++) {
+    const idx = (head - count + k + N) % N;   // oldest -> newest
+    const x = bufX[idx] - c.x;
+    const y = bufY[idx] - c.y;
+    const z = bufZ[idx] - c.z;
+    const spd = bufS[idx];
+
+    const xr = x * cosA - y * sinA;
+    const yr = x * sinA + y * cosA;            // depth
+    const sx = cx + xr * scale;
+    const sy = cy - z * scale + yr * scale * 0.18;
+
+    const age = count > 1 ? k / (count - 1) : 1;   // 0 old .. 1 new
+    const sn = Math.min(1, spd / sys.spdRef);
+    const glyph = RAMP[Math.min(RAMP.length - 1, Math.floor(sn * (RAMP.length - 1)))];
+    if (glyph === ' ') continue;
+
+    const alpha = Math.max(0, Math.min(1, (0.15 + age * 0.85) * (0.4 + sn * 0.6)));
+    ctx.fillStyle = colorFor(age, sn, alpha);
+    ctx.fillText(glyph, sx, sy);
+  }
+
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+let lastTime = performance.now();
+function frame(now) {
+  const dt = Math.min((now - lastTime) / 1000, 1 / 30);
+  lastTime = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+
+function startAnimation() {
+  canvas.style.opacity = '1';
+  document.fonts.ready.then(() => {
+    resize();
+    applySystem(sysName);
+    lastTime = performance.now();
+    frame(performance.now());
+  });
+}
+
+if (START_AT > 0)        setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START)  setTimeout(startAnimation, 4000);
+else                     setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

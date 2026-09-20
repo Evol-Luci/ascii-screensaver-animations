@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Wind Chimes</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #windchimes-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(14, 12, 20, 0.92);
+            border: 1px solid rgba(160, 140, 90, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #b8a070;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #d8b860;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #786030;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(160, 140, 90, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #d8b860; text-decoration: none; }
+
+        .sound-indicator {
+            position: fixed;
+            top: 32px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(14, 12, 20, 0.88);
+            border: 1px solid rgba(160, 140, 90, 0.4);
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 13px;
+            letter-spacing: 1px;
+            color: #d8b860;
+            opacity: 0;
+            transition: opacity 0.4s ease-in-out;
+            z-index: 200;
+            pointer-events: none;
+        }
+        .sound-indicator.visible { opacity: 1; }
+    </style>
+</head>
+<body>
+<canvas id="windchimes-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED          = parseFloat(_params.get('speed')         || '1');
+const P_PALETTE        = _params.get('palette')                  || 'bronze';
+const P_CHIME_COUNT    = parseInt(_params.get('chimeCount')      || '5', 10);
+const P_WIND_STRENGTH  = parseFloat(_params.get('windStrength')  || '1.0');
+const P_GUST_FREQUENCY = parseFloat(_params.get('gustFrequency') || '1.0');
+const P_DOUBLE_PENDULUM = (_params.get('doublePendulum') || '0') === '1'; // chaotic two-segment clapper
+const P_SOUND_TYPE     = _params.get('soundType')               || 'bell'; // bell timbre preset
+const P_PITCH          = parseFloat(_params.get('pitch')         || '2.0'); // root-frequency multiplier
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Wind Chimes</h2>
+        <p class="credits-label">Animation</p>
+        <p>Damped-pendulum chime tubes ·<br>noise-driven gusts · proximity<br>ring flashes. Press M for sound.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', (e) => {
+        if (e.key && e.key.toLowerCase() === 'm') return; // sound toggle — never dismisses
+        dismiss();
+    });
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Sound toggle (M key) — works identically in screensaver and preview mode,
+// and is the ONE key explicitly exempted from the dismiss-on-keypress handler
+// above. Every other key still dismisses as normal in screensaver mode.
+window.addEventListener('keydown', (e) => {
+    if (!e.key || e.key.toLowerCase() !== 'm') return;
+    initAudio();
+    soundEnabled = !soundEnabled;
+    showSoundIndicator(soundEnabled ? 'Sound: On' : 'Sound: Off');
+});
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('windchimes-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 15;
+let CHAR_W = 9.0, CHAR_H = 18.75;
+let cols = 0, rows = 0;
+let W = 0, H = 0;
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+    cols = Math.floor(W / CHAR_W);
+    rows = Math.floor(H / CHAR_H);
+    layoutChimes();
+}
+window.addEventListener('resize', resize);
+
+// ─── Dusk-sky background ────────────────────────────────────────────────────────
+function drawBackground() {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0,    '#1a1430');
+    grad.addColorStop(0.45, '#2a1f3d');
+    grad.addColorStop(0.75, '#3d2a3a');
+    grad.addColorStop(1,    '#0a0a12');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+}
+
+// ─── 1D value noise (for gust strength over time) ──────────────────────────────
+// Lightweight — gust strength is a single scalar sampled once per frame, no
+// baked texture needed (unlike incense/campfire's 2D per-pixel noise).
+const GUST_PERM_SIZE = 256;
+const gustPerm = new Float32Array(GUST_PERM_SIZE);
+for (let i = 0; i < GUST_PERM_SIZE; i++) gustPerm[i] = Math.random() * 2 - 1;
+
+function fade1(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+
+function perlin1(x) {
+    const xi = Math.floor(x) & (GUST_PERM_SIZE - 1);
+    const xf = x - Math.floor(x);
+    const a = gustPerm[xi];
+    const b = gustPerm[(xi + 1) & (GUST_PERM_SIZE - 1)];
+    const t = fade1(xf);
+    return a + t * (b - a);
+}
+
+// Smooth scalar gust strength over time, in roughly [-1, 1]. Layering two
+// octaves gives slow swells with shorter ripples on top, so gusts feel organic
+// rather than a single clean sine wave.
+function sampleGust(t) {
+    return perlin1(t * 0.5) * 0.7 + perlin1(t * 1.7 + 31.4) * 0.3;
+}
+
+// ─── Palettes ───────────────────────────────────────────────────────────────────
+const CHIME_PALETTES = {
+    bronze: { tube: '#c89850', string: '#9a8050', bob: '#c89850', glint: '#fffbe0', beam: '#4a3220' },
+    silver: { tube: '#cfd6dc', string: '#8a929a', bob: '#cfd6dc', glint: '#ffffff', beam: '#4a4a52' },
+    bamboo: { tube: '#a8c060', string: '#6a8040', bob: '#c8d888', glint: '#f0ffd0', beam: '#5a4a28' },
+    glass:  { tube: '#9fd8e8', string: '#6fa8ba', bob: '#c0eef8', glint: '#ffffff', beam: '#3a3a48' },
+    mono:   { tube: '#b0b0b0', string: '#707070', bob: '#c8c8c8', glint: '#ffffff', beam: '#404040' },
+};
+const ACTIVE_PALETTE = CHIME_PALETTES[P_PALETTE] || CHIME_PALETTES.bronze;
+
+// ─── Chime unit (hanger) ──────────────────────────────────────────────────────────
+// The tubes hang from a self-contained wind-chime unit at top-center rather than a
+// full-width ceiling beam: a chain of S-hooks dropping from the top of the screen,
+// a small domed hub, and a T===T support bar. BEAM_ROW is the bar's row; it sits
+// low enough to leave room for the hub (3 rows) and chain above it. The Chime and
+// Clapper anchors all key off BEAM_ROW, so everything hangs from this bar.
+const BEAM_ROW = 8;
+
+// Holder sway — the whole unit hangs from the ceiling and leans a touch on the
+// wind, pivoting from where the chain meets the top of the screen. Tiny
+// amplitude, a damped spring toward a gust-proportional target. holderDX is the
+// resulting horizontal shift at the bar; the drawing and every anchor that hangs
+// below the bar follow it (scaled by depth, so the pivot at the ceiling stays put).
+const HOLDER_SWING    = 0.05;  // max pivot angle (radians) — a subtle lean, not a swing
+const HOLDER_SPRING   = 4.5;
+const HOLDER_FRICTION = 2.6;
+let holderAngle = 0, holderVel = 0, holderDX = 0;
+
+function updateHolder(dtSeconds, gust) {
+    const target = Math.max(-HOLDER_SWING, Math.min(HOLDER_SWING, gust * HOLDER_SWING * P_WIND_STRENGTH));
+    const accel = (target - holderAngle) * HOLDER_SPRING - holderVel * HOLDER_FRICTION;
+    holderVel += accel * dtSeconds;
+    holderAngle += holderVel * dtSeconds;
+    holderDX = Math.sin(holderAngle) * (BEAM_ROW * CHAR_H); // chain length ≈ ceiling-to-bar drop
+}
+
+function drawCentered(text, cx, y, color) {
+    ctx.fillStyle = color;
+    ctx.fillText(text, cx - (text.length * CHAR_W) / 2, y);
+}
+
+function drawChimeUnit() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    const cx = W * 0.5;
+    const barY = BEAM_ROW * CHAR_H;
+    // Sway scales with depth: 0 at the ceiling pivot (y=0), full holderDX at the
+    // bar (y=barY), so the unit leans about its hanging point.
+    const sway = (y) => holderDX * (y / barY);
+
+    // Support bar sized to span the chime cluster (with a small margin), but never
+    // narrower than the domed hub that sits on top of it.
+    const spacing  = CHAR_W * 2.6;
+    const clusterW = Math.max(0, chimes.length - 1) * spacing;
+    const halfEquals = Math.max(4, Math.round((clusterW / 2 + CHAR_W * 1.5) / CHAR_W));
+    drawCentered('T' + '='.repeat(halfEquals * 2) + 'T', cx + sway(barY), barY, ACTIVE_PALETTE.beam);
+
+    // Domed hub, three rows tall, centered on the bar.
+    drawCentered('/' + ' '.repeat(8) + '\\', cx + sway(barY - CHAR_H),     barY - CHAR_H,     ACTIVE_PALETTE.beam);
+    drawCentered('/' + '+'.repeat(6) + '\\', cx + sway(barY - CHAR_H * 2), barY - CHAR_H * 2, ACTIVE_PALETTE.beam);
+    drawCentered('--++--',                   cx + sway(barY - CHAR_H * 3), barY - CHAR_H * 3, ACTIVE_PALETTE.beam);
+
+    // Hanging chain of alternating S-hooks rising from the hub to the screen top.
+    ctx.fillStyle = ACTIVE_PALETTE.string;
+    for (let i = 0, y = barY - CHAR_H * 4; y > -CHAR_H; y -= CHAR_H, i++) {
+        const ch    = (i % 2 === 0) ? '<' : '>';
+        const xOff  = (i % 2 === 0) ? -CHAR_W * 0.5 : CHAR_W * 0.5;
+        ctx.fillText(ch, cx + xOff + sway(y) - CHAR_W / 2, y);
+    }
+}
+
+// ─── Chime tubes — damped pendulum physics ─────────────────────────────────────
+const GRAVITY  = 9.8;     // arbitrary units, tuned for visual weight not realism
+const DAMPING   = 0.985;  // per-frame angular-velocity decay at 60fps baseline
+const CLAPPER_MIN_SPEED = 0.15; // rad/s — clapper must be moving to strike a tube
+const TUBE_WIND   = 1.3;  // gust torque strength on tubes (enough to visibly sway/collide)
+const HIT_IMPULSE = 0.18; // angular recoil (rad/s) on collision — a small bounce, not a shove
+const HIT_DAMP_TIME = 0.45;  // seconds of extra damping after a hit, to kill the recoil quickly
+const HIT_DAMP_FACTOR = 0.86; // per-frame velocity decay during that window (vs DAMPING normally)
+
+class Chime {
+    constructor(index, total) {
+        this.index    = index;
+        // Tubes hang in a tight cluster around screen center so the central
+        // clapper can swing into them — a fixed CHAR_W-based spacing, not a
+        // fraction of screen width, keeps the cluster compact at any resolution.
+        const spacing  = CHAR_W * 2.6;
+        const clusterW = (total - 1) * spacing;
+        this.baseAnchorX = W * 0.5 - clusterW / 2 + index * spacing;
+        this.anchorX = this.baseAnchorX;
+        this.anchorY = BEAM_ROW * CHAR_H + CHAR_H * 0.5;
+        this.length  = (4 + Math.random() * 3) * CHAR_H; // px — also drives pitch (Task 6)
+
+        // Pendulum state: angle in radians from straight-down (0 = hanging straight).
+        this.angle  = (Math.random() - 0.5) * 0.15;
+        this.angularVelocity = 0;
+        // Per-tube phase offset decorrelates gust response across tubes so they
+        // don't all swing perfectly in lockstep.
+        this.gustPhase = Math.random() * 10;
+        this.gustResponse = 0.7 + Math.random() * 0.6; // per-tube sensitivity variance
+        this.ringFlash = 0; // 0-1, decays each frame after a ring event
+        this.ringCooldown = 0; // seconds remaining before this tube can ring again
+        this.wasStruck = false; // clapper-alignment state last frame (strike on entry)
+        this.hitDamp = 0; // seconds of extra post-collision damping remaining
+
+        this.bobX = this.anchorX;
+        this.bobY = this.anchorY + this.length;
+    }
+
+    update(dtSeconds, animTime) {
+        // Damped pendulum: angular acceleration from gravity restoring force
+        // plus an external gust torque. Each tube samples the gust at its own
+        // phase offset so neighbours sway out of lockstep and actually close on
+        // one another (and on the clapper) to collide.
+        this.anchorX = this.baseAnchorX + holderDX; // hang from the swaying bar
+        const gustStrength = sampleGust(animTime + this.gustPhase);
+        const gustTorque = gustStrength * this.gustResponse * P_WIND_STRENGTH * TUBE_WIND;
+        const angularAccel = -(GRAVITY / this.length) * Math.sin(this.angle) * 40 + gustTorque;
+
+        this.angularVelocity += angularAccel * dtSeconds;
+        // Briefly damp much harder right after a collision so the recoil bleeds
+        // off fast and neighbouring tubes can't pump each other into resonance.
+        const damp = this.hitDamp > 0 ? HIT_DAMP_FACTOR : DAMPING;
+        if (this.hitDamp > 0) this.hitDamp = Math.max(0, this.hitDamp - dtSeconds);
+        this.angularVelocity *= Math.pow(damp, dtSeconds * 60);
+        this.angle += this.angularVelocity * dtSeconds;
+
+        this.bobX = this.anchorX + Math.sin(this.angle) * this.length;
+        this.bobY = this.anchorY + Math.cos(this.angle) * this.length;
+    }
+
+    applyHit(impulse) {
+        this.angularVelocity += impulse;
+        this.hitDamp = HIT_DAMP_TIME;
+    }
+
+    triggerRing() {
+        this.ringFlash = 1.0;
+        this.ringCooldown = 0.25; // debounce — prevents rapid double-triggering on one pass
+        if (soundEnabled) playBellVoice(this.pitchHz);
+    }
+
+    decayRing(dtSeconds) {
+        if (this.ringFlash > 0) this.ringFlash = Math.max(0, this.ringFlash - dtSeconds * 3.5);
+        if (this.ringCooldown > 0) this.ringCooldown = Math.max(0, this.ringCooldown - dtSeconds);
+    }
+
+    draw() {
+        ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+        ctx.textBaseline = 'top';
+        ctx.strokeStyle = ACTIVE_PALETTE.string;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(this.anchorX, this.anchorY);
+        ctx.lineTo(this.bobX, this.bobY);
+        ctx.stroke();
+
+        if (this.ringFlash > 0) {
+            const glow = ctx.createRadialGradient(this.bobX, this.bobY, 0, this.bobX, this.bobY, CHAR_W * 3);
+            glow.addColorStop(0, `${ACTIVE_PALETTE.glint}${Math.round(this.ringFlash * 230).toString(16).padStart(2,'0')}`);
+            glow.addColorStop(1, `${ACTIVE_PALETTE.glint}00`);
+            ctx.fillStyle = glow;
+            ctx.fillRect(this.bobX - CHAR_W * 3, this.bobY - CHAR_W * 3, CHAR_W * 6, CHAR_W * 6);
+        }
+
+        ctx.fillStyle = this.ringFlash > 0.05 ? ACTIVE_PALETTE.glint : ACTIVE_PALETTE.tube;
+        ctx.fillText('|', this.bobX - CHAR_W / 2, this.bobY - CHAR_H / 2);
+        ctx.fillStyle = ACTIVE_PALETTE.bob;
+        ctx.fillText('o', this.bobX - CHAR_W / 2, this.bobY);
+    }
+}
+
+// ─── Central clapper ─────────────────────────────────────────────────────────────
+// A weighted striker hanging from the beam center on a longer string than the
+// tubes, with a wind-catching sail below it. The noise-driven gust swings it side
+// to side; as it aligns horizontally with a tube it strikes that tube and rings
+// it. This is the real-world wind-chime mechanism — a central clapper banging the
+// surrounding tubes — rather than tubes bumping each other (which, spread out,
+// they never did).
+const CLAPPER_SWING   = 0.9;  // max swing (radians) at gust=±1, windStrength=1
+const CLAPPER_SPRING  = 6.0;  // restoring stiffness toward the gust target angle
+const CLAPPER_FRICTION = 2.2; // velocity damping for a natural, slightly overshooting sway
+const CLAPPER_DOUBLE_DAMP = 0.985; // per-frame velocity decay for the double pendulum (balances wind energy)
+const CLAPPER_DOUBLE_VMAX = 4.0;   // rad/s cap — kept below the over-the-top threshold so it sways, never spins
+
+class Clapper {
+    constructor() {
+        this.baseAnchorX = W * 0.5;
+        this.anchorX = this.baseAnchorX;
+        this.anchorY = BEAM_ROW * CHAR_H + CHAR_H * 0.5;
+        this.flash   = 0;
+        this.angularVelocity = 0; // exposed for the strike-speed gate in both modes
+        this.double  = P_DOUBLE_PENDULUM;
+
+        if (this.double) {
+            // Two-segment chaotic pendulum: the upper arm is wind-driven, the
+            // lower arm swings freely from the upper bob. The striker is the
+            // lower bob — its erratic double-pendulum path sweeps the tube
+            // cluster unpredictably instead of in a regular side-to-side arc.
+            this.len1 = 4.5 * CHAR_H;
+            this.len2 = 3.5 * CHAR_H;
+            this.a1 = 0.0001; this.w1 = 0;
+            this.a2 = 0.35;   this.w2 = 0; // slight offset so it doesn't start balanced
+            this.jointX = this.anchorX;
+            this.jointY = this.anchorY + this.len1;
+            this.bobX = this.jointX;
+            this.bobY = this.jointY + this.len2;
+        } else {
+            this.length = 8 * CHAR_H; // hangs below the tube cluster
+            this.angle  = 0;
+            this.bobX = this.anchorX;
+            this.bobY = this.anchorY + this.length;
+        }
+    }
+
+    update(dtSeconds, gustStrength) {
+        this.anchorX = this.baseAnchorX + holderDX; // hang from the swaying bar
+        if (this.double) this.updateDouble(dtSeconds, gustStrength);
+        else this.updateSingle(dtSeconds, gustStrength);
+        if (this.flash > 0) this.flash = Math.max(0, this.flash - dtSeconds * 3.5);
+    }
+
+    updateSingle(dtSeconds, gustStrength) {
+        // Spring toward a gust-proportional target angle: amplitude maps directly
+        // to gust strength (predictable reach across the cluster) while the noise
+        // signal keeps the motion organic.
+        const target = Math.max(-1.2, Math.min(1.2, gustStrength * CLAPPER_SWING * P_WIND_STRENGTH));
+        const accel = (target - this.angle) * CLAPPER_SPRING - this.angularVelocity * CLAPPER_FRICTION;
+        this.angularVelocity += accel * dtSeconds;
+        this.angle += this.angularVelocity * dtSeconds;
+
+        this.bobX = this.anchorX + Math.sin(this.angle) * this.length;
+        this.bobY = this.anchorY + Math.cos(this.angle) * this.length;
+    }
+
+    updateDouble(dtSeconds, gustStrength) {
+        // Standard double-pendulum equations of motion (angles measured from
+        // straight-down) with an effective gravity tuned for visual weight.
+        // The ONLY energy input is the wind, modelled as a horizontal force: its
+        // turning effect scales with cos(angle), so it's strongest when the arm
+        // hangs down and falls to zero (then reverses) as the arm swings up to
+        // horizontal. That's what stops a sustained gust from acting like a motor
+        // and winding the pendulum over the top — it can only push the swing so
+        // far before the wind torque dies and gravity pulls it back. A velocity
+        // cap is the hard backstop against chaotic spin-ups. Substepped for
+        // integrator stability; when the air is calm, gravity + damping settle it.
+        const g  = GRAVITY * 40;
+        const m1 = 1.2, m2 = 1.0;
+        const L1 = this.len1, L2 = this.len2;
+        const windForce = gustStrength * P_WIND_STRENGTH * CLAPPER_SWING * 5;
+        const steps = 6;
+        const h = dtSeconds / steps;
+        const decay = Math.pow(CLAPPER_DOUBLE_DAMP, h * 60);
+        const VMAX = CLAPPER_DOUBLE_VMAX;
+        for (let s = 0; s < steps; s++) {
+            const a1 = this.a1, a2 = this.a2, w1 = this.w1, w2 = this.w2;
+            const d = a1 - a2;
+            const den = 2 * m1 + m2 - m2 * Math.cos(2 * d);
+            const num1 = -g * (2 * m1 + m2) * Math.sin(a1)
+                         - m2 * g * Math.sin(a1 - 2 * a2)
+                         - 2 * Math.sin(d) * m2 * (w2 * w2 * L2 + w1 * w1 * L1 * Math.cos(d));
+            const acc1 = num1 / (L1 * den) + windForce * Math.cos(a1);
+            const num2 = 2 * Math.sin(d) * (w1 * w1 * L1 * (m1 + m2)
+                         + g * (m1 + m2) * Math.cos(a1)
+                         + w2 * w2 * L2 * m2 * Math.cos(d));
+            const acc2 = num2 / (L2 * den) + windForce * 0.8 * Math.cos(a2); // sail end catches the breeze
+            this.w1 = Math.max(-VMAX, Math.min(VMAX, (w1 + acc1 * h) * decay));
+            this.w2 = Math.max(-VMAX, Math.min(VMAX, (w2 + acc2 * h) * decay));
+            this.a1 += this.w1 * h;
+            this.a2 += this.w2 * h;
+        }
+        this.jointX = this.anchorX + Math.sin(this.a1) * L1;
+        this.jointY = this.anchorY + Math.cos(this.a1) * L1;
+        this.bobX   = this.jointX + Math.sin(this.a2) * L2;
+        this.bobY   = this.jointY + Math.cos(this.a2) * L2;
+        this.angularVelocity = this.w2; // strike gate keys off the striker's speed
+    }
+
+    draw() {
+        ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+        ctx.textBaseline = 'top';
+        ctx.strokeStyle = ACTIVE_PALETTE.string;
+        ctx.lineWidth = 1;
+
+        if (this.double) {
+            ctx.beginPath();
+            ctx.moveTo(this.anchorX, this.anchorY);
+            ctx.lineTo(this.jointX, this.jointY);
+            ctx.lineTo(this.bobX, this.bobY);
+            ctx.stroke();
+            // Mid-joint
+            ctx.fillStyle = ACTIVE_PALETTE.string;
+            ctx.fillText('o', this.jointX - CHAR_W / 2, this.jointY - CHAR_H / 2);
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(this.anchorX, this.anchorY);
+            ctx.lineTo(this.bobX, this.bobY);
+            ctx.stroke();
+        }
+
+        // Weight (the striker)
+        ctx.fillStyle = this.flash > 0.05 ? ACTIVE_PALETTE.glint : ACTIVE_PALETTE.bob;
+        ctx.fillText('@', this.bobX - CHAR_W / 2, this.bobY - CHAR_H / 2);
+        // Wind-catching sail below the weight
+        ctx.fillStyle = ACTIVE_PALETTE.string;
+        ctx.fillText('v', this.bobX - CHAR_W / 2, this.bobY + CHAR_H / 2);
+    }
+}
+
+let chimes = [];
+let clapper = null;
+
+function layoutChimes() {
+    const count = Math.max(3, Math.min(7, P_CHIME_COUNT));
+    chimes = Array.from({ length: count }, (_, i) => new Chime(i, count));
+    chimes.forEach(assignPitch);
+    clapper = new Clapper();
+}
+
+// ─── Clapper-strike ring detection ───────────────────────────────────────────────
+// A tube rings when the moving clapper's bob aligns horizontally with that tube's
+// bob (within ~1 char). We fire on entry into alignment (false→true) and require
+// the clapper to actually be moving, so a clapper resting on a tube doesn't ring.
+function checkClapperStrikes() {
+    const strikeDX = CHAR_W * 0.9;
+    const moving = Math.abs(clapper.angularVelocity) > CLAPPER_MIN_SPEED;
+    for (const tube of chimes) {
+        const aligned = Math.abs(clapper.bobX - tube.bobX) < strikeDX;
+        if (aligned && !tube.wasStruck && moving && tube.ringCooldown <= 0) {
+            tube.triggerRing();
+            // Recoil: a small bounce in the clapper's direction of travel, quickly
+            // damped (applyHit) so the tube nudges rather than swings wildly.
+            tube.applyHit((Math.sign(clapper.angularVelocity) || 1) * HIT_IMPULSE);
+            clapper.flash = 1.0;
+        }
+        tube.wasStruck = aligned;
+    }
+}
+
+// ─── Tube-on-tube collisions ──────────────────────────────────────────────────────
+// Adjacent tubes in the cluster can swing into each other. When two neighbours
+// first overlap horizontally (with a generous vertical tolerance, since tubes
+// differ in length) they exchange a recoil impulse and both ring. Entry-only
+// (false→true) firing prevents a buzz while they stay overlapped.
+let tubeNear = [];
+function checkTubeCollisions() {
+    const pairs = Math.max(0, chimes.length - 1);
+    if (tubeNear.length !== pairs) tubeNear = new Array(pairs).fill(false);
+    const hitDX = CHAR_W * 1.5;
+    for (let i = 0; i < pairs; i++) {
+        const a = chimes[i], b = chimes[i + 1];
+        const dx = a.bobX - b.bobX;
+        const near = Math.abs(dx) < hitDX && Math.abs(a.bobY - b.bobY) < CHAR_H * 3.5;
+        if (near && !tubeNear[i]) {
+            const s = Math.sign(dx) || 1;
+            a.applyHit(s * HIT_IMPULSE);
+            b.applyHit(-s * HIT_IMPULSE);
+            if (a.ringCooldown <= 0) a.triggerRing();
+            if (b.ringCooldown <= 0) b.triggerRing();
+        }
+        tubeNear[i] = near;
+    }
+}
+
+// ─── Web Audio setup (lazy — created on first user gesture via M key) ─────────
+// Screensavers auto-launch with no prior interaction, and browsers block
+// AudioContext output until a user gesture occurs. The first `M` press (Task 7)
+// is that gesture: it calls initAudio(), which creates the context and master
+// gain in the same call stack as the keydown event.
+let audioCtx    = null;
+let masterGain  = null;
+let fxSend      = null;   // wet bus feeding reverb + echo
+let soundEnabled = false;
+
+// Procedural reverb impulse: exponentially-decaying noise, the standard way to
+// fake a convolution reverb tail without shipping an audio file.
+function makeImpulseResponse(ctx, seconds, decay) {
+    const rate = ctx.sampleRate;
+    const length = Math.floor(rate * seconds);
+    const buffer = ctx.createBuffer(2, length, rate);
+    for (let ch = 0; ch < 2; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+        }
+    }
+    return buffer;
+}
+
+function initAudio() {
+    if (audioCtx) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return;
+    }
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.5; // shared headroom so multiple simultaneous bell voices don't clip
+    masterGain.connect(audioCtx.destination);
+
+    // ─ FX bus: each bell voice sends a copy here for a long resonant tail ─
+    fxSend = audioCtx.createGain();
+    fxSend.gain.value = 1.0;
+
+    // Convolution reverb for a spacious, lingering room around each strike.
+    const convolver = audioCtx.createConvolver();
+    convolver.buffer = makeImpulseResponse(audioCtx, 3.5, 2.2);
+    const reverbGain = audioCtx.createGain();
+    reverbGain.gain.value = 0.55;
+    fxSend.connect(convolver);
+    convolver.connect(reverbGain);
+    reverbGain.connect(audioCtx.destination);
+
+    // Feedback delay for a soft, repeating echo trailing the bell.
+    const delay = audioCtx.createDelay(1.0);
+    delay.delayTime.value = 0.32;
+    const feedback = audioCtx.createGain();
+    feedback.gain.value = 0.4; // <1 so the echo decays rather than runs away
+    const echoTone = audioCtx.createBiquadFilter();
+    echoTone.type = 'lowpass';
+    echoTone.frequency.value = 2400; // darken each repeat so echoes feel distant
+    const echoGain = audioCtx.createGain();
+    echoGain.gain.value = 0.35;
+    fxSend.connect(delay);
+    delay.connect(echoTone);
+    echoTone.connect(feedback);
+    feedback.connect(delay);
+    echoTone.connect(echoGain);
+    echoGain.connect(audioCtx.destination);
+}
+
+// ─── Chord-tone pitch assignment ─────────────────────────────────────────────────
+// Every tube is tuned to a note of a single major chord (root / major-third /
+// fifth) stacked across three octaves, so whichever chimes happen to ring — alone
+// or together, in any order — they always spell that one chord and sound melodic
+// rather than like a wandering scale. Ratios are relative to a root of 220 Hz (A3).
+const CHORD_RATIOS = [
+    0.5,   // root  (low octave)
+    0.625, // 3rd   (5/4 · 0.5)
+    0.75,  // 5th   (3/2 · 0.5)
+    1.0,   // root
+    1.25,  // 3rd   (5/4)
+    1.5,   // 5th   (3/2)
+    2.0,   // root  (high octave)
+    2.5,   // 3rd
+    3.0,   // 5th
+];
+const PITCH_ROOT_HZ = 220;
+
+// Longer tube => lower pitch. chime.length is in px from Chime's constructor
+// (roughly 4-7 * CHAR_H, i.e. ~75-131px at 15px font). Map that range onto the
+// chord-tone list, longest tube getting the lowest ratio.
+function assignPitch(chime) {
+    const minLen = 4 * CHAR_H, maxLen = 7 * CHAR_H;
+    const norm = Math.max(0, Math.min(1, (chime.length - minLen) / (maxLen - minLen)));
+    // norm=0 (shortest tube) -> highest ratio index; norm=1 (longest) -> lowest.
+    const idx = Math.round((1 - norm) * (CHORD_RATIOS.length - 1));
+    chime.pitchHz = PITCH_ROOT_HZ * CHORD_RATIOS[idx] * P_PITCH;
+}
+
+// ─── Bell-voice synthesis ───────────────────────────────────────────────────────
+// One ring event = one bell voice: a fundamental sine plus a detuned second
+// oscillator at lower gain for an inharmonic, bell-like timbre rather than a
+// pure tone. Both route through a per-voice envelope into the shared masterGain,
+// so the cost of several simultaneous voices stays low (one graph each, all
+// summed by the single masterGain before reaching the destination).
+// Each sound type is a timbre preset: an oscillator waveform, a base-decay range,
+// a wet (reverb/echo) send amount, and an inharmonic partial set (ratio relative
+// to the fundamental, peak gain, and per-partial decay fraction). Higher partials
+// are quieter and die sooner, leaving the low partials to sustain — that long low
+// tail is what reads as "resonant".
+const SOUND_TYPES = {
+    // Struck-metal wind-chime bell — bright, long, resonant.
+    bell: {
+        osc: 'sine', decay: [2.2, 3.5], wet: 1.0,
+        partials: [
+            { ratio: 1.00, gain: 0.90, decay: 1.00 },
+            { ratio: 2.00, gain: 0.42, decay: 0.85 },
+            { ratio: 2.40, gain: 0.34, decay: 0.80 },
+            { ratio: 3.00, gain: 0.22, decay: 0.65 },
+            { ratio: 4.20, gain: 0.14, decay: 0.50 },
+            { ratio: 5.40, gain: 0.09, decay: 0.40 },
+        ],
+    },
+    // Glass/crystal — pure harmonic stack, very long shimmering decay, extra wet.
+    crystal: {
+        osc: 'sine', decay: [3.0, 4.5], wet: 1.3,
+        partials: [
+            { ratio: 1.00, gain: 0.80, decay: 1.00 },
+            { ratio: 2.00, gain: 0.50, decay: 0.95 },
+            { ratio: 3.00, gain: 0.32, decay: 0.85 },
+            { ratio: 4.00, gain: 0.20, decay: 0.70 },
+            { ratio: 6.00, gain: 0.12, decay: 0.55 },
+            { ratio: 8.00, gain: 0.06, decay: 0.40 },
+        ],
+    },
+    // Bamboo/wood — short, dry, dull knock with only a couple of low partials.
+    wood: {
+        osc: 'triangle', decay: [0.35, 0.7], wet: 0.18,
+        partials: [
+            { ratio: 1.00, gain: 0.90, decay: 1.00 },
+            { ratio: 2.10, gain: 0.30, decay: 0.50 },
+            { ratio: 3.40, gain: 0.15, decay: 0.30 },
+        ],
+    },
+    // Gong/metal — densely inharmonic, slightly detuned, big lingering wash.
+    gong: {
+        osc: 'sine', decay: [2.5, 4.0], wet: 1.1,
+        partials: [
+            { ratio: 1.00, gain: 0.85, decay: 1.00 },
+            { ratio: 1.62, gain: 0.50, decay: 0.90 },
+            { ratio: 2.30, gain: 0.40, decay: 0.85 },
+            { ratio: 2.91, gain: 0.30, decay: 0.70 },
+            { ratio: 3.83, gain: 0.20, decay: 0.60 },
+            { ratio: 5.12, gain: 0.12, decay: 0.45 },
+        ],
+    },
+};
+const ACTIVE_SOUND = SOUND_TYPES[P_SOUND_TYPE] || SOUND_TYPES.bell;
+
+function playBellVoice(freqHz) {
+    if (!audioCtx || !soundEnabled) return;
+
+    const now = audioCtx.currentTime;
+    const [dMin, dMax] = ACTIVE_SOUND.decay;
+    const baseDecay = dMin + Math.random() * (dMax - dMin);
+
+    for (const p of ACTIVE_SOUND.partials) {
+        const osc = audioCtx.createOscillator();
+        osc.type = ACTIVE_SOUND.osc;
+        osc.frequency.value = freqHz * p.ratio;
+        const env = audioCtx.createGain();
+        const decay = baseDecay * p.decay;
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.exponentialRampToValueAtTime(p.gain, now + 0.004); // ~4ms attack
+        env.gain.exponentialRampToValueAtTime(0.0001, now + decay);
+        osc.connect(env);
+        env.connect(masterGain); // dry
+        if (ACTIVE_SOUND.wet > 0) {
+            const wet = audioCtx.createGain();
+            wet.gain.value = ACTIVE_SOUND.wet;
+            env.connect(wet);
+            wet.connect(fxSend); // → reverb + echo
+        }
+        osc.start(now);
+        osc.stop(now + decay + 0.05);
+    }
+}
+
+// ─── Sound toggle indicator ──────────────────────────────────────────────────────
+// A brief fading text flash, styled like the credits popup, shown whenever M
+// toggles sound. Reuses a single DOM element across toggles rather than
+// creating a new one each time.
+let soundIndicatorEl = null;
+let soundIndicatorHideTimer = null;
+let soundIndicatorRemoveTimer = null;
+
+function showSoundIndicator(text) {
+    if (!soundIndicatorEl) {
+        soundIndicatorEl = document.createElement('div');
+        soundIndicatorEl.className = 'sound-indicator';
+        document.body.appendChild(soundIndicatorEl);
+    }
+    if (soundIndicatorHideTimer) clearTimeout(soundIndicatorHideTimer);
+    if (soundIndicatorRemoveTimer) clearTimeout(soundIndicatorRemoveTimer);
+
+    soundIndicatorEl.textContent = text;
+    soundIndicatorEl.classList.remove('visible');
+    // Force a reflow so re-triggering the same text still re-fades in cleanly
+    // even if the element was mid-fade-out from a rapid previous toggle.
+    void soundIndicatorEl.offsetWidth;
+    soundIndicatorEl.classList.add('visible');
+
+    soundIndicatorHideTimer = setTimeout(() => {
+        soundIndicatorEl.classList.remove('visible');
+    }, 1800);
+}
+
+// ─── Render loop ────────────────────────────────────────────────────────────────
+let lastTimestamp = 0;
+let animTime = 0;
+
+function render(t) {
+    const dtMs = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
+    lastTimestamp = t;
+    const scaledDtMs = dtMs * P_SPEED;
+    const dtSeconds = scaledDtMs * 0.001;
+    animTime += scaledDtMs * 0.001 * P_GUST_FREQUENCY;
+
+    const gust = sampleGust(animTime);
+
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+    updateHolder(dtSeconds, gust);
+    drawChimeUnit();
+    chimes.forEach(c => c.update(dtSeconds, animTime));
+    clapper.update(dtSeconds, gust);
+    checkTubeCollisions();
+    checkClapperStrikes();
+    chimes.forEach(c => c.decayRing(dtSeconds));
+    chimes.forEach(c => c.draw());
+    clapper.draw();
+    requestAnimationFrame(render);
+}
+
+// ─── Entry point ───────────────────────────────────────────────────────────────
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        requestAnimationFrame(render);
+    });
+}
+
+if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(startAnimation, 4000);
+else setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

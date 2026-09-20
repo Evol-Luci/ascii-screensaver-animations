@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Volcanic Flow</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #volcano-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(16, 6, 4, 0.92);
+            border: 1px solid rgba(230, 90, 30, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #c06840;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #f06020;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #703818;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(230, 90, 30, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #f06020; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="volcano-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED           = parseFloat(_params.get('speed')          || '1');
+const P_PALETTE         = _params.get('palette')                   || 'classic';
+const P_FLOW_INTENSITY  = parseFloat(_params.get('flowIntensity')  || '1.0');
+const P_ERUPTION_RATE   = parseFloat(_params.get('eruptionRate')   || '1.0');
+const P_SMOKE_DENSITY   = parseFloat(_params.get('smokeDensity')   || '1.0');
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Volcanic Flow</h2>
+        <p class="credits-label">Animation</p>
+        <p>Lava channel flow · eruption<br>sparks · rising smoke plume ·<br>pulsing crater glow.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('volcano-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 15;
+let CHAR_W = 9.0, CHAR_H = 18.75;
+let cols = 0, rows = 0;
+let W = 0, H = 0;
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+    cols = Math.floor(W / CHAR_W);
+    rows = Math.floor(H / CHAR_H);
+    computeVolcanoGeometry();
+    generateMountainSilhouette();
+    generateLavaChannel();
+}
+window.addEventListener('resize', resize);
+
+// ─── 2D Perlin Noise (ported from incense) ─────────────────────────────────────
+const PERLIN_SIZE = 256;
+const perm  = new Uint8Array(512);
+const grad2 = [[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
+
+(function initPerlin() {
+    const p = new Uint8Array(PERLIN_SIZE);
+    for (let i = 0; i < PERLIN_SIZE; i++) p[i] = i;
+    for (let i = PERLIN_SIZE - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [p[i], p[j]] = [p[j], p[i]];
+    }
+    for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+})();
+
+function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+function lerp(a, b, t) { return a + t * (b - a); }
+function dot2(gi, x, y) { const g = grad2[gi & 7]; return g[0]*x + g[1]*y; }
+
+function perlin2(x, y) {
+    const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255;
+    const xf = x - Math.floor(x),   yf = y - Math.floor(y);
+    const u  = fade(xf), v = fade(yf);
+    const aa = perm[perm[xi  ] + yi  ], ab = perm[perm[xi  ] + yi+1];
+    const ba = perm[perm[xi+1] + yi  ], bb = perm[perm[xi+1] + yi+1];
+    return lerp(
+        lerp(dot2(aa, xf,   yf  ), dot2(ba, xf-1, yf  ), u),
+        lerp(dot2(ab, xf,   yf-1), dot2(bb, xf-1, yf-1), u), v);
+}
+
+function fbm2(x, y, octaves) {
+    let value = 0, amp = 1, freq = 1, total = 0;
+    for (let i = 0; i < octaves; i++) {
+        value += amp * perlin2(x * freq, y * freq);
+        total += amp; amp *= 0.5; freq *= 2.0;
+    }
+    return value / total;
+}
+
+// ─── Noise texture (baked once at init) ────────────────────────────────────────
+const NOISE_SIZE = 256;
+const NOISE_TEX  = new Float32Array(NOISE_SIZE * NOISE_SIZE);
+
+function bakeNoiseTex() {
+    const inv = 4 / NOISE_SIZE;
+    for (let y = 0; y < NOISE_SIZE; y++) {
+        for (let x = 0; x < NOISE_SIZE; x++) {
+            const nx = x * inv, ny = y * inv;
+            NOISE_TEX[y * NOISE_SIZE + x] = fbm2(nx, ny, 3);
+        }
+    }
+}
+
+function sampleNoise(worldX, worldY, t) {
+    const u = ((worldX * 0.02 * 64) | 0) & 255;
+    const v = ((worldY * 0.02 * 64 + t * 30) | 0) & 255;
+    return NOISE_TEX[(v << 8) | u];
+}
+
+// ─── Volcano base geometry ──────────────────────────────────────────────────────
+let baseY     = 0;
+let craterX   = 0;
+let craterY   = 0;
+let peakRow   = 0;
+
+function computeVolcanoGeometry() {
+    baseY      = (rows - 3) * CHAR_H;
+    peakRow    = Math.floor(rows * 0.18);
+    craterX    = Math.floor(cols * 0.5) * CHAR_W;
+    craterY    = peakRow * CHAR_H + CHAR_H * 1.5;
+}
+
+// ─── Lava color palettes + LUT (shared paletteLerp/buildColorLUT for all 3 systems) ──
+const LAVA_PALETTES = {
+    classic:  [{t:0.0,r:0xff,g:0xf8,b:0xc0},{t:0.3,r:0xff,g:0xc8,b:0x30},{t:0.6,r:0xe0,g:0x50,b:0x10},{t:1.0,r:0x30,g:0x10,b:0x08}],
+    sulfur:   [{t:0.0,r:0xf8,g:0xff,b:0xb0},{t:0.3,r:0xe0,g:0xe8,b:0x40},{t:0.6,r:0xa0,g:0xb0,b:0x20},{t:1.0,r:0x30,g:0x30,b:0x08}],
+    obsidian: [{t:0.0,r:0xff,g:0xd0,b:0xc0},{t:0.3,r:0xe0,g:0x60,b:0x50},{t:0.6,r:0x90,g:0x20,b:0x30},{t:1.0,r:0x10,g:0x08,b:0x10}],
+    blueFlame:[{t:0.0,r:0xe0,g:0xf8,b:0xff},{t:0.3,r:0x80,g:0xd0,b:0xff},{t:0.6,r:0x30,g:0x90,b:0xff},{t:1.0,r:0x08,g:0x10,b:0x30}],
+    mono:     [{t:0.0,r:0xf8,g:0xf8,b:0xf8},{t:0.3,r:0xc0,g:0xc0,b:0xc0},{t:0.6,r:0x80,g:0x80,b:0x80},{t:1.0,r:0x20,g:0x20,b:0x20}],
+};
+const ACTIVE_LAVA_PALETTE = LAVA_PALETTES[P_PALETTE] || LAVA_PALETTES.classic;
+
+function paletteLerp(palette, t) {
+    t = Math.max(0, Math.min(1, t));
+    for (let i = 0; i < palette.length - 1; i++) {
+        if (t <= palette[i+1].t) {
+            const m = (t - palette[i].t) / (palette[i+1].t - palette[i].t);
+            return [
+                Math.round(palette[i].r + m * (palette[i+1].r - palette[i].r)),
+                Math.round(palette[i].g + m * (palette[i+1].g - palette[i].g)),
+                Math.round(palette[i].b + m * (palette[i+1].b - palette[i].b)),
+            ];
+        }
+    }
+    const last = palette[palette.length - 1];
+    return [last.r, last.g, last.b];
+}
+
+function buildColorLUT(palette) {
+    const lut = new Array(256);
+    for (let i = 0; i < 256; i++) {
+        const [r, g, b] = paletteLerp(palette, i / 255);
+        lut[i] = `rgb(${r},${g},${b})`;
+    }
+    return lut;
+}
+
+const LAVA_LUT = buildColorLUT(ACTIVE_LAVA_PALETTE);
+
+// ─── Mountain silhouette ────────────────────────────────────────────────────────
+let mountainProfile = [];
+const MOUNTAIN_SAMPLE_EVERY = 4;
+
+function generateMountainSilhouette() {
+    mountainProfile = [];
+    const apexHeight = baseY - peakRow * CHAR_H;
+    const halfWidth  = Math.max(craterX, W - craterX) * 0.95;
+    for (let x = 0; x <= W; x += MOUNTAIN_SAMPLE_EVERY) {
+        const distFromPeak = Math.abs(x - craterX) / halfWidth;
+        let h = apexHeight * Math.max(0, 1 - Math.pow(distFromPeak, 1.3));
+        h += Math.sin(x * 0.07) * 6 + Math.sin(x * 0.21 + 1.7) * 3;
+        h = Math.max(0, h);
+        mountainProfile.push({ x, h });
+    }
+}
+
+function drawMountainSilhouette() {
+    if (mountainProfile.length === 0) return;
+    ctx.fillStyle = '#140a08';
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, baseY);
+    for (let i = 0; i < mountainProfile.length; i++) {
+        const p = mountainProfile[i];
+        ctx.lineTo(p.x, baseY - p.h);
+    }
+    ctx.lineTo(W, baseY);
+    ctx.closePath();
+    ctx.fill();
+}
+
+// ─── Lava channel path ──────────────────────────────────────────────────────────
+let lavaChannel = [];
+
+function generateLavaChannel() {
+    lavaChannel = [];
+    const steps = 28;
+    const totalDrop = baseY - craterY;
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const y = craterY + t * totalDrop;
+        const sway = Math.sin(t * Math.PI * 3.2) * (10 + t * 28);
+        const x = craterX + sway;
+        lavaChannel.push({ x, y });
+    }
+}
+
+// ─── Ambient sky glow + crater glow ────────────────────────────────────────────
+let craterPulse = 0.6;
+
+function drawSkyGlow() {
+    const gx = craterX, gy = craterY;
+    const r  = Math.max(W, H) * 0.9;
+    const grad = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
+    grad.addColorStop(0,   `rgba(120,40,10,${0.10 + 0.05 * craterPulse})`);
+    grad.addColorStop(0.5, `rgba(60,20,5,${0.05 + 0.03 * craterPulse})`);
+    grad.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+}
+
+function drawCraterGlow(animTime) {
+    craterPulse = 0.55 + 0.45 * Math.sin(animTime * 1.6);
+    const r = CHAR_W * (8 + craterPulse * 4);
+    const grad = ctx.createRadialGradient(craterX, craterY, 0, craterX, craterY, r);
+    grad.addColorStop(0,   `rgba(255,200,80,${0.55 * craterPulse})`);
+    grad.addColorStop(0.4, `rgba(255,120,20,${0.30 * craterPulse})`);
+    grad.addColorStop(1,   'rgba(255,80,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(craterX - r, craterY - r, r * 2, r * 2);
+}
+
+// ─── Lava particle stream (SOA pattern) ────────────────────────────────────────
+const MAX_LAVA = 500;
+const lX          = new Float32Array(MAX_LAVA);
+const lY          = new Float32Array(MAX_LAVA);
+const lAge        = new Float32Array(MAX_LAVA);
+const lMaxAge      = new Float32Array(MAX_LAVA);
+const lAlive       = new Uint8Array(MAX_LAVA);
+const lChannelPos  = new Float32Array(MAX_LAVA);
+
+let lavaRing = 0;
+let lavaSpawnAccum = 0;
+
+function channelPointAt(pos) {
+    const idx = Math.max(0, Math.min(lavaChannel.length - 1, pos * (lavaChannel.length - 1)));
+    const i0  = Math.floor(idx);
+    const i1  = Math.min(lavaChannel.length - 1, i0 + 1);
+    const f   = idx - i0;
+    const p0  = lavaChannel[i0], p1 = lavaChannel[i1];
+    return { x: p0.x + (p1.x - p0.x) * f, y: p0.y + (p1.y - p0.y) * f };
+}
+
+function spawnLavaParticle() {
+    let p = lavaRing;
+    let skips = 0;
+    while (lAlive[p] && skips < 10) { p = (p + 1) % MAX_LAVA; skips++; }
+    lavaRing = (p + 1) % MAX_LAVA;
+    lAlive[p]      = 1;
+    lChannelPos[p] = 0;
+    const start    = channelPointAt(0);
+    lX[p]          = start.x;
+    lY[p]          = start.y;
+    lAge[p]        = 0;
+    lMaxAge[p]     = 4000 + Math.random() * 2500;
+}
+
+const LAVA_CHARS = ['#', '@', '%', '*'];
+
+function updateAndDrawLava(animTime, dt) {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.globalAlpha = 1;
+
+    for (let i = 0; i < MAX_LAVA; i++) {
+        if (!lAlive[i]) continue;
+
+        lAge[i] += dt;
+        const ageNorm = lAge[i] / lMaxAge[i];
+        if (ageNorm >= 1.0) { lAlive[i] = 0; continue; }
+
+        lChannelPos[i] = ageNorm;
+        const base = channelPointAt(lChannelPos[i]);
+        const n    = sampleNoise(base.x, base.y, animTime);
+        const sway = n * CHAR_W * 1.2;
+
+        lX[i] = base.x + sway;
+        lY[i] = base.y;
+
+        ctx.fillStyle = LAVA_LUT[(ageNorm * 255) | 0];
+        ctx.globalAlpha = Math.max(0.35, 1.0 - ageNorm * 0.3);
+        const charIdx = ageNorm < 0.5 ? 0 : 1 + Math.floor(Math.random() * 3);
+        ctx.fillText(LAVA_CHARS[charIdx], lX[i], lY[i]);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function spawnLava(scaledDt) {
+    const baseRate = 0.05 * P_FLOW_INTENSITY;
+    lavaSpawnAccum += baseRate * scaledDt;
+    while (lavaSpawnAccum >= 1.0) {
+        lavaSpawnAccum -= 1.0;
+        spawnLavaParticle();
+    }
+}
+
+// ─── Eruption spark/ember pool (incense spark pattern) ────────────────────────
+const SPARK_PALETTE = [
+    { t: 0.0, r: 0xff, g: 0xf4, b: 0xc0 },
+    { t: 0.3, r: 0xff, g: 0xb0, b: 0x30 },
+    { t: 0.7, r: 0xe0, g: 0x50, b: 0x10 },
+    { t: 1.0, r: 0x50, g: 0x20, b: 0x10 },
+];
+const SPARK_LUT = buildColorLUT(SPARK_PALETTE);
+
+const MAX_SPARKS = 60;
+const sparks = [];
+let sparkTimer = 2000 + Math.random() * 3000;
+
+function triggerEruptionFlash() {
+    craterPulse = Math.min(1.4, craterPulse + 0.8);
+}
+
+function updateAndDrawSparks(dt) {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i];
+        s.age += dt;
+        if (s.age >= s.maxAge || s.y < -CHAR_H) { sparks.splice(i, 1); continue; }
+        s.x  += s.vx * dt * 0.06;
+        s.y  += s.vy * dt * 0.06;
+        s.vy += 0.0028 * dt;
+        const ageNorm = s.age / s.maxAge;
+        const life = 1.0 - ageNorm;
+        ctx.globalAlpha = life * life;
+        ctx.fillStyle = SPARK_LUT[(ageNorm * 255) | 0];
+        ctx.fillText(s.char, s.x, s.y);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function spawnSparks(scaledDt) {
+    if (P_ERUPTION_RATE <= 0) return;
+    sparkTimer -= scaledDt;
+    if (sparkTimer <= 0) {
+        sparkTimer = (4000 + Math.random() * 4000) / P_ERUPTION_RATE;
+        triggerEruptionFlash();
+        const burst = 6 + Math.floor(Math.random() * 10);
+        for (let i = 0; i < burst && sparks.length < MAX_SPARKS; i++) {
+            sparks.push({
+                x: craterX, y: craterY,
+                vx: (Math.random() - 0.5) * 3.2,
+                vy: -(2.0 + Math.random() * 2.5),
+                age: 0,
+                maxAge: 500 + Math.random() * 500,
+                char: ['*', '.', "'", '`'][Math.floor(Math.random() * 4)],
+            });
+        }
+    }
+}
+
+// ─── Smoke plume (incense-style SOA + alpha-bucketed rendering) ───────────────
+const SMOKE_PALETTE = [
+    { t: 0.0,  r: 0x80, g: 0x78, b: 0x68 },
+    { t: 0.33, r: 0x60, g: 0x5a, b: 0x52 },
+    { t: 0.66, r: 0x44, g: 0x42, b: 0x3e },
+    { t: 1.0,  r: 0x28, g: 0x28, b: 0x28 },
+];
+const SMOKE_LUT = buildColorLUT(SMOKE_PALETTE);
+const SMOKE_CHARS = ['@', '8', '*', '+', '=', 'o', '.', ',', "'", '`', '~'];
+
+const MAX_SMOKE = 2000;
+const sX      = new Float32Array(MAX_SMOKE);
+const sY      = new Float32Array(MAX_SMOKE);
+const sVX     = new Float32Array(MAX_SMOKE);
+const sVY     = new Float32Array(MAX_SMOKE);
+const sAge    = new Float32Array(MAX_SMOKE);
+const sMaxAge = new Float32Array(MAX_SMOKE);
+const sAlive  = new Uint8Array(MAX_SMOKE);
+const sCharN  = new Uint8Array(MAX_SMOKE);
+
+let smokeRing       = 0;
+let smokeSpawnAccum = 0;
+
+function spawnSmokeParticle() {
+    let p = smokeRing;
+    let skips = 0;
+    while (sAlive[p] && skips < 10) { p = (p + 1) % MAX_SMOKE; skips++; }
+    smokeRing = (p + 1) % MAX_SMOKE;
+    sAlive[p]  = 1;
+    sX[p]      = craterX + (Math.random() - 0.5) * CHAR_W * 6;
+    sY[p]      = craterY - (Math.random() - 0.5) * CHAR_H * 2;
+    sVX[p]     = (Math.random() - 0.5) * 0.12;
+    sVY[p]     = -(0.18 + Math.random() * 0.18);
+    sAge[p]    = 0;
+    sMaxAge[p] = 3000 + Math.random() * 3000;
+    sCharN[p]  = Math.floor(Math.random() * 4);
+}
+
+const NUM_SMOKE_BUCKETS = 16;
+const smokeBuckets = Array.from({ length: NUM_SMOKE_BUCKETS }, () => []);
+
+function updateAndDrawSmoke(animTime, dt) {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (let b = 0; b < NUM_SMOKE_BUCKETS; b++) smokeBuckets[b].length = 0;
+
+    for (let i = 0; i < MAX_SMOKE; i++) {
+        if (!sAlive[i]) continue;
+
+        sAge[i] += dt;
+        const ageNorm = sAge[i] / sMaxAge[i];
+        if (ageNorm >= 1.0 || sY[i] < -CHAR_H * 2) { sAlive[i] = 0; continue; }
+
+        const n = sampleNoise(sX[i], sY[i], animTime);
+        const diffusion = ageNorm * ageNorm * 2.0;
+        sVX[i] += n * 0.05 + (Math.random() - 0.5) * diffusion * 0.02;
+        sVX[i] *= 0.97;
+        sX[i]  += sVX[i] * dt * 0.5;
+        sY[i]  += sVY[i] * (1.0 - ageNorm * 0.5) * dt * 0.5;
+
+        const alpha = Math.pow(1.0 - ageNorm, 1.4) * 0.6;
+        if (alpha < 0.015) { sAlive[i] = 0; continue; }
+
+        if (sAge[i] % 20 < dt) {
+            sCharN[i] = ageNorm < 0.3
+                ? Math.floor(Math.random() * 4)
+                : 4 + Math.floor(Math.random() * (SMOKE_CHARS.length - 4));
+        }
+
+        smokeBuckets[Math.min(NUM_SMOKE_BUCKETS - 1, (alpha * NUM_SMOKE_BUCKETS) | 0)].push(i);
+    }
+
+    for (let b = NUM_SMOKE_BUCKETS - 1; b >= 0; b--) {
+        const bkt = smokeBuckets[b];
+        if (!bkt.length) continue;
+        ctx.globalAlpha = (b + 0.5) / NUM_SMOKE_BUCKETS;
+        for (let k = 0; k < bkt.length; k++) {
+            const i = bkt[k];
+            ctx.fillStyle = SMOKE_LUT[(sAge[i] / sMaxAge[i] * 255) | 0];
+            ctx.fillText(SMOKE_CHARS[sCharN[i]], sX[i], sY[i]);
+        }
+    }
+    ctx.globalAlpha = 1;
+}
+
+function spawnSmoke(scaledDt) {
+    const baseRate = 3.0 * P_SMOKE_DENSITY;
+    smokeSpawnAccum += baseRate * scaledDt / 16.67;
+    while (smokeSpawnAccum >= 1.0) {
+        smokeSpawnAccum -= 1.0;
+        spawnSmokeParticle();
+    }
+}
+
+// ─── Render loop ───────────────────────────────────────────────────────────────
+let animTime      = 0;
+let lastTimestamp = 0;
+
+function render(t) {
+    const dt = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
+    lastTimestamp = t;
+    const scaledDt = dt * P_SPEED;
+    animTime += scaledDt * 0.001;
+
+    ctx.clearRect(0, 0, W, H);
+    drawSkyGlow();
+    drawMountainSilhouette();
+    drawCraterGlow(animTime);
+    updateAndDrawSmoke(animTime, scaledDt);
+    updateAndDrawLava(animTime, scaledDt);
+    updateAndDrawSparks(scaledDt);
+    spawnSmoke(scaledDt);
+    spawnLava(scaledDt);
+    spawnSparks(scaledDt);
+    requestAnimationFrame(render);
+}
+
+// ─── Entry point ───────────────────────────────────────────────────────────────
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        bakeNoiseTex();
+        requestAnimationFrame(render);
+    });
+}
+
+if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(startAnimation, 4000);
+else setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

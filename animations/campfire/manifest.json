@@ -1,0 +1,73 @@
+{
+  "id": "campfire",
+  "name": "Campfire",
+  "description": "Layered noise-driven flame tongues with rising embers, a dark forest silhouette, and a drifting firefly.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "warm",
+      "options": [
+        "warm",
+        "blueFlame",
+        "greenFlame",
+        "violetFlame",
+        "mono"
+      ]
+    },
+    {
+      "key": "flameHeight",
+      "type": "range",
+      "label": "Flame Height",
+      "defaultValue": 1,
+      "min": 0.5,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "emberRate",
+      "type": "range",
+      "label": "Ember Rate",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "crackleIntensity",
+      "type": "range",
+      "label": "Crackle Intensity",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "forestSilhouette",
+      "type": "select",
+      "label": "Forest Silhouette",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
+    }
+  ]
+}

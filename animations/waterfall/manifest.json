@@ -1,0 +1,63 @@
+{
+  "id": "waterfall",
+  "name": "Waterfall",
+  "description": "Cascading waterfall through a mossy rock channel with a base mist/spray burst and an optional faint rainbow arc.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.jpg",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "clear",
+      "options": [
+        "clear",
+        "glacier",
+        "jungle",
+        "moonlit",
+        "mono"
+      ]
+    },
+    {
+      "key": "flowDensity",
+      "type": "range",
+      "label": "Flow Density",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "mistIntensity",
+      "type": "range",
+      "label": "Mist Intensity",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "rainbow",
+      "type": "select",
+      "label": "Rainbow",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
+    }
+  ]
+}

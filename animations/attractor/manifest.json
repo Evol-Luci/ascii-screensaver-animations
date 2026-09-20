@@ -1,0 +1,62 @@
+{
+  "id": "attractor",
+  "name": "Attractor",
+  "description": "A particle tracing a real strange-attractor equation \u2014 Lorenz butterfly and R\u00f6ssler ribbon rendered as speed-weighted ASCII glyphs through a slowly rotating 3D camera.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "cycleTime",
+      "type": "range",
+      "label": "Cycle Time",
+      "defaultValue": 30,
+      "min": 10,
+      "max": 60,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "trailLength",
+      "type": "range",
+      "label": "Trail Length",
+      "defaultValue": 800,
+      "min": 200,
+      "max": 2000,
+      "step": 50,
+      "integer": true
+    },
+    {
+      "key": "rotationSpeed",
+      "type": "range",
+      "label": "Rotation Speed",
+      "defaultValue": 0.1,
+      "min": 0,
+      "max": 0.5,
+      "step": 0.01,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "ice",
+      "options": [
+        "ice",
+        "ember",
+        "spectrum",
+        "mono"
+      ]
+    }
+  ]
+}

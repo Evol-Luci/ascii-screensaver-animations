@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Waterfall</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #waterfall-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(8, 12, 16, 0.92);
+            border: 1px solid rgba(80, 160, 200, 0.35);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #60a0b8;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #50b0d0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #386878;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(80, 160, 200, 0.25);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #50a0c0; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="waterfall-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED         = parseFloat(_params.get('speed')         || '1');
+const P_PALETTE       = _params.get('palette') || 'clear';
+const P_FLOW_DENSITY  = parseFloat(_params.get('flowDensity')   || '1');
+const P_MIST_INTENSITY= parseFloat(_params.get('mistIntensity') || '1');
+const P_RAINBOW       = (_params.get('rainbow') ?? '1') !== '0';
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Waterfall</h2>
+        <p class="credits-label">Animation</p>
+        <p>Cascading falls, base mist burst,<br>and a faint rainbow arc.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('waterfall-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 15;
+let CHAR_W = 9.0, CHAR_H = 18.75;
+let cols = 0, rows = 0;
+let W = 0, H = 0;
+
+// Channel bounds (in grid columns) — set by layoutChannel().
+let CHANNEL_LEFT_COL  = 0;
+let CHANNEL_RIGHT_COL = 0;
+
+function resize() {
+    canvas.width  = W = window.innerWidth;
+    canvas.height = H = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+    cols = Math.floor(W / CHAR_W);
+    rows = Math.floor(H / CHAR_H);
+    layoutChannel();
+    generateRockFrame();
+    if (typeof initWaterColumns === 'function') initWaterColumns();
+}
+window.addEventListener('resize', resize);
+
+// ─── Channel layout + static rock/moss frame ───────────────────────────────────
+function layoutChannel() {
+    const channelWidth = Math.max(8, Math.round(cols * 0.38));
+    CHANNEL_LEFT_COL  = Math.floor((cols - channelWidth) / 2);
+    CHANNEL_RIGHT_COL = CHANNEL_LEFT_COL + channelWidth;
+}
+
+const ROCK_CHARS_DARK  = ['#', '%', '@', '&'];
+const ROCK_CHARS_LIGHT = ['▒', '▓', '░'];
+const MOSS_CHARS       = ['*', '"', "'", '.', ','];
+
+let rockOps = [];
+function generateRockFrame() {
+    rockOps = [];
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+            const inChannel = x >= CHANNEL_LEFT_COL && x < CHANNEL_RIGHT_COL;
+            if (inChannel) continue;
+            const distFromChannel = x < CHANNEL_LEFT_COL
+                ? CHANNEL_LEFT_COL - x
+                : x - CHANNEL_RIGHT_COL + 1;
+            if (distFromChannel > Math.floor(cols * 0.5)) continue;
+            if (Math.random() < 0.55) continue;
+
+            const edgeBand = distFromChannel <= 2;
+            let ch, color;
+            if (edgeBand && Math.random() < 0.35) {
+                ch = MOSS_CHARS[Math.floor(Math.random() * MOSS_CHARS.length)];
+                color = PAL.moss[Math.floor(Math.random() * PAL.moss.length)];
+            } else if (Math.random() < 0.4) {
+                ch = ROCK_CHARS_LIGHT[Math.floor(Math.random() * ROCK_CHARS_LIGHT.length)];
+                color = PAL.rockLight;
+            } else {
+                ch = ROCK_CHARS_DARK[Math.floor(Math.random() * ROCK_CHARS_DARK.length)];
+                color = PAL.rockDark;
+            }
+            rockOps.push({ x, y, ch, color });
+        }
+    }
+}
+
+function drawRockFrame() {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.globalAlpha = 1;
+    for (const op of rockOps) {
+        ctx.fillStyle = op.color;
+        ctx.fillText(op.ch, op.x * CHAR_W, op.y * CHAR_H);
+    }
+}
+
+// ─── Palettes ──────────────────────────────────────────────────────────────────
+const PALETTES = {
+    clear: {
+        waterBase:  '#5090b0',
+        waterBright:'#a0d8f0',
+        mist:       '#d0eef8',
+        rockDark:   '#34343a',
+        rockLight:  '#5a5a5e',
+        moss:       ['#3a6b3a', '#2e5530'],
+    },
+    glacier: {
+        waterBase:  '#6098c8',
+        waterBright:'#c0eaff',
+        mist:       '#e8f8ff',
+        rockDark:   '#2a3038',
+        rockLight:  '#566878',
+        moss:       ['#3a6878', '#2c5060'],
+    },
+    jungle: {
+        waterBase:  '#308878',
+        waterBright:'#80d8b0',
+        mist:       '#d8f8e8',
+        rockDark:   '#2a3424',
+        rockLight:  '#4a5a3c',
+        moss:       ['#3a8a3a', '#2e6e2e'],
+    },
+    moonlit: {
+        waterBase:  '#5868a0',
+        waterBright:'#a8b8e8',
+        mist:       '#dde4ff',
+        rockDark:   '#222230',
+        rockLight:  '#444458',
+        moss:       ['#384858', '#283848'],
+    },
+    mono: {
+        waterBase:  '#888888',
+        waterBright:'#e0e0e0',
+        mist:       '#f0f0f0',
+        rockDark:   '#303030',
+        rockLight:  '#5c5c5c',
+        moss:       ['#606060', '#4c4c4c'],
+    },
+};
+
+const PAL = PALETTES[P_PALETTE] || PALETTES.clear;
+
+// ─── Dense per-column water streams ────────────────────────────────────────────
+const WATER_CHARS = ['|', '│', '╽', '╿', '┆', '┊', '¦'];
+
+class WaterColumn {
+    constructor(col) {
+        this.col = col;
+        this.reset(true);
+    }
+    reset(randomStart = false) {
+        this.y       = randomStart ? Math.random() * -rows : -2 - Math.random() * 4;
+        this.speed   = 1.6 + Math.random() * 1.8;
+        this.length  = 4 + Math.floor(Math.random() * 6);
+        this.char    = WATER_CHARS[Math.floor(Math.random() * WATER_CHARS.length)];
+        this.bright  = Math.random() < 0.3;
+        this.xJitter = (Math.random() - 0.5) * 0.4;
+    }
+}
+
+let waterColumns = [];
+
+function initWaterColumns() {
+    waterColumns = [];
+    const streamsPerCol = Math.max(1, Math.round(2.5 * Math.min(2, P_FLOW_DENSITY)));
+    for (let c = CHANNEL_LEFT_COL; c < CHANNEL_RIGHT_COL; c++) {
+        for (let s = 0; s < streamsPerCol; s++) {
+            waterColumns.push(new WaterColumn(c));
+        }
+    }
+}
+
+function updateAndDrawWater(dt) {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    const baseRow = rows - 3;
+    for (const wc of waterColumns) {
+        wc.y += wc.speed * dt;
+        if (wc.y > baseRow) { wc.reset(); continue; }
+
+        const x = (wc.col + wc.xJitter) * CHAR_W;
+        ctx.globalAlpha = wc.bright ? 0.9 : 0.55;
+        ctx.fillStyle   = wc.bright ? PAL.waterBright : PAL.waterBase;
+        for (let seg = 0; seg < wc.length; seg++) {
+            const segY = wc.y - seg * 0.6;
+            if (segY < 0 || segY > baseRow) continue;
+            ctx.fillText(wc.char, x, segY * CHAR_H);
+        }
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ─── Base mist/spray burst (SOA particle pool) ────────────────────────────────
+const MAX_MIST = 2000;
+const mX      = new Float32Array(MAX_MIST);
+const mY      = new Float32Array(MAX_MIST);
+const mVX     = new Float32Array(MAX_MIST);
+const mVY     = new Float32Array(MAX_MIST);
+const mAge    = new Float32Array(MAX_MIST);
+const mMaxAge = new Float32Array(MAX_MIST);
+const mAlive  = new Uint8Array(MAX_MIST);
+
+const MIST_CHARS = ['.', "'", '`', ',', '°', '˙'];
+
+let mistRing = 0;
+let mistSpawnAccum = 0;
+
+function spawnMistParticle() {
+    let p = mistRing;
+    let skips = 0;
+    while (mAlive[p] && skips < 10) { p = (p + 1) % MAX_MIST; skips++; }
+    mistRing = (p + 1) % MAX_MIST;
+
+    const baseRow = rows - 3;
+    const spawnCol = CHANNEL_LEFT_COL + Math.random() * (CHANNEL_RIGHT_COL - CHANNEL_LEFT_COL);
+
+    mAlive[p]  = 1;
+    mX[p]      = spawnCol * CHAR_W;
+    mY[p]      = baseRow * CHAR_H;
+    mVX[p]     = (Math.random() - 0.5) * 1.4;
+    mVY[p]     = -(1.2 + Math.random() * 1.6);
+    mAge[p]    = 0;
+    mMaxAge[p] = 400 + Math.random() * 500;
+}
+
+const MIST_NUM_BUCKETS = 16;
+const mistBuckets = Array.from({ length: MIST_NUM_BUCKETS }, () => []);
+
+function updateAndDrawMist(dt) {
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (let b = 0; b < MIST_NUM_BUCKETS; b++) mistBuckets[b].length = 0;
+
+    for (let i = 0; i < MAX_MIST; i++) {
+        if (!mAlive[i]) continue;
+
+        mAge[i] += dt;
+        const ageNorm = mAge[i] / mMaxAge[i];
+        if (ageNorm >= 1.0) { mAlive[i] = 0; continue; }
+
+        mVY[i] += 0.045 * dt;
+        mX[i]  += mVX[i] * dt * 0.5;
+        mY[i]  += mVY[i] * dt * 0.5;
+
+        if (mY[i] > H + CHAR_H) { mAlive[i] = 0; continue; }
+
+        const alpha = Math.pow(1.0 - ageNorm, 1.3) * 0.6;
+        if (alpha < 0.02) { mAlive[i] = 0; continue; }
+
+        mistBuckets[Math.min(MIST_NUM_BUCKETS - 1, (alpha * MIST_NUM_BUCKETS) | 0)].push(i);
+    }
+
+    for (let b = MIST_NUM_BUCKETS - 1; b >= 0; b--) {
+        const bkt = mistBuckets[b];
+        if (!bkt.length) continue;
+        ctx.globalAlpha = (b + 0.5) / MIST_NUM_BUCKETS;
+        ctx.fillStyle = PAL.mist;
+        for (let k = 0; k < bkt.length; k++) {
+            const i = bkt[k];
+            const ch = MIST_CHARS[Math.floor(mAge[i] / 60) % MIST_CHARS.length];
+            ctx.fillText(ch, mX[i], mY[i]);
+        }
+    }
+    ctx.globalAlpha = 1;
+
+    const baseRate = 6.0 * P_MIST_INTENSITY;
+    mistSpawnAccum += baseRate * dt;
+    while (mistSpawnAccum >= 1.0) {
+        mistSpawnAccum -= 1.0;
+        spawnMistParticle();
+    }
+}
+
+// ─── Optional faint rainbow arc ────────────────────────────────────────────────
+const RAINBOW_BANDS = [
+    'rgba(255,80,80,ALPHA)',
+    'rgba(255,170,60,ALPHA)',
+    'rgba(255,235,80,ALPHA)',
+    'rgba(110,220,110,ALPHA)',
+    'rgba(90,170,255,ALPHA)',
+    'rgba(150,110,230,ALPHA)',
+];
+
+function drawRainbowArc() {
+    if (!P_RAINBOW) return;
+
+    const baseRow = rows - 3;
+    const channelMidX = ((CHANNEL_LEFT_COL + CHANNEL_RIGHT_COL) / 2) * CHAR_W;
+    const arcCenterY   = baseRow * CHAR_H;
+    const arcRadius    = (CHANNEL_RIGHT_COL - CHANNEL_LEFT_COL) * CHAR_W * 1.4;
+
+    const shimmer = 0.5 + 0.5 * Math.sin(animTime * 0.3);
+    const baseAlpha = 0.05 + shimmer * 0.04;
+
+    ctx.save();
+    ctx.lineWidth = CHAR_H * 0.7;
+    for (let b = 0; b < RAINBOW_BANDS.length; b++) {
+        const bandRadius = arcRadius - b * CHAR_H * 0.8;
+        if (bandRadius < CHAR_H * 2) continue;
+        ctx.beginPath();
+        ctx.arc(channelMidX, arcCenterY, bandRadius, Math.PI, 2 * Math.PI);
+        ctx.strokeStyle = RAINBOW_BANDS[b].replace('ALPHA', baseAlpha.toFixed(3));
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+// ─── Render loop ──────────────────────────────────────────────────────────────
+let animTime      = 0;
+let lastTimestamp = 0;
+
+function render(t) {
+    const dt       = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
+    lastTimestamp  = t;
+    const scaledDt = dt * P_SPEED;
+    animTime      += scaledDt * 0.001;
+
+    ctx.clearRect(0, 0, W, H);
+    drawRockFrame();
+    drawRainbowArc();
+    updateAndDrawWater(scaledDt / 16.67);
+    updateAndDrawMist(scaledDt / 16.67);
+
+    requestAnimationFrame(render);
+}
+
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        initWaterColumns();
+        requestAnimationFrame(render);
+    });
+}
+
+if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(startAnimation, 4000);
+else setTimeout(startAnimation, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+{
+  "id": "volcano",
+  "name": "Volcanic Flow",
+  "description": "Night mountain with a glowing crater, lava flowing down a fixed channel, eruption sparks, and a rising smoke plume.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "classic",
+      "options": [
+        "classic",
+        "sulfur",
+        "obsidian",
+        "blueFlame",
+        "mono"
+      ]
+    },
+    {
+      "key": "flowIntensity",
+      "type": "range",
+      "label": "Flow Intensity",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "eruptionRate",
+      "type": "range",
+      "label": "Eruption Rate",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "smokeDensity",
+      "type": "range",
+      "label": "Smoke Density",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    }
+  ]
+}

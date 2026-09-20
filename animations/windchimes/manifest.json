@@ -1,0 +1,95 @@
+{
+  "id": "windchimes",
+  "name": "Wind Chimes",
+  "description": "Hanging chime tubes swaying as damped pendulums in a gusty breeze, with proximity glint flashes and synthesized bell tones (press M to toggle sound).",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "bronze",
+      "options": [
+        "bronze",
+        "silver",
+        "bamboo",
+        "glass",
+        "mono"
+      ]
+    },
+    {
+      "key": "chimeCount",
+      "type": "range",
+      "label": "Chime Count",
+      "defaultValue": 5,
+      "min": 3,
+      "max": 7,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "windStrength",
+      "type": "range",
+      "label": "Wind Strength",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "gustFrequency",
+      "type": "range",
+      "label": "Gust Frequency",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "doublePendulum",
+      "type": "select",
+      "label": "Double Pendulum",
+      "defaultValue": 0,
+      "options": [
+        0,
+        1
+      ]
+    },
+    {
+      "key": "soundType",
+      "type": "select",
+      "label": "Sound Type",
+      "defaultValue": "bell",
+      "options": [
+        "bell",
+        "crystal",
+        "wood",
+        "gong"
+      ]
+    },
+    {
+      "key": "pitch",
+      "type": "range",
+      "label": "Pitch",
+      "defaultValue": 2,
+      "min": 2,
+      "max": 5,
+      "step": 0.05,
+      "integer": false
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "id": "glitch_field",
+  "name": "Glitch Field",
+  "description": "A broken digital reality — a character grid torn by drifting corruption bands, RGB split, scanline tearing and packet loss.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.jpg",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "terminal",
+      "options": [
+        "terminal",
+        "amber",
+        "vapor",
+        "mono"
+      ]
+    },
+    {
+      "key": "density",
+      "type": "range",
+      "label": "Density",
+      "defaultValue": 0.8,
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "corruptionRate",
+      "type": "range",
+      "label": "Corruption Rate",
+      "defaultValue": 0.2,
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "integer": false
+    },
+    {
+      "key": "scanBands",
+      "type": "range",
+      "label": "Scan Bands",
+      "defaultValue": 3,
+      "min": 0,
+      "max": 6,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "chaos",
+      "type": "range",
+      "label": "Chaos",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    }
+  ]
+}

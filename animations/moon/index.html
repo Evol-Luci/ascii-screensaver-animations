@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Moon</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #moon-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+
+        .credits-popup {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background: rgba(10, 10, 18, 0.92);
+            border: 1px solid rgba(80, 100, 130, 0.4);
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #8899b0;
+            max-width: 280px;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            z-index: 100;
+            line-height: 1.6;
+        }
+        .credits-popup.visible { opacity: 1; }
+        .credits-popup h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #aabbcc;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .credits-popup .credits-label {
+            font-size: 10px;
+            color: #506070;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .credits-popup hr {
+            border: none;
+            border-top: 1px solid rgba(80, 100, 130, 0.3);
+            margin: 12px 0;
+        }
+        .credits-popup a { color: #6688aa; text-decoration: none; }
+    </style>
+</head>
+<body>
+<canvas id="moon-canvas"></canvas>
+<script>
+// ─── Screensaver mode ──────────────────────────────────────────────────────────
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const DELAYED_START    = _params.has('delayedStart');
+const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+
+const P_SPEED          = parseFloat(_params.get('speed')         || '1');
+const P_PALETTE        = _params.get('palette') || 'silver';
+const P_STARS          = parseInt(_params.get('stars')           || '120', 10);
+const P_FLOATER_FREQ   = parseFloat(_params.get('floaterFreq')   || '1');
+const P_GLOW_INTENSITY = parseFloat(_params.get('glowIntensity') || '1');
+
+if (SCREENSAVER_MODE) {
+    document.body.classList.add('screensaver-mode');
+
+    const credits = document.createElement('div');
+    credits.className = 'credits-popup';
+    credits.innerHTML = `
+        <h2>ASCII Moon</h2>
+        <p class="credits-label">Animation</p>
+        <p>Procedural lunar phase cycle<br>rendered in ASCII.</p>
+        <hr>
+        <p class="credits-label">Screensaver Framework</p>
+        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
+        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
+    `;
+    document.body.appendChild(credits);
+    setTimeout(() => credits.classList.add('visible'), 500);
+    setTimeout(() => credits.classList.remove('visible'), 30500);
+    setTimeout(() => credits.remove(), 32500);
+
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('moon-canvas');
+const ctx    = canvas.getContext('2d');
+
+const FONT_SIZE = 16;
+let CHAR_W = 9.6;
+let CHAR_H = 20;
+let cols = 0, rows = 0;
+let moonCX = 0, moonCY = 0, moonR = 0; // center in pixels, radius in pixels
+
+function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    CHAR_W = ctx.measureText('M').width;
+    CHAR_H = FONT_SIZE * 1.25;
+    cols = Math.floor(canvas.width  / CHAR_W);
+    rows = Math.floor(canvas.height / CHAR_H);
+    moonCX = canvas.width  * 0.5;
+    moonCY = canvas.height * 0.47;
+    moonR  = Math.min(canvas.width, canvas.height) * 0.36;
+}
+
+window.addEventListener('resize', resize);
+
+// ─── Moon palettes ─────────────────────────────────────────────────────────────
+const MOON_PALETTES = {
+    silver: {
+        glow:       '#b0c4d8',
+        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(220+w*0.14)},${Math.round(210+w*0.13)},${Math.round(185+w*0.08)})`; },
+        earthshine: '#203848',
+        stars:      '#6a7a8a',
+    },
+    gold: {
+        glow:       '#d4b060',
+        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(230+w*0.10)},${Math.round(175+w*0.20)},${Math.round(55+w*0.05)})`; },
+        earthshine: '#382810',
+        stars:      '#8a7a5a',
+    },
+    blood: {
+        glow:       '#c04030',
+        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(195+w*0.24)},${Math.round(38+w*0.08)},${Math.round(18+w*0.04)})`; },
+        earthshine: '#300808',
+        stars:      '#8a5a5a',
+    },
+    blue: {
+        glow:       '#4080d0',
+        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(75+w*0.10)},${Math.round(135+w*0.12)},${Math.round(205+w*0.18)})`; },
+        earthshine: '#081828',
+        stars:      '#5a708a',
+    },
+    green: {
+        glow:       '#40c060',
+        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(55+w*0.08)},${Math.round(178+w*0.22)},${Math.round(75+w*0.08)})`; },
+        earthshine: '#081808',
+        stars:      '#5a8a5a',
+    },
+};
+const MP = MOON_PALETTES[P_PALETTE] || MOON_PALETTES.silver;
+
+// ─── Phase logic ───────────────────────────────────────────────────────────────
+// phase 0 = new moon, 0.25 = first quarter, 0.5 = full, 0.75 = last quarter
+let phase = Math.random(); // start at a random point in the cycle
+const PHASE_SPEED = P_SPEED / 7200; // full cycle in ~2 minutes at 60 fps
+
+function isIlluminated(nx, ny) {
+    if (nx * nx + ny * ny > 1) return false;
+    const f    = (1 - Math.cos(phase * 2 * Math.PI)) / 2; // 0=new, 1=full
+    const limb = Math.sqrt(Math.max(0, 1 - ny * ny));
+    if (phase <= 0.5) {
+        return nx >= (1 - 2 * f) * limb;   // waxing: lit on right
+    } else {
+        return nx <= -(1 - 2 * f) * limb;  // waning: lit on left
+    }
+}
+
+// ─── Texture noise ─────────────────────────────────────────────────────────────
+function noise(x, y) {
+    return (Math.sin(x * 6.7 + y * 12.3) + Math.sin(x * 2.9 - y * 5.1) +
+            Math.sin(x * 11.1 + y * 3.7)) / 3;
+}
+
+// ─── Stars ─────────────────────────────────────────────────────────────────────
+let stars = [];
+function initStars() {
+    stars = [];
+    for (let i = 0; i < P_STARS; i++) {
+        stars.push({
+            gx:       Math.floor(Math.random() * cols),
+            gy:       Math.floor(Math.random() * rows),
+            char:     Math.random() < 0.25 ? '*' : '.',
+            base:     0.25 + Math.random() * 0.55,
+            twinkle:  Math.random() * Math.PI * 2,
+            speed:    0.5 + Math.random() * 1.5,
+        });
+    }
+}
+
+// ─── Space floaters ────────────────────────────────────────────────────────────
+const FLOATER_TYPES = [
+    { art: ['*-----~'],                                       color: '#f8f0c0', speed: [6, 10], diagonal: true  },
+    { art: ['*---~'],                                         color: '#fff0a0', speed: [7, 12], diagonal: true  },
+    { art: ['  /\\', ' /  \\', '|    |', ' \\  /', ' /\\/\\'], color: '#a0b0c0', speed: [0.2, 0.5] },
+    { art: [' .---.', '(o o o)', " `---'"],                  color: '#50d0c0', speed: [0.3, 0.6] },
+    { art: ['  .--.', ' (    )', "  '--'"],                   color: '#b070e0', speed: [0.12, 0.3] },
+    { art: ['   .--.', '--(    )--', "   '--'"],              color: '#e0a040', speed: [0.12, 0.3] },
+    { art: ['\\(o_o)/', '  /|\\', ' / | \\'],                color: '#50d050', speed: [0.3, 0.6] },
+    { art: ['--[|]--'],                                       color: '#7090b0', speed: [0.4, 0.9] },
+    { art: [' (O) ', '<[=]>', '  |  ', ' / \\ '],            color: '#d0dce8', speed: [0.2, 0.5] },
+    { art: ['===|===', '  [O] ', '===|==='],                  color: '#90a8c0', speed: [0.15, 0.35] },
+    { art: [' /\\ ', '(  )', ' \\/ ', '/--\\'],              color: '#808890', speed: [0.2, 0.45] },
+    { art: ['>(·_·)>'],                                       color: '#60c880', speed: [0.25, 0.55] },
+];
+
+function rndF(min, max) { return min + Math.random() * (max - min); }
+
+class Floater {
+    constructor() {
+        const type  = FLOATER_TYPES[Math.floor(Math.random() * FLOATER_TYPES.length)];
+        this.art    = type.art;
+        this.color  = type.color;
+        this.baseAlpha = 0.50 + Math.random() * 0.30;
+
+        const artCols = Math.max(...type.art.map(r => r.length));
+        const artRows = type.art.length;
+        this.wPx = artCols * CHAR_W;
+        this.hPx = artRows * CHAR_H;
+
+        const speed = rndF(type.speed[0], type.speed[1]);
+
+        if (type.diagonal) {
+            // Shooting star — spawn top area, travel diagonally downward
+            const angleDeg = 140 + (Math.random() - 0.5) * 50; // ~115–165°
+            this.vx = Math.cos(angleDeg * Math.PI / 180) * speed;
+            this.vy = Math.sin(angleDeg * Math.PI / 180) * speed;
+            this.x  = canvas.width  * (0.3 + Math.random() * 0.7);
+            this.y  = -this.hPx - canvas.height * Math.random() * 0.3;
+        } else {
+            // Drift horizontally with tiny vertical wobble
+            const goRight = Math.random() < 0.5;
+            this.vx = (goRight ? 1 : -1) * speed;
+            this.vy = (Math.random() - 0.5) * speed * 0.25;
+            this.y  = canvas.height * (0.05 + Math.random() * 0.85);
+            this.x  = goRight ? -this.wPx - 20 : canvas.width + 20;
+        }
+    }
+
+    update() { this.x += this.vx; this.y += this.vy; }
+
+    offScreen() {
+        return this.x > canvas.width  + this.wPx + 80 ||
+               this.x < -this.wPx    - 80 ||
+               this.y > canvas.height + this.hPx + 80 ||
+               this.y < -this.hPx    - 80;
+    }
+
+    draw() {
+        // Fade in/out at screen edges
+        const pad  = 120;
+        const fadeX = Math.min(1, Math.min(this.x + this.wPx, canvas.width  - this.x) / pad);
+        const fadeY = Math.min(1, Math.min(this.y + this.hPx, canvas.height - this.y) / pad);
+        const alpha = this.baseAlpha * Math.max(0, Math.min(fadeX, fadeY));
+        if (alpha < 0.01) return;
+
+        ctx.globalAlpha  = alpha;
+        ctx.fillStyle    = this.color;
+        ctx.font         = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+        ctx.textBaseline = 'top';
+
+        for (let row = 0; row < this.art.length; row++) {
+            const line = this.art[row];
+            for (let col = 0; col < line.length; col++) {
+                if (line[col] === ' ') continue;
+                ctx.fillText(line[col], this.x + col * CHAR_W, this.y + row * CHAR_H);
+            }
+        }
+    }
+}
+
+let floaters    = [];
+let frameCount  = 0;
+let nextSpawn   = 300 + Math.floor(Math.random() * 300); // first spawn 5-10s in
+
+// ─── Phase name ────────────────────────────────────────────────────────────────
+const PHASES = [
+    [0.00, 0.04, 'New Moon'],
+    [0.04, 0.23, 'Waxing Crescent'],
+    [0.23, 0.27, 'First Quarter'],
+    [0.27, 0.46, 'Waxing Gibbous'],
+    [0.46, 0.54, 'Full Moon'],
+    [0.54, 0.73, 'Waning Gibbous'],
+    [0.73, 0.77, 'Last Quarter'],
+    [0.77, 0.96, 'Waning Crescent'],
+    [0.96, 1.00, 'New Moon'],
+];
+
+function phaseName() {
+    for (const [lo, hi, name] of PHASES) {
+        if (phase >= lo && phase < hi) return name;
+    }
+    return 'New Moon';
+}
+
+// ─── Render ────────────────────────────────────────────────────────────────────
+// Character density table: index 0 = brightest
+const BRIGHT_CHARS = ['@', '0', 'O', 'o', '+', '*', ':', '.', '`', ' '];
+const GLOW_CHARS   = ['.', ',', '`', ' '];
+
+function render(t) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font         = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    // Stars — skip cells inside or near the moon
+    for (const s of stars) {
+        const px = s.gx * CHAR_W + CHAR_W * 0.5;
+        const py = s.gy * CHAR_H + CHAR_H * 0.5;
+        const dx = px - moonCX, dy = py - moonCY;
+        if (dx * dx + dy * dy < moonR * moonR * 1.5) continue;
+        const alpha = s.base * (0.6 + 0.4 * Math.sin(t * s.speed * 0.001 + s.twinkle));
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle   = MP.stars;
+        ctx.fillText(s.char, s.gx * CHAR_W, s.gy * CHAR_H);
+    }
+
+    // Floaters — drawn above stars, below moon
+    for (const f of floaters) f.draw();
+
+    // Moon — only iterate over bounding box including glow halo
+    const HALO = 1.0 + 0.35 * P_GLOW_INTENSITY;
+    const gxMin = Math.max(0, Math.floor((moonCX - moonR * HALO) / CHAR_W));
+    const gxMax = Math.min(cols, Math.ceil((moonCX  + moonR * HALO) / CHAR_W));
+    const gyMin = Math.max(0, Math.floor((moonCY - moonR * HALO) / CHAR_H));
+    const gyMax = Math.min(rows, Math.ceil((moonCY  + moonR * HALO) / CHAR_H));
+
+    for (let gy = gyMin; gy < gyMax; gy++) {
+        for (let gx = gxMin; gx < gxMax; gx++) {
+            const px = gx * CHAR_W + CHAR_W * 0.5;
+            const py = gy * CHAR_H + CHAR_H * 0.5;
+            const dx = px - moonCX;
+            const dy = py - moonCY;
+            const r2 = (dx * dx + dy * dy) / (moonR * moonR);
+
+            if (r2 > HALO * HALO) continue;
+
+            const nx = dx / moonR;
+            const ny = dy / moonR;
+
+            if (r2 > 1) {
+                // Glow halo — fades outward
+                const t2 = (Math.sqrt(r2) - 1) / (HALO - 1);
+                const alpha = (1 - t2) * (1 - t2) * 0.18;
+                if (alpha < 0.01) continue;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle   = MP.glow;
+                ctx.fillText(GLOW_CHARS[Math.floor(t2 * GLOW_CHARS.length)], gx * CHAR_W, gy * CHAR_H);
+                continue;
+            }
+
+            const illum = isIlluminated(nx, ny);
+            const r     = Math.sqrt(r2);
+            const n     = noise(gx, gy) * 0.18; // surface texture
+
+            if (illum) {
+                // Limb darkening: edges are slightly dimmer
+                const limbDark = 1 - r * 0.28;
+                const bright   = Math.max(0, Math.min(1, limbDark + n));
+                const idx      = Math.floor((1 - bright) * (BRIGHT_CHARS.length - 1));
+                const char     = BRIGHT_CHARS[Math.max(0, Math.min(idx, BRIGHT_CHARS.length - 1))];
+
+                ctx.globalAlpha = 1;
+                ctx.fillStyle   = MP.surface(bright);
+                ctx.fillText(char, gx * CHAR_W, gy * CHAR_H);
+
+            } else {
+                // Dark side — faint earthshine, barely visible
+                ctx.globalAlpha = 0.06;
+                ctx.fillStyle   = MP.earthshine;
+                ctx.fillText('.', gx * CHAR_W, gy * CHAR_H);
+            }
+        }
+    }
+
+    // Phase label — centred below moon
+    const label     = phaseName();
+    const labelFont = `13px 'JetBrains Mono', 'Courier New', monospace`;
+    ctx.font         = labelFont;
+    ctx.globalAlpha  = 0.38;
+    ctx.fillStyle    = '#7a8fa0';
+    const labelW     = ctx.measureText(label).width;
+    ctx.fillText(label, moonCX - labelW * 0.5, moonCY + moonR + CHAR_H * 1.5);
+
+    ctx.globalAlpha = 1;
+}
+
+// ─── Loop ──────────────────────────────────────────────────────────────────────
+let raf;
+
+function loop(t) {
+    phase = (phase + PHASE_SPEED) % 1;
+
+    // Floater lifecycle
+    frameCount++;
+    floaters.forEach(f => f.update());
+    floaters = floaters.filter(f => !f.offScreen());
+    if (frameCount >= nextSpawn && floaters.length < 3) {
+        floaters.push(new Floater());
+        const baseInterval = Math.round(720 / Math.max(0.1, P_FLOATER_FREQ));
+        const jitter       = Math.round(780 / Math.max(0.1, P_FLOATER_FREQ));
+        nextSpawn = frameCount + baseInterval + Math.floor(Math.random() * jitter);
+    }
+
+    render(t);
+    raf = requestAnimationFrame(loop);
+}
+
+// ─── Entry point ───────────────────────────────────────────────────────────────
+function startAnimation() {
+    canvas.style.opacity = '1';
+    document.fonts.ready.then(() => {
+        resize();
+        initStars();
+        raf = requestAnimationFrame(loop);
+    });
+}
+
+if (START_AT > 0) {
+    const delay = Math.max(100, START_AT - Date.now());
+    setTimeout(startAnimation, delay);
+} else if (DELAYED_START) {
+    setTimeout(startAnimation, 4000);
+} else {
+    setTimeout(startAnimation, 500);
+}
+</script>
+</body>
+</html>

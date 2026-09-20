@@ -1,0 +1,103 @@
+{
+  "id": "terrarium",
+  "name": "Terrarium",
+  "description": "A living ecosystem: plants grow, seed, wilt and decay; fungi recycle litter into soil nutrients; detritivores, leaf-grazing snails, a centipede predator, and a foraging ant colony cycle through closed water, nutrient, and light cycles under day/night and seasons. Nothing goes extinct.",
+  "author": "Luci Evol",
+  "version": "1.0.0",
+  "preview": "preview.gif",
+  "params": [
+    {
+      "key": "speed",
+      "type": "range",
+      "label": "Speed",
+      "defaultValue": 1,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "palette",
+      "type": "select",
+      "label": "Palette",
+      "defaultValue": "mossy",
+      "options": [
+        "mossy",
+        "tropical",
+        "desert",
+        "autumn",
+        "mono"
+      ]
+    },
+    {
+      "key": "plantDensity",
+      "type": "range",
+      "label": "Plant Density",
+      "defaultValue": 3,
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "condensation",
+      "type": "range",
+      "label": "Condensation",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "growthCycle",
+      "type": "select",
+      "label": "Growth Cycle",
+      "defaultValue": "loop",
+      "options": [
+        "loop",
+        "static"
+      ]
+    },
+    {
+      "key": "cycleTime",
+      "type": "range",
+      "label": "Cycle Time",
+      "defaultValue": 8,
+      "min": 0,
+      "max": 30,
+      "step": 0.5,
+      "integer": false
+    },
+    {
+      "key": "seasonTime",
+      "type": "range",
+      "label": "Season Time",
+      "defaultValue": 24,
+      "min": 0,
+      "max": 60,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "faunaRate",
+      "type": "range",
+      "label": "Fauna Rate",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "predatorRate",
+      "type": "range",
+      "label": "Predator Rate",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.1,
+      "integer": false
+    }
+  ]
+}
