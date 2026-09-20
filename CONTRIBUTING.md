@@ -64,7 +64,16 @@ Your animation MUST:
 - Not load scripts from external URLs (`<script src="https://...">` is rejected)
 - Not call `fetch()` or `XMLHttpRequest` to external domains
 - Not use `eval()` or `new Function()`
-- Have a valid, real image file for its preview (a corrupt or placeholder text file will crash the QML UI renderer)
+- Have a valid, real image file for its preview: at least 200x120, actually
+  a decodable image (not a text file or corrupt binary), and if it's a
+  `.gif`, actually animated — multiple frames that aren't all identical.
+  CI checks all of this automatically (`.github/scripts/validate_animation.py`).
+  It also renders your `index.html` in a real headless browser and posts a
+  freshly-captured live frame in a PR comment next to your submitted
+  preview — a preview that passes the automated checks but isn't actually a
+  capture of *this* animation (e.g. a placeholder or an unrelated image)
+  will still be obvious there, and the maintainer will ask you to fix it
+  before merging.
 - Fit within 2 MB total (all files combined)
 - Include the following snippet at the end of your script to properly close the screensaver on mouse or keyboard movement:
 

@@ -8,12 +8,29 @@ Exits 0 on success, 1 on failure (prints reason to stdout).
 import json
 import os
 import re
+import statistics
 import sys
+
+try:
+    from PIL import Image, ImageSequence
+except ImportError:
+    Image = None
 
 
 MAX_SIZE_BYTES = 2 * 1024 * 1024  # 2 MB
 REQUIRED_MANIFEST_FIELDS = ["id", "name", "description", "author", "version", "preview"]
 ALLOWED_PREVIEW_EXTENSIONS = {".gif", ".png", ".jpg", ".jpeg"}
+
+# A submission has twice now shipped a preview that technically satisfied
+# "file exists, has an allowed extension" while being useless: first a
+# plain-text file with a .gif name, then a real-but-1x1-transparent GIF.
+# These thresholds are deliberately loose (calibrated against every
+# animation already in this repo, real and previously-fake) — the goal is
+# to reject only unambiguously degenerate previews, not to referee whether
+# a preview "looks good".
+MIN_PREVIEW_WIDTH = 200
+MIN_PREVIEW_HEIGHT = 120
+MIN_LUMINANCE_STDDEV = 1.0  # rejects a single flat/solid-color image
 
 EXTERNAL_SCRIPT_RE = re.compile(
     r'<script[^>]+src=["\']https?://', re.IGNORECASE
@@ -31,6 +48,59 @@ NEW_FUNCTION_RE = re.compile(r'\bnew\s+Function\s*\(')
 def fail(msg):
     print(f"FAIL: {msg}")
     sys.exit(1)
+
+
+def check_preview_image(path, ext):
+    """Structural sanity checks on an image file. Returns None if OK, or a
+    human-readable problem description. Deliberately does NOT try to judge
+    whether the image looks "good" or matches any particular content —
+    only whether it's a real, non-degenerate image at all. Shared with
+    render_preview.py, which runs these same checks against a freshly
+    rendered live frame of the submitted animation.
+    """
+    try:
+        im = Image.open(path)
+        im.verify()
+        im = Image.open(path)  # verify() invalidates the handle; reopen
+    except Exception as e:
+        return f"'{path}' could not be opened as an image: {e}"
+
+    width, height = im.size
+    if width < MIN_PREVIEW_WIDTH or height < MIN_PREVIEW_HEIGHT:
+        return (
+            f"'{path}' is {width}x{height}, smaller than the "
+            f"{MIN_PREVIEW_WIDTH}x{MIN_PREVIEW_HEIGHT} minimum. "
+            "(A 1x1 placeholder image has shipped here before — this is "
+            "the check that would have caught it.)"
+        )
+
+    frames = [f.convert("RGB") for f in ImageSequence.Iterator(im)]
+    n_frames = len(frames)
+
+    if ext == ".gif" and n_frames < 2:
+        return (
+            f"'{path}' is a .gif with only {n_frames} frame — it isn't "
+            "actually animated. Either make it a real multi-frame "
+            "animation, or submit a static preview as .png/.jpg instead."
+        )
+
+    if n_frames > 1:
+        first_bytes = frames[0].tobytes()
+        if all(f.tobytes() == first_bytes for f in frames[1:]):
+            return (
+                f"'{path}' has {n_frames} frames but they're all identical "
+                "— this isn't actually animated."
+            )
+
+    stddevs = [statistics.pstdev(f.convert("L").tobytes()) for f in frames]
+    if max(stddevs) < MIN_LUMINANCE_STDDEV:
+        return (
+            f"'{path}' appears to be a blank or solid-color image "
+            f"(max luminance stddev {max(stddevs):.2f} across {n_frames} "
+            f"frame(s), minimum is {MIN_LUMINANCE_STDDEV})."
+        )
+
+    return None
 
 
 def main():
@@ -78,6 +148,19 @@ def main():
         fail(
             f"Preview file must be .gif, .png, .jpg, or .jpeg — got '{ext}'"
         )
+
+    # 5b. Preview must actually be a real, non-degenerate image. This is the
+    # check that would have caught this repo's two previous preview
+    # failures: a plain-text file saved as "preview.gif", and later a real
+    # but 1x1 fully-transparent GIF. Neither failed check 5 above.
+    if Image is None:
+        fail(
+            "Pillow is not installed in this environment — cannot validate "
+            "preview image content. Install it with `pip install pillow`."
+        )
+    problem = check_preview_image(preview_path, ext)
+    if problem:
+        fail(problem)
 
     # 6. Total folder size
     total_size = 0
