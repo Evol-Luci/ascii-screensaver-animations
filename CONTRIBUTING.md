@@ -57,14 +57,41 @@ const speed = params.speed ?? 1.0;
 
 The plugin writes your configured values into `window.animationParams` before the page finishes loading, so reading it synchronously at the top of your script is safe.
 
-## Self-containment rules
+## Self-containment & Runtime rules
 
 Your animation MUST:
 - Be entirely self-contained in `index.html` (inline all JS and CSS)
 - Not load scripts from external URLs (`<script src="https://...">` is rejected)
 - Not call `fetch()` or `XMLHttpRequest` to external domains
 - Not use `eval()` or `new Function()`
+- Have a valid, real image file for its preview (a corrupt or placeholder text file will crash the QML UI renderer)
 - Fit within 2 MB total (all files combined)
+- Include the following snippet at the end of your script to properly close the screensaver on mouse or keyboard movement:
+
+```js
+// ─── Screensaver Dismiss Logic ────────────────────────────────────────────────
+if (new URLSearchParams(window.location.search).get('screensaver') === '1') {
+    let armed = false;
+    setTimeout(() => { armed = true; }, 1500);
+    const dismiss = () => {
+        if (!armed) return;
+        try { window.close(); } catch(e) {}
+        document.body.innerHTML = '';
+        document.body.style.background = '#000';
+    };
+    window.addEventListener('keydown', dismiss);
+    window.addEventListener('mousedown', dismiss);
+    window.addEventListener('mousemove', (() => {
+        let lastX = -1, lastY = -1, moveCount = 0;
+        return (e) => {
+            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
+            if (e.clientX === lastX && e.clientY === lastY) return;
+            lastX = e.clientX; lastY = e.clientY;
+            if (++moveCount > 10) dismiss();
+        };
+    })());
+}
+```
 
 ## Submitting
 
