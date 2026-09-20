@@ -10,6 +10,7 @@
       "key": "speed",
       "type": "range",
       "label": "Speed",
+      "description": "How fast the characters fall.",
       "defaultValue": 1,
       "min": 0.2,
       "max": 4,
@@ -20,6 +21,7 @@
       "key": "palette",
       "type": "select",
       "label": "Palette",
+      "description": "Color scheme used for the falling characters.",
       "defaultValue": "green",
       "options": [
         "green",
@@ -32,6 +34,7 @@
       "key": "density",
       "type": "range",
       "label": "Density",
+      "description": "How many character columns are active at once.",
       "defaultValue": 1,
       "min": 0.1,
       "max": 2.0,
