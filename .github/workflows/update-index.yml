@@ -11,41 +11,52 @@ jobs:
   update-index:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Regenerate index.json
         run: python3 .github/scripts/generate_index.py
 
-      - name: Commit and push directly (works if this app has a ruleset bypass)
+      - name: Load deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.INDEX_UPDATE_DEPLOY_KEY }}
+
+      # main requires changes to go through a PR with a passing `validate`
+      # check, with no bypass for humans or the default GITHUB_TOKEN — this
+      # deploy key is the one thing scoped to bypass that, specifically so
+      # this narrow, low-risk regeneration can still push directly. See
+      # Settings → Rules → "protect main branch" → Bypass list.
+      - name: Commit and push directly via the deploy key
         id: direct_push
         continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "git@github.com:${{ github.repository }}.git"
           git add index.json
           if git diff --cached --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "changed=true" >> "$GITHUB_OUTPUT"
           git commit -m "chore: regenerate index.json [skip ci]"
           git push
 
-      # main requires a passing PR and this app has no ruleset bypass
-      # configured, so a direct push is rejected — fall back to a PR
-      # instead of failing silently. Note: because this uses the default
-      # GITHUB_TOKEN, opening this PR does NOT trigger the "validate"
-      # workflow on it (GitHub doesn't cascade workflow runs from
-      # GITHUB_TOKEN-authored events) — and main's ruleset requires that
-      # check with no bypass, so this PR will need a human to manually
-      # re-run/trigger validation and merge it. See CONTRIBUTING.md.
+      # Safety net in case the deploy key/bypass is ever removed or
+      # misconfigured: fall back to a visible PR instead of failing
+      # silently (which is what happened before — see git history around
+      # 2026-09-20 for the incident this is guarding against). Note this
+      # fallback PR still needs a human to manually trigger the `validate`
+      # check and merge it, since GITHUB_TOKEN-authored PRs don't trigger
+      # other workflows.
       - name: Fall back to opening a PR
         if: steps.direct_push.outcome == 'failure'
         run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           BRANCH="automated/update-index-$(date +%s)"
@@ -54,7 +65,7 @@ jobs:
           git commit -m "chore: regenerate index.json"
           git push origin "$BRANCH"
           gh pr create --title "chore: regenerate index.json" \
-            --body "Automated — direct push to main was rejected (branch ruleset). This PR needs a maintainer to manually trigger/re-run the \`validate\` check and merge it, since GITHUB_TOKEN-authored PRs don't auto-trigger other workflows. See CONTRIBUTING.md / AGENTS-equivalent notes for the actual fix (a scoped ruleset bypass for this app)." \
+            --body "Automated — direct push via the deploy key failed (it may have been removed, or the ruleset bypass misconfigured). This PR needs a maintainer to manually trigger/re-run the \`validate\` check and merge it, since GITHUB_TOKEN-authored PRs don't auto-trigger other workflows." \
             --base main --head "$BRANCH"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,5 +73,5 @@ jobs:
       - name: Fail loudly if the direct push failed
         if: steps.direct_push.outcome == 'failure'
         run: |
-          echo "::error::Direct push to main was rejected — opened a PR instead, but it needs manual attention (see job summary). This will keep happening until this app has a ruleset bypass for main, or someone reviews/merges these PRs by hand."
+          echo "::error::Direct push via the deploy key failed — opened a PR instead, but it needs manual attention. Check that the deploy key still exists (Settings → Deploy keys), the INDEX_UPDATE_DEPLOY_KEY secret is current, and it's still in the ruleset's bypass list."
           exit 1
