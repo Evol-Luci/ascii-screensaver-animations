@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Galaxy</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #galaxy-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+    </style>
+</head>
+<body>
+<canvas id="galaxy-canvas"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const P_SPEED = parseFloat(_params.get('speed') || '1');
+const P_ARMS = parseInt(_params.get('arms') || '2', 10);
+const P_DENSITY = parseFloat(_params.get('density') || '1');
+const P_PALETTE = _params.get('palette') || 'purple';
+
+const canvas = document.getElementById('galaxy-canvas');
+const ctx = canvas.getContext('2d');
+
+let cw = window.innerWidth;
+let ch = window.innerHeight;
+canvas.width = cw;
+canvas.height = ch;
+setTimeout(() => canvas.style.opacity = 1, 100);
+
+let time = 0;
+const palettes = {
+    'purple': ['#800080', '#DA70D6', '#FFF'],
+    'blue': ['#000080', '#4169E1', '#FFF'],
+    'fiery': ['#8B0000', '#FF4500', '#FFF']
+};
+const colors = palettes[P_PALETTE] || palettes['purple'];
+
+function draw() {
+    ctx.fillStyle = 'rgba(10, 10, 18, 0.1)';
+    ctx.fillRect(0, 0, cw, ch);
+    
+    time += 0.02 * P_SPEED;
+    const maxRadius = Math.min(cw, ch) * 0.4;
+    
+    ctx.font = '10px "JetBrains Mono"';
+    
+    for (let i = 0; i < 300 * P_DENSITY; i++) {
+        let r = Math.random() * maxRadius;
+        let armOffset = (Math.PI * 2 / P_ARMS) * Math.floor(Math.random() * P_ARMS);
+        let theta = r * 0.02 + time + armOffset + (Math.random() - 0.5) * 0.5;
+        
+        let x = cw/2 + r * Math.cos(theta);
+        let y = ch/2 + r * Math.sin(theta);
+        
+        let colorIndex = Math.floor(Math.random() * colors.length);
+        ctx.fillStyle = colors[colorIndex];
+        
+        let chars = ".*+oO";
+        let char = chars[Math.floor(Math.random() * chars.length)];
+        
+        ctx.fillText(char, x, y);
+    }
+}
+
+setInterval(draw, 50);
+</script>
+</body>
+</html>

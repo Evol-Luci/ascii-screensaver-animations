@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII DNA</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #dna-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+    </style>
+</head>
+<body>
+<canvas id="dna-canvas"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const P_SPEED = parseFloat(_params.get('speed') || '1');
+const P_ZOOM = parseFloat(_params.get('zoom') || '1');
+const P_PALETTE = _params.get('palette') || 'classic';
+
+const canvas = document.getElementById('dna-canvas');
+const ctx = canvas.getContext('2d');
+
+let cw = window.innerWidth;
+let ch = window.innerHeight;
+canvas.width = cw;
+canvas.height = ch;
+setTimeout(() => canvas.style.opacity = 1, 100);
+
+let time = 0;
+const palettes = {
+    'classic': ['#FFF', '#4AF'],
+    'neon': ['#F0F', '#0FF']
+};
+const colors = palettes[P_PALETTE] || palettes['classic'];
+
+function draw() {
+    ctx.fillStyle = '#0a0a12';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.font = Math.floor(16 * P_ZOOM) + 'px "JetBrains Mono"';
+    ctx.textAlign = 'center';
+    
+    time += 0.05 * P_SPEED;
+    
+    for (let i = 0; i < 30; i++) {
+        let y = (ch / 2) - (15 * 20 * P_ZOOM) + (i * 20 * P_ZOOM);
+        let xOff = Math.sin(time + i * 0.3) * 100 * P_ZOOM;
+        let zOff = Math.cos(time + i * 0.3);
+        
+        ctx.fillStyle = colors[0];
+        if (zOff < 0) ctx.fillStyle = '#555';
+        ctx.fillText('A', cw/2 + xOff, y);
+        
+        ctx.fillStyle = colors[1];
+        if (zOff > 0) ctx.fillStyle = '#555';
+        ctx.fillText('T', cw/2 - xOff, y);
+        
+        if (Math.abs(xOff) > 10) {
+            ctx.fillStyle = '#333';
+            ctx.fillText('-', cw/2, y - 5);
+        }
+    }
+}
+
+setInterval(draw, 33);
+</script>
+</body>
+</html>

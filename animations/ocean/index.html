@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Ocean</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #ocean-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+    </style>
+</head>
+<body>
+<canvas id="ocean-canvas"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const P_SPEED = parseFloat(_params.get('speed') || '1');
+const P_TURB = parseFloat(_params.get('turbulence') || '1');
+const P_PALETTE = _params.get('palette') || 'deepblue';
+
+const canvas = document.getElementById('ocean-canvas');
+const ctx = canvas.getContext('2d');
+
+let cw = window.innerWidth;
+let ch = window.innerHeight;
+canvas.width = cw;
+canvas.height = ch;
+setTimeout(() => canvas.style.opacity = 1, 100);
+
+let time = 0;
+const palettes = {
+    'deepblue': '#0055AA',
+    'sunset': '#AA5500',
+    'stormy': '#555555'
+};
+const color = palettes[P_PALETTE] || palettes['deepblue'];
+const waveChars = ["~", "-", "=", "_"];
+
+function draw() {
+    ctx.fillStyle = '#0a0a12';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.fillStyle = color;
+    ctx.font = '16px "JetBrains Mono"';
+    
+    time += 0.05 * P_SPEED;
+    
+    for (let x = 0; x < cw; x += 12) {
+        for (let y = ch/2; y < ch; y += 16) {
+            let offset = Math.sin(x * 0.01 + time + y * 0.05) * 20 * P_TURB;
+            if (y + offset > ch/2 + 20) {
+                let char = waveChars[Math.floor((Math.sin(x*0.02 + time) + 1) * 2) % waveChars.length];
+                ctx.fillText(char, x, y + offset);
+            }
+        }
+    }
+}
+
+setInterval(draw, 50);
+</script>
+</body>
+</html>

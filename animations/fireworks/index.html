@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Fireworks</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a12;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.screensaver-mode { cursor: none; }
+
+        #fw-canvas {
+            display: block;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+        }
+        /* credits hidden for brevity in this mock */
+    </style>
+</head>
+<body>
+<canvas id="fw-canvas"></canvas>
+<script>
+const _params = new URLSearchParams(window.location.search);
+const SCREENSAVER_MODE = _params.has('screensaver');
+const P_FREQ = parseFloat(_params.get('frequency') || '1');
+const P_COUNT = parseInt(_params.get('particleCount') || '50', 10);
+const P_GRAVITY = parseFloat(_params.get('gravity') || '1');
+const P_PALETTE = _params.get('palette') || 'multi';
+
+const canvas = document.getElementById('fw-canvas');
+const ctx = canvas.getContext('2d');
+
+let cw = window.innerWidth;
+let ch = window.innerHeight;
+canvas.width = cw;
+canvas.height = ch;
+setTimeout(() => canvas.style.opacity = 1, 100);
+
+let fireworks = [];
+const chars = "*+x.oO0@";
+const palettes = {
+    'multi': ['#F00', '#0F0', '#00F', '#FF0', '#0FF', '#F0F'],
+    'warm': ['#F00', '#F80', '#FF0', '#F40'],
+    'cool': ['#00F', '#0F0', '#0FF', '#08F']
+};
+const colors = palettes[P_PALETTE] || palettes['multi'];
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 10;
+        this.vy = (Math.random() - 0.5) * 10 - 2;
+        this.life = 100;
+        this.color = color;
+        this.char = chars[Math.floor(Math.random() * chars.length)];
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.1 * P_GRAVITY;
+        this.life -= 2;
+    }
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = Math.max(0, this.life / 100);
+        ctx.fillText(this.char, this.x, this.y);
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+function draw() {
+    ctx.fillStyle = 'rgba(10, 10, 18, 0.2)';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.font = '16px "JetBrains Mono"';
+    
+    if (Math.random() < 0.05 * P_FREQ) {
+        const x = Math.random() * cw;
+        const y = Math.random() * ch * 0.5;
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        for (let i = 0; i < P_COUNT; i++) {
+            fireworks.push(new Particle(x, y, color));
+        }
+    }
+    
+    for (let i = fireworks.length - 1; i >= 0; i--) {
+        fireworks[i].update();
+        fireworks[i].draw();
+        if (fireworks[i].life <= 0) {
+            fireworks.splice(i, 1);
+        }
+    }
+}
+
+setInterval(draw, 33);
+</script>
+</body>
+</html>
