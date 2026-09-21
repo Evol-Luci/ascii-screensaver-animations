@@ -19,7 +19,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Regenerate index.json
+      - name: Regenerate index.json and README gallery
         run: python3 .github/scripts/generate_index.py
 
       - name: Load deploy key
@@ -39,11 +39,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "git@github.com:${{ github.repository }}.git"
-          git add index.json
+          git add index.json README.md
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "chore: regenerate index.json [skip ci]"
+          git commit -m "chore: regenerate index.json and README gallery [skip ci]"
           git push
 
       # Safety net in case the deploy key/bypass is ever removed or
@@ -61,10 +61,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           BRANCH="automated/update-index-$(date +%s)"
           git checkout -b "$BRANCH"
-          git add index.json
-          git commit -m "chore: regenerate index.json"
+          git add index.json README.md
+          git commit -m "chore: regenerate index.json and README gallery"
           git push origin "$BRANCH"
-          gh pr create --title "chore: regenerate index.json" \
+          gh pr create --title "chore: regenerate index.json and README gallery" \
             --body "Automated — direct push via the deploy key failed (it may have been removed, or the ruleset bypass misconfigured). This PR needs a maintainer to manually trigger/re-run the \`validate\` check and merge it, since GITHUB_TOKEN-authored PRs don't auto-trigger other workflows." \
             --base main --head "$BRANCH"
         env:
