@@ -29,6 +29,9 @@ import tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# GitHub comment body limit
+MAX_COMMENT_CHARS = 65536
+
 try:
     from PIL import Image
 except ImportError:
@@ -40,7 +43,7 @@ def run(cmd):
     return proc.returncode, (proc.stdout + proc.stderr).strip()
 
 
-def embed_image(path, max_width=360):
+def embed_image(path, max_width=200, quality=50):
     """Small base64 data-URI <img>, downscaled to keep the PR comment size
     reasonable regardless of how many folders changed in one PR."""
     if Image is None or not os.path.isfile(path):
@@ -49,7 +52,7 @@ def embed_image(path, max_width=360):
     if im.width > max_width:
         im = im.resize((max_width, round(im.height * max_width / im.width)))
     buf = io.BytesIO()
-    im.save(buf, format="JPEG", quality=70)
+    im.save(buf, format="JPEG", quality=quality)
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")
     return f'<img src="data:image/jpeg;base64,{b64}" width="{max_width}">'
 
@@ -125,7 +128,18 @@ def main():
         sections.append(section)
 
     header = "## Animation validation" + ("" if all_ok else " — failed")
-    print(header + "\n\n" + "\n\n---\n\n".join(sections))
+    body = header + "\n\n" + "\n\n---\n\n".join(sections)
+
+    # Truncate if exceeds GitHub's comment limit
+    if len(body) > MAX_COMMENT_CHARS:
+        truncated = body[:MAX_COMMENT_CHARS - 200]
+        # Find last complete section
+        last_sep = truncated.rfind("\n\n---\n\n")
+        if last_sep > 0:
+            truncated = truncated[:last_sep]
+        body = truncated + "\n\n... (comment truncated — exceeds GitHub's 65536 char limit)"
+
+    print(body)
     sys.exit(0 if all_ok else 1)
 
 
