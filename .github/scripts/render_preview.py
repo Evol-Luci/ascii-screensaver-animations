@@ -109,19 +109,33 @@ def main():
         with open(os.path.join(frames_dir, f"frame{i:02d}.png"), "wb") as f:
             f.write(data)
 
-    # A representative frame (last one, since it's had the longest to
-    # settle past any fade-in) for the PR comment.
+    # Check all frames for validity — animations like thunderstorm have
+    # intermittent activity (lightning), so the last frame might be dark.
+    # Use the frame with the highest luminance stddev as the representative.
+    best_frame_idx = -1
+    best_stddev = -1.0
+    for i, data in enumerate(frames):
+        frame_path = os.path.join(frames_dir, f"frame{i:02d}.png")
+        problem = check_preview_image(frame_path, ".png")
+        if problem is None:
+            # Frame passes; compute its stddev to pick the "best" one
+            from PIL import Image
+            im = Image.open(frame_path).convert("L")
+            stddev = statistics.pstdev(im.tobytes())
+            if stddev > best_stddev:
+                best_stddev = stddev
+                best_frame_idx = i
+
+    if best_frame_idx == -1:
+        # No frame passed — fail with the last frame's error for clarity
+        last_frame_path = os.path.join(frames_dir, f"frame{len(frames)-1:02d}.png")
+        problem = check_preview_image(last_frame_path, ".png")
+        fail(f"{name}'s live render looks broken: {problem}")
+
+    # Use the best frame for the PR comment preview
     live_preview_path = os.path.join(out_dir, "live_preview.png")
     with open(live_preview_path, "wb") as f:
-        f.write(frames[-1])
-
-    # Reuse the exact same structural checks the submitted preview.gif has
-    # to pass — the live render should trivially clear them if the
-    # animation actually works.
-    last_frame_path = os.path.join(frames_dir, f"frame{len(frames)-1:02d}.png")
-    problem = check_preview_image(last_frame_path, ".png")
-    if problem:
-        fail(f"{name}'s live render looks broken: {problem}")
+        f.write(frames[best_frame_idx])
 
     print(json.dumps({
         "ok": True,

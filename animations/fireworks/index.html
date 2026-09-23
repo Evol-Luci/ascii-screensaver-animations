@@ -30,7 +30,6 @@
 <canvas id="fw-canvas"></canvas>
 <script>
 const _params = new URLSearchParams(window.location.search);
-const SCREENSAVER_MODE = _params.has('screensaver');
 const P_FREQ = parseFloat(_params.get('frequency') || '1');
 const P_COUNT = parseInt(_params.get('particleCount') || '50', 10);
 const P_GRAVITY = parseFloat(_params.get('gravity') || '1');

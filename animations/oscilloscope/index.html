@@ -31,7 +31,6 @@
 <canvas id="scene"></canvas>
 <script>
 const _params = new URLSearchParams(window.location.search);
-const SCREENSAVER_MODE = _params.has('screensaver');
 const DELAYED_START    = _params.has('delayedStart');
 const START_AT         = parseInt(_params.get('startAt') || '0', 10);
 
@@ -56,44 +55,6 @@ const config = {
   cyclePeriod: P_CYCLE_PERIOD,
   morphTime: P_MORPH_TIME,
 };
-
-if (SCREENSAVER_MODE) {
-  document.body.classList.add('screensaver-mode');
-  const credits = document.createElement('div');
-  credits.className = 'credits-popup';
-  credits.innerHTML = `
-    <h2>ASCII Oscilloscope</h2>
-    <p class="credits-label">Animation</p>
-    <p>A CRT laboratory instrument left running forever.</p>
-    <hr>
-    <p class="credits-label">Screensaver Framework</p>
-    <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
-    <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>`;
-  document.body.appendChild(credits);
-  setTimeout(() => credits.classList.add('visible'), 500);
-  setTimeout(() => credits.classList.remove('visible'), 30500);
-  setTimeout(() => credits.remove(), 32500);
-
-  let armed = false;
-  setTimeout(() => { armed = true; }, 1500);
-  const dismiss = () => {
-    if (!armed) return;
-    try { window.close(); } catch (e) {}
-    document.body.innerHTML = '';
-    document.body.style.background = '#000';
-  };
-  window.addEventListener('keydown', dismiss);
-  window.addEventListener('mousedown', dismiss);
-  window.addEventListener('mousemove', (() => {
-    let lastX = -1, lastY = -1, moveCount = 0;
-    return (e) => {
-      if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
-      if (e.clientX === lastX && e.clientY === lastY) return;
-      lastX = e.clientX; lastY = e.clientY;
-      if (++moveCount > 10) dismiss();
-    };
-  })());
-}
 
 const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d');

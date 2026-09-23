@@ -45,10 +45,8 @@
 
 <script>
 const _params = new URLSearchParams(window.location.search);
-const SCREENSAVER_MODE = _params.has('screensaver');
 const DELAYED_START    = _params.has('delayedStart');
 
-if (SCREENSAVER_MODE) document.body.classList.add('screensaver-mode');
 
 const P_SPEED    = parseFloat(_params.get('speed')    || '1.0');
 const P_PALETTE  = _params.get('palette')             || 'amethyst';
@@ -266,36 +264,6 @@ function draw() {
 
 resize();
 canvas.style.opacity = '1';
-
-if (SCREENSAVER_MODE) {
-  let armed = false;
-  setTimeout(() => { armed = true; }, 1500);
-  const dismiss = () => {
-    if (!armed) return;
-    try { window.close(); } catch (e) {}
-    document.body.innerHTML = '';
-    document.body.style.background = '#000';
-  };
-  window.addEventListener('keydown', dismiss);
-  window.addEventListener('mousedown', dismiss);
-  window.addEventListener('mousemove', (() => {
-    let lastX = -1, lastY = -1, moveCount = 0;
-    return (e) => {
-      if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
-      if (e.clientX === lastX && e.clientY === lastY) return;
-      lastX = e.clientX; lastY = e.clientY;
-      if (++moveCount > 10) dismiss();
-    };
-  })());
-} else {
-  let to;
-  document.addEventListener('mousemove', () => {
-    const p = document.getElementById('credits');
-    p.classList.add('visible');
-    clearTimeout(to);
-    to = setTimeout(() => p.classList.remove('visible'), 3000);
-  });
-}
 
 if (DELAYED_START) setTimeout(() => requestAnimationFrame(loop), 2000);
 else requestAnimationFrame(loop);

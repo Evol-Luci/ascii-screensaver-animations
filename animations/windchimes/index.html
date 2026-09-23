@@ -91,7 +91,6 @@
 <script>
 // ─── Screensaver mode ──────────────────────────────────────────────────────────
 const _params = new URLSearchParams(window.location.search);
-const SCREENSAVER_MODE = _params.has('screensaver');
 const DELAYED_START    = _params.has('delayedStart');
 const START_AT         = parseInt(_params.get('startAt') || '0', 10);
 
@@ -103,49 +102,6 @@ const P_GUST_FREQUENCY = parseFloat(_params.get('gustFrequency') || '1.0');
 const P_DOUBLE_PENDULUM = (_params.get('doublePendulum') || '0') === '1'; // chaotic two-segment clapper
 const P_SOUND_TYPE     = _params.get('soundType')               || 'bell'; // bell timbre preset
 const P_PITCH          = parseFloat(_params.get('pitch')         || '2.0'); // root-frequency multiplier
-
-if (SCREENSAVER_MODE) {
-    document.body.classList.add('screensaver-mode');
-
-    const credits = document.createElement('div');
-    credits.className = 'credits-popup';
-    credits.innerHTML = `
-        <h2>ASCII Wind Chimes</h2>
-        <p class="credits-label">Animation</p>
-        <p>Damped-pendulum chime tubes ·<br>noise-driven gusts · proximity<br>ring flashes. Press M for sound.</p>
-        <hr>
-        <p class="credits-label">Screensaver Framework</p>
-        <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
-        <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
-    `;
-    document.body.appendChild(credits);
-    setTimeout(() => credits.classList.add('visible'), 500);
-    setTimeout(() => credits.classList.remove('visible'), 30500);
-    setTimeout(() => credits.remove(), 32500);
-
-    let armed = false;
-    setTimeout(() => { armed = true; }, 1500);
-    const dismiss = () => {
-        if (!armed) return;
-        try { window.close(); } catch(e) {}
-        document.body.innerHTML = '';
-        document.body.style.background = '#000';
-    };
-    window.addEventListener('keydown', (e) => {
-        if (e.key && e.key.toLowerCase() === 'm') return; // sound toggle — never dismisses
-        dismiss();
-    });
-    window.addEventListener('mousedown', dismiss);
-    window.addEventListener('mousemove', (() => {
-        let lastX = -1, lastY = -1, moveCount = 0;
-        return (e) => {
-            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
-            if (e.clientX === lastX && e.clientY === lastY) return;
-            lastX = e.clientX; lastY = e.clientY;
-            if (++moveCount > 10) dismiss();
-        };
-    })());
-}
 
 // ─── Sound toggle (M key) — works identically in screensaver and preview mode,
 // and is the ONE key explicitly exempted from the dismiss-on-keypress handler
