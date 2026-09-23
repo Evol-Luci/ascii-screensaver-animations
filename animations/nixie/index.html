@@ -72,7 +72,6 @@
 
 // ─── Parameters ──────────────────────────────────────────────────────────────
 const _p             = new URLSearchParams(location.search);
-const SCREENSAVER    = _p.has('screensaver');
 const P_GLOW         = _p.get('glowColor')        || 'amber';
 const P_FLICKER      = parseFloat(_p.get('flickerIntensity') || '1');
 const P_POISON       = parseFloat(_p.get('poisoningSpeed')   || '1.5');
@@ -147,48 +146,6 @@ const PALETTES = {
 const PAL = PALETTES[P_GLOW] || PALETTES.amber;
 
 // ─── Screensaver mode ─────────────────────────────────────────────────────────
-if (SCREENSAVER) {
-  document.body.classList.add('screensaver-mode');
-
-  const credits = document.createElement('div');
-  credits.className = 'credits-popup';
-  credits.innerHTML = `
-    <h2>Nixie Clock</h2>
-    <p class="credits-label">Animation</p>
-    <p>Vintage nixie tube clock with cathode<br>poisoning cycling &amp; neon glow bloom.</p>
-    <hr>
-    <p class="credits-label">Inspired By</p>
-    <p><a href="https://github.com/joeparadiso/nixie-tube-clock" tabindex="-1">joeparadiso/nixie-tube-clock</a></p>
-    <hr>
-    <p class="credits-label">Screensaver Framework</p>
-    <p>Developed by Luci Evol<br>under Evol Digital Productions.</p>
-    <p style="margin-top:8px"><a href="https://www.evoldigitalproductions.com" tabindex="-1">www.evoldigitalproductions.com</a></p>
-  `;
-  document.body.appendChild(credits);
-  setTimeout(() => credits.classList.add('visible'), 500);
-  setTimeout(() => credits.classList.remove('visible'), 30500);
-  setTimeout(() => credits.remove(), 32500);
-
-  let armed = false;
-  setTimeout(() => { armed = true; }, 1500);
-  const dismiss = () => {
-    if (!armed) return;
-    try { window.close(); } catch (e) {}
-    document.body.innerHTML = '';
-    document.body.style.background = '#000';
-  };
-  window.addEventListener('keydown', dismiss);
-  window.addEventListener('mousedown', dismiss);
-  window.addEventListener('mousemove', (() => {
-    let lx = -1, ly = -1, n = 0;
-    return e => {
-      if (lx === -1) { lx = e.clientX; ly = e.clientY; return; }
-      if (e.clientX === lx && e.clientY === ly) return;
-      lx = e.clientX; ly = e.clientY;
-      if (++n > 10) dismiss();
-    };
-  })());
-}
 
 // ─── Canvas ───────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('nixie-canvas');
