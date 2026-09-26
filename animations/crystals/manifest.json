@@ -1,8 +1,8 @@
 {
   "id": "crystals",
   "name": "Crystals",
-  "description": "Geological cave growth simulation with procedural stalactites, stalagmites, and a glowing bioluminescent pool.",
-  "author": "Luci Evol",
+  "description": "A geological cave growth simulation featuring procedural stalactites and stalagmites. Watch as the crystal formations slowly grow over time, illuminating a glowing bioluminescent pool that shimmers gently at the bottom of the cavern.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

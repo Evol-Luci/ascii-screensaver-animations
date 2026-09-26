@@ -1,8 +1,8 @@
 {
   "id": "blackhole",
   "name": "Black Hole",
-  "description": "Accretion disk animation with jet toggle, disk size, and inclination.",
-  "author": "Luci Evol",
+  "description": "A stunning depiction of a black hole's accretion disk and event horizon. The animation includes a customizable jet toggle, adjustable disk size, and inclination controls, allowing you to view the gravitational lensing effects from various angles and intensities.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

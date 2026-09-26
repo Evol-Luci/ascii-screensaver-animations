@@ -1,8 +1,8 @@
 {
   "id": "aquarium",
   "name": "Aquarium",
-  "description": "A living reef: the fish school rests at night, flees a roaming predator, and swarms feeding events, under a day/night lighting cycle with sunbeams, plankton, kelp, and sand crabs.",
-  "author": "Luci Evol",
+  "description": "A living reef ecosystem rendered in ASCII art. The simulated fish school rests at night, flees a roaming predator, and swarms feeding events, all under a dynamic day and night lighting cycle complete with sunbeams, drifting plankton, swaying kelp, and scurrying sand crabs.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

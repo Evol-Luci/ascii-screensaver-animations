@@ -1,8 +1,8 @@
 {
   "id": "crawl",
   "name": "Crawl",
-  "description": "Retro title crawl with selectable episode and text speed.",
-  "author": "Luci Evol",
+  "description": "An epic retro title crawl inspired by classic sci-fi cinema. You can select your favorite episode text, adjust the scrolling speed, and watch as the golden characters slowly drift into the vanishing point of a starry cosmos.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

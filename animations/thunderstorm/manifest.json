@@ -1,8 +1,8 @@
 {
   "id": "thunderstorm",
   "name": "Thunderstorm",
-  "description": "Dynamic rain, lightning bolts, and storm clouds in ASCII.",
-  "author": "Luci Evol",
+  "description": "A dramatic, atmospheric simulation of dynamic rain, striking lightning bolts, and heavy storm clouds. It features multiple color palettes and fully adjustable wind and lightning intensity to let you weather the perfect ASCII storm.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

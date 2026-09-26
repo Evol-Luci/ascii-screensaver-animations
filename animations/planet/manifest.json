@@ -1,8 +1,8 @@
 {
   "id": "planet",
   "name": "Planet",
-  "description": "Rotating planet sphere with atmosphere, optional rings, and polar aurora.",
-  "author": "Luci Evol",
+  "description": "A dynamic rotating planet sphere suspended in space. The simulation features a visible atmosphere, optional planetary rings, and a glowing polar aurora that shifts as the globe slowly turns on its axis.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

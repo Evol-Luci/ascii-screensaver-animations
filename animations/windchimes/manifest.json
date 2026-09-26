@@ -1,8 +1,8 @@
 {
   "id": "windchimes",
   "name": "Wind Chimes",
-  "description": "Hanging chime tubes swaying as damped pendulums in a gusty breeze, with proximity glint flashes and synthesized bell tones (press M to toggle sound).",
-  "author": "Luci Evol",
+  "description": "A relaxing physical simulation of hanging chime tubes swaying as damped pendulums in a gusty breeze. It features proximity glint flashes and synthesized bell tones to create a fully audiovisual meditative experience.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

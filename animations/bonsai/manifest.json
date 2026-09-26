@@ -1,8 +1,8 @@
 {
   "id": "bonsai",
   "name": "Bonsai",
-  "description": "Procedural tree growth with leaf density and rest time between redraws.",
-  "author": "Luci Evol",
+  "description": "A peaceful procedural tree growth simulation that brings digital nature to your terminal. It features customizable leaf density and rest times between redraws, letting you watch a unique bonsai tree slowly take shape, flourish, and then clear to begin anew.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

@@ -1,8 +1,8 @@
 {
   "id": "pendulum_wave",
   "name": "Pendulum Wave",
-  "description": "Pendulums of progressively shorter period swinging in and out of phase \u2014 travelling waves that periodically snap back into perfect sync.",
-  "author": "Luci Evol",
+  "description": "A physics simulation of uncoupled pendulums with progressively shorter periods. Watch as they swing in and out of phase, creating mesmerizing travelling waves that periodically snap back into perfect, satisfying synchronization.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

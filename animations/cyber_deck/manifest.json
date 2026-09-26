@@ -1,8 +1,8 @@
 {
   "id": "cyber_deck",
   "name": "Cyber Deck",
-  "description": "A fictional 1998 hacker terminal that never finishes booting \u2014 boot sequence, hex dumps, hardware diagrams, glitches and the occasional kernel panic.",
-  "author": "Luci Evol",
+  "description": "A nostalgic and fictional 1998 hacker terminal that never quite finishes booting. It endlessly loops through a chaotic sequence of boot screens, hex dumps, hardware diagrams, digital glitches, and the occasional dramatic kernel panic.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

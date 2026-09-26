@@ -1,8 +1,8 @@
 {
   "id": "moon",
   "name": "Moon",
-  "description": "Orbital ASCII scene with star count, floaters, glow, and palette.",
-  "author": "Luci Evol",
+  "description": "A tranquil orbital ASCII scene featuring a large, cratered moon. The simulation includes a customizable star count, floating space debris, atmospheric glow, and various color palettes to set the perfect nighttime mood.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

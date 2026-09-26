@@ -1,8 +1,8 @@
 {
   "id": "matrix",
   "name": "Matrix",
-  "description": "Digital rain effect in ASCII.",
-  "author": "Luci Evol",
+  "description": "A cascading digital rain effect directly inspired by the iconic visuals of The Matrix movie. Streams of glowing green glyphs fall endlessly down the screen, featuring fading trails, random character mutations, and bright leading heads that capture the quintessential cyberpunk aesthetic.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

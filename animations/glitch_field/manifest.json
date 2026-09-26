@@ -1,8 +1,8 @@
 {
   "id": "glitch_field",
   "name": "Glitch Field",
-  "description": "A broken digital reality — a character grid torn by drifting corruption bands, RGB split, scanline tearing and packet loss.",
-  "author": "Luci Evol",
+  "description": "A broken digital reality simulation perfect for cyberpunk aesthetics. It features a character grid torn apart by drifting corruption bands, RGB color splitting, simulated scanline tearing, and visual packet loss.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.jpg",
   "params": [
