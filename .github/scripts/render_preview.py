@@ -22,7 +22,6 @@ Exits 0 if the live render looks like real, moving output; 1 otherwise
 import json
 import os
 import sys
-import base64
 import statistics
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -46,34 +45,22 @@ def fail(msg):
 
 
 def capture_frames(html_path):
-    """Returns a list of raw PNG bytes sampled from the page's <canvas>
-    over a few real seconds, by polling canvas.toDataURL() from inside the
-    page (matching how this repo's own maintainer captures real previews
-    by hand)."""
+    """Returns a list of raw PNG screenshots of the whole page sampled over a
+    few real seconds. Screenshots rather than canvas.toDataURL(): an
+    animation may layer several canvases (e.g. a static backdrop under a
+    moving one) plus CSS, and sampling just the first <canvas> would judge
+    it by whichever layer happens to come first in the DOM."""
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport=VIEWPORT)
         page.goto(f"file://{html_path}")
         page.wait_for_timeout(int(SETTLE_SECONDS * 1000))
-
-        data_urls = page.evaluate(
-            """async ({frameCount, intervalMs}) => {
-                const canvas = document.querySelector('canvas');
-                if (!canvas) return null;
-                const frames = [];
-                for (let i = 0; i < frameCount; i++) {
-                    frames.push(canvas.toDataURL('image/png'));
-                    await new Promise(r => setTimeout(r, intervalMs));
-                }
-                return frames;
-            }""",
-            {"frameCount": FRAME_COUNT, "intervalMs": FRAME_INTERVAL_MS},
-        )
+        frames = []
+        for _ in range(FRAME_COUNT):
+            frames.append(page.screenshot(type="png"))
+            page.wait_for_timeout(FRAME_INTERVAL_MS)
         browser.close()
-
-    if data_urls is None:
-        return None
-    return [base64.b64decode(u.split(",", 1)[1]) for u in data_urls]
+    return frames
 
 
 def main():
@@ -94,14 +81,14 @@ def main():
         fail(f"No index.html in {folder}")
 
     frames = capture_frames(html_path)
-    if frames is None:
-        fail(
-            f"{name}/index.html has no <canvas> element — this validator "
-            "assumes a canvas-based animation. If that's wrong, this "
-            "check needs updating rather than skipping."
-        )
     if not frames:
         fail(f"{name}/index.html produced zero frames — did it load at all?")
+    if all(f == frames[0] for f in frames[1:]):
+        fail(
+            f"{name}'s live render didn't change over "
+            f"{FRAME_COUNT * FRAME_INTERVAL_MS / 1000:.1f}s — it isn't animating "
+            "(or it drew into a canvas that never got a size)."
+        )
 
     frames_dir = os.path.join(out_dir, "live_frames")
     os.makedirs(frames_dir, exist_ok=True)

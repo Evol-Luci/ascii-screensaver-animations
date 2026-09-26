@@ -42,31 +42,63 @@ All fields are required. `id` must match the folder name exactly.
 }
 ```
 
-Supported `type` values: `"range"`, `"select"`, `"boolean"`.
+Supported `type` values: `"range"` (numeric: `min`, `max`, optional `step`,
+`defaultValue` within range) and `"select"` (an `"options"` array of strings
+or numbers; `defaultValue` must be one of them). A toggle is a `select` with
+`"options": [0, 1]` (numbers) — the plugin shows it as an on/off switch.
 
-For `"select"` params, include an `"options"` array of strings.
+Param `key`s are letters, digits and `_`, starting with a letter. These names
+are reserved by the plugin and can't be used: `anim`, `path`, `state`,
+`screensaver`, `startAt`, `delayedStart`, and anything starting with `meta_`.
+
+`name`, `description` and `author` are shown as plain text in the plugin
+(marketplace, settings panel, and the screensaver's info panel): no HTML or
+`<`/`>`, at most 60 / 400 / 80 characters.
 
 ## Reading params at runtime
 
-The plugin injects params into your animation via `window.animationParams`. At page load, read it like this:
+The plugin passes your configured values as URL query parameters. Read them
+at the top of your script, falling back to your defaults:
 
 ```js
-const params = window.animationParams || {};
-const speed = params.speed ?? 1.0;
+const params = new URLSearchParams(location.search);
+const speed = parseFloat(params.get('speed') || '1');
+const palette = params.get('palette') || 'natural';
 ```
 
-The plugin writes your configured values into `window.animationParams` before the page finishes loading, so reading it synchronously at the top of your script is safe.
+## What the plugin does for you
+
+Don't write any of this yourself — the plugin wraps every animation in its
+own viewer, which:
+
+- shows the info panel (your manifest's `name`, `description`, `author`);
+- dismisses the screensaver on mouse or keyboard input and hides the cursor.
+
+CI rejects submissions that still carry their own copy (a `window.close()`
+call, code building a `credits-popup`, or a check of the `screensaver` URL
+param).
+
+Your animation runs in a sandboxed frame with no network access (except
+Google Fonts) and no access to local files, so it only needs to draw.
 
 ## Self-containment & Runtime rules
 
 Your animation MUST:
 - Be entirely self-contained in `index.html` (inline all JS and CSS)
-- Not load scripts from external URLs (`<script src="https://...">` is rejected)
-- Not call `fetch()` or `XMLHttpRequest` to external domains
+- Not load anything from another host — scripts, images, stylesheets, frames
+  (Google Fonts via `@import` is the one exception; plain `<a href>` links
+  are fine)
+- Not use `fetch()`, `XMLHttpRequest`, `WebSocket`, `EventSource`, workers,
+  `sendBeacon`, dynamic `import()`, or `file:` URLs
 - Not use `eval()` or `new Function()`
+- Size its canvas in a `resize` handler (or `ResizeObserver`), not just once
+  at startup: the screensaver can start before its window has its final
+  size, and a canvas measured at 0x0 stays blank. CI rejects animations that
+  read `innerWidth`/`innerHeight` without handling `resize`.
 - Have a valid, real image file for its preview: at least 200x120, actually
   a decodable image (not a text file or corrupt binary), and if it's a
   `.gif`, actually animated — multiple frames that aren't all identical.
+  `preview` must be a plain file name inside your folder.
   CI checks all of this automatically (`.github/scripts/validate_animation.py`).
   It also renders your `index.html` in a real headless browser and posts a
   freshly-captured live frame in a PR comment next to your submitted
@@ -75,32 +107,6 @@ Your animation MUST:
   will still be obvious there, and the maintainer will ask you to fix it
   before merging.
 - Fit within 2 MB total (all files combined)
-- Include the following snippet at the end of your script to properly close the screensaver on mouse or keyboard movement:
-
-```js
-// ─── Screensaver Dismiss Logic ────────────────────────────────────────────────
-if (new URLSearchParams(window.location.search).get('screensaver') === '1') {
-    let armed = false;
-    setTimeout(() => { armed = true; }, 1500);
-    const dismiss = () => {
-        if (!armed) return;
-        try { window.close(); } catch(e) {}
-        document.body.innerHTML = '';
-        document.body.style.background = '#000';
-    };
-    window.addEventListener('keydown', dismiss);
-    window.addEventListener('mousedown', dismiss);
-    window.addEventListener('mousemove', (() => {
-        let lastX = -1, lastY = -1, moveCount = 0;
-        return (e) => {
-            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
-            if (e.clientX === lastX && e.clientY === lastY) return;
-            lastX = e.clientX; lastY = e.clientY;
-            if (++moveCount > 10) dismiss();
-        };
-    })());
-}
-```
 
 ## Submitting
 
