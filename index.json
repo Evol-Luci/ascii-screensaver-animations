@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-09-23",
+  "updated": "2026-09-26",
   "animations": [
     {
       "id": "aquarium",
@@ -711,9 +711,9 @@
     {
       "id": "dna",
       "name": "DNA Helix",
-      "description": "3D rotating DNA double helix structure.",
-      "author": "Luci Evol",
-      "version": "1.0.0",
+      "description": "A 3D ASCII double helix: colour-coded A-T and G-C base pairs twist in perspective as the strand scrolls and sways, with free nucleotides drifting behind it. Every so often a replication fork travels down the helix, unzipping it and zipping it back together.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
+      "version": "1.1.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/dna/preview.gif",
       "params": [
         {
@@ -746,7 +746,9 @@
           "defaultValue": "classic",
           "options": [
             "classic",
-            "neon"
+            "neon",
+            "bio",
+            "ember"
           ]
         }
       ],
@@ -759,9 +761,9 @@
     {
       "id": "fireworks",
       "name": "Fireworks",
-      "description": "Exploding fireworks into ASCII particles.",
-      "author": "Luci Evol",
-      "version": "1.0.0",
+      "description": "Rockets climb over an ASCII city skyline and burst into peonies, rings, willows, crossettes, hearts and chrysanthemums, lighting up the sky and the windows below. Sparks start white-hot and cool to colour, and every so often a finale salvo fills the sky.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
+      "version": "1.1.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fireworks/preview.gif",
       "params": [
         {
@@ -806,7 +808,9 @@
           "options": [
             "multi",
             "warm",
-            "cool"
+            "cool",
+            "gold",
+            "pastel"
           ]
         }
       ],
@@ -899,9 +903,9 @@
     {
       "id": "galaxy",
       "name": "Spiral Galaxy",
-      "description": "Rotating ASCII spiral galaxy.",
-      "author": "Luci Evol",
-      "version": "1.0.0",
+      "description": "A spiral galaxy rendered as an ASCII density map: thousands of stars in logarithmic arms around a glowing core, with bright star-forming knots, a slowly nodding 3D tilt, a twinkling background field and the occasional shooting star.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
+      "version": "1.1.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/galaxy/preview.gif",
       "params": [
         {
@@ -946,7 +950,8 @@
           "options": [
             "purple",
             "blue",
-            "fiery"
+            "fiery",
+            "nebula"
           ]
         }
       ],
@@ -1528,9 +1533,9 @@
     {
       "id": "ocean",
       "name": "Ocean Waves",
-      "description": "Rolling ASCII ocean waves.",
-      "author": "Luci Evol",
-      "version": "1.0.0",
+      "description": "An ASCII seascape: rows of waves roll in from the horizon, growing as they near, with whitecaps, a glittering path under the sun or moon, drifting clouds, twinkling stars and the odd passing gull.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
+      "version": "1.1.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/ocean/preview.gif",
       "params": [
         {
@@ -1564,7 +1569,8 @@
           "options": [
             "deepblue",
             "sunset",
-            "stormy"
+            "stormy",
+            "moonlit"
           ]
         }
       ],
