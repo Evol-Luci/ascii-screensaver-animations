@@ -1,8 +1,8 @@
 {
   "id": "vinyl",
   "name": "Vinyl Spin",
-  "description": "Spinning turntable with a rotating groove sheen, procedural radial label, tracking tonearm, and lamplit dust motes.",
-  "author": "Luci Evol",
+  "description": "A spinning turntable simulation for music lovers. It features a rotating groove sheen, a procedural radial label, a tracking tonearm that slowly advances, and atmospheric lamplit dust motes dancing in the air above the record.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

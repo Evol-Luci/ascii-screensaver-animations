@@ -1,8 +1,8 @@
 {
   "id": "campfire",
   "name": "Campfire",
-  "description": "Layered noise-driven flame tongues with rising embers, a dark forest silhouette, and a drifting firefly.",
-  "author": "Luci Evol",
+  "description": "A cozy, layered noise-driven simulation of flame tongues crackling in the dark. It comes complete with rising embers, a subtle dark forest silhouette in the background, and a drifting firefly that occasionally wanders through the warm glow of the fire.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

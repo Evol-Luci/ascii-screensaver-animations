@@ -1,8 +1,8 @@
 {
   "id": "terrarium",
   "name": "Terrarium",
-  "description": "A living ecosystem: plants grow, seed, wilt and decay; fungi recycle litter into soil nutrients; detritivores, leaf-grazing snails, a centipede predator, and a foraging ant colony cycle through closed water, nutrient, and light cycles under day/night and seasons. Nothing goes extinct.",
-  "author": "Luci Evol",
+  "description": "An incredibly complex living ecosystem in a glass jar. Plants grow, seed, and decay; fungi recycle the litter; while snails, a centipede, and an ant colony interact in a closed simulation of water, nutrients, and light across shifting day and night cycles. Nothing goes permanently extinct.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

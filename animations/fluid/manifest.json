@@ -1,8 +1,8 @@
 {
   "id": "fluid",
   "name": "Fluid",
-  "description": "Real-time fluid dynamics simulation with dye injection rendered in ASCII.",
-  "author": "Luci Evol",
+  "description": "A real-time fluid dynamics simulation with interactive dye injection. Rendered entirely in ASCII, the solver computes velocity and pressure fields to create incredibly smooth and realistic swirling vortices across your terminal.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

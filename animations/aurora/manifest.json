@@ -1,8 +1,8 @@
 {
   "id": "aurora",
   "name": "Aurora",
-  "description": "Procedural aurora borealis ribbons with twinkling star field.",
-  "author": "Luci Evol",
+  "description": "Procedural aurora borealis ribbons dancing gracefully across a twinkling star field. The simulation uses noise functions to create organic, shifting curtains of light that mimic the natural phenomena of the northern lights in a purely text-based format.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.jpg",
   "params": [

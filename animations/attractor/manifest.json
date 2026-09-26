@@ -1,8 +1,8 @@
 {
   "id": "attractor",
   "name": "Attractor",
-  "description": "A particle tracing a real strange-attractor equation \u2014 Lorenz butterfly and R\u00f6ssler ribbon rendered as speed-weighted ASCII glyphs through a slowly rotating 3D camera.",
-  "author": "Luci Evol",
+  "description": "A mesmerizing visualization of a particle tracing a real strange-attractor equation. It features Lorenz butterfly and R\u00f6ssler ribbon patterns rendered as speed-weighted ASCII glyphs, viewed through a slowly rotating 3D camera to create a deep sense of mathematical complexity.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

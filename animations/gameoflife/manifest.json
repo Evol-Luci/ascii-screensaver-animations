@@ -1,8 +1,8 @@
 {
   "id": "gameoflife",
   "name": "Game of Life",
-  "description": "Conway cells rendered as growing and wilting garden glyphs.",
-  "author": "Luci Evol",
+  "description": "Conway's Game of Life reimagined as a digital garden. Cellular automata rules are applied to render the grid as growing and wilting botanical glyphs, turning the classic mathematical simulation into a beautiful, organic time-lapse.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

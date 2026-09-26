@@ -1,8 +1,8 @@
 {
   "id": "incense",
   "name": "Incense",
-  "description": "Smoke particle simulation rising from an incense stick with wind and turbulence controls.",
-  "author": "Luci Evol",
+  "description": "A relaxing smoke particle simulation rising from a burning incense stick. It features fully adjustable wind and turbulence controls, allowing the wispy ASCII smoke to gently curl and dissipate into the surrounding digital air.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

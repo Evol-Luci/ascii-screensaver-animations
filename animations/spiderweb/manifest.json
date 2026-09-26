@@ -1,8 +1,8 @@
 {
   "id": "spiderweb",
   "name": "Spider Web",
-  "description": "A spider builds its web strand by strand, hunts drifting prey, flees wasp raids and bird strikes, and repairs the damage \u2014 all under a soft moonlight glow.",
-  "author": "Luci Evol",
+  "description": "A fascinating ecosystem simulation where a spider builds its web strand by strand. It hunts drifting prey, flees from simulated wasp raids and bird strikes, and diligently repairs any damage\u2014all under a soft, atmospheric moonlight glow.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

@@ -1,8 +1,8 @@
 {
   "id": "mandelbrot",
   "name": "Mandelbrot",
-  "description": "Zooming ASCII fractal with auto-jumping boundary regions.",
-  "author": "Luci Evol",
+  "description": "A deeply zooming ASCII fractal explorer. The simulation automatically navigates the Mandelbrot set, intelligently jumping between interesting boundary regions and rendering the infinitely complex mathematical shapes in crisp terminal characters.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

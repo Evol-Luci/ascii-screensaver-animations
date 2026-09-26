@@ -1,8 +1,8 @@
 {
   "id": "nixie",
   "name": "Nixie",
-  "description": "Vintage nixie tube clock with cathode poisoning, neon glow bloom, and per-tube flicker. Inspired by joeparadiso/nixie-tube-clock.",
-  "author": "Luci Evol",
+  "description": "A vintage nixie tube clock simulation that brings retro-futuristic timekeeping to your screen. Inspired by joeparadiso/nixie-tube-clock, it features simulated cathode poisoning, rich neon glow bloom, and realistic per-tube electrical flicker.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

@@ -1,8 +1,8 @@
 {
   "id": "jellyfish",
   "name": "Jellyfish Drift",
-  "description": "Bioluminescent jellyfish drifting through deep-sea darkness with pulsing bell glow, wavy trailing tentacles, and plankton sparkle.",
-  "author": "Luci Evol",
+  "description": "A serene underwater scene of a bioluminescent jellyfish drifting through deep-sea darkness. It features a softly pulsing bell glow, wavy trailing tentacles that respond to fluid physics, and a subtle plankton sparkle in the background.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.gif",
   "params": [

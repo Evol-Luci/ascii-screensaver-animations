@@ -1,8 +1,8 @@
 {
   "id": "waterfall",
   "name": "Waterfall",
-  "description": "Cascading waterfall through a mossy rock channel with a base mist/spray burst and an optional faint rainbow arc.",
-  "author": "Luci Evol",
+  "description": "A peaceful cascading waterfall flowing through a mossy rock channel. The simulation includes a turbulent base mist and spray burst, crowned by an optional, faint rainbow arc that appears in the ambient light.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "1.0.0",
   "preview": "preview.jpg",
   "params": [
