@@ -10,567 +10,479 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background: #020208;
+            background: #02030a;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
         }
 
-        body.screensaver-mode { cursor: none; }
-
-        #aurora-canvas {
+        #backdrop, #aurora-canvas {
+            position: fixed;
+            inset: 0;
             display: block;
             opacity: 0;
-            transition: opacity 2s ease-in;
+            transition: opacity 3s ease-in;
         }
-
-        .credits-popup {
-            position: fixed;
-            bottom: 32px;
-            right: 32px;
-            background: rgba(6, 10, 22, 0.92);
-            border: 1px solid rgba(40, 180, 80, 0.35);
-            border-radius: 8px;
-            padding: 20px 24px;
-            font-family: 'JetBrains Mono', 'Courier New', monospace;
-            font-size: 12px;
-            color: #60b870;
-            max-width: 280px;
-            opacity: 0;
-            transition: opacity 2s ease-in-out;
-            z-index: 100;
-            line-height: 1.6;
-        }
-        .credits-popup.visible { opacity: 1; }
-        .credits-popup h2 {
-            font-size: 14px;
-            font-weight: 700;
-            color: #40e070;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .credits-popup .credits-label {
-            font-size: 10px;
-            color: #2a7038;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 10px;
-            margin-bottom: 4px;
-        }
-        .credits-popup hr {
-            border: none;
-            border-top: 1px solid rgba(40, 180, 80, 0.25);
-            margin: 12px 0;
-        }
-        .credits-popup a { color: #40c060; text-decoration: none; }
     </style>
 </head>
 <body>
+<canvas id="backdrop"></canvas>
 <canvas id="aurora-canvas"></canvas>
 <script>
-const _params = new URLSearchParams(window.location.search);
-const DELAYED_START    = _params.has('delayedStart');
-const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+// A northern night.
+//
+// Curtains of aurora hang over snowy mountains and a frozen lake: rays run
+// along them, they fold and drift, green at their feet and crimson at their
+// crowns. The sky breathes through a cycle — quiet arcs grow, a substorm
+// breaks and the curtains flare, race and fold while a corona of rays
+// converges overhead, then it all fades into slow pulsing patches and quiet
+// again. The lake mirrors it; a cabin's window glows and its chimney smokes;
+// a lone figure stands on the shore and watches the sky.
 
-const P_SPEED      = parseFloat(_params.get('speed')      || '1');
+// ─── Parameters ──────────────────────────────────────────────────────────────
+const _params       = new URLSearchParams(window.location.search);
+const DELAYED_START = _params.has('delayedStart');
+const START_AT      = parseInt(_params.get('startAt') || '0', 10);
+
+function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; }
+const P_SPEED      = clamp(parseFloat(_params.get('speed') || '1'), 0.2, 4);
 const P_PALETTE    = _params.get('palette') || 'aurora';
-const P_BANDS      = parseInt(_params.get('bands')        || '3', 10);
-const P_BRIGHTNESS = parseFloat(_params.get('brightness') || '1');
-const P_STARS      = parseInt(_params.get('stars')        || '150', 10);
+const P_BANDS      = Math.round(clamp(parseFloat(_params.get('bands') || '3'), 1, 5));
+const P_BRIGHTNESS = clamp(parseFloat(_params.get('brightness') || '1'), 0.2, 2);
+const P_STARS      = Math.round(clamp(parseFloat(_params.get('stars') || '150'), 0, 400));
+const P_ACTIVITY   = clamp(parseFloat(_params.get('activity') || '1'), 0, 2);
 
-const canvas = document.getElementById('aurora-canvas');
-const ctx    = canvas.getContext('2d');
-
-const FONT_SIZE = 16;
-let CHAR_W = 9.6;
-let CHAR_H = 20;
-let cols = 0, rows = 0;
-
-function measureFont() {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    CHAR_W = ctx.measureText('M').width;
-    CHAR_H = FONT_SIZE * 1.25;
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function lerp(a, b, k) { return a + (b - a) * k; }
+function mix(a, b, k) { return [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)]; }
+function scale(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+// Smooth 1D value noise.
+function noise(x) {
+    const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f);
+    return lerp(hash(i), hash(i + 1), u);
 }
 
+// ─── Palettes: the aurora's low, mid and high colours ───────────────────────
+const PALETTES = {
+    aurora:   { low: [60, 255, 140],  mid: [110, 255, 170], high: [230, 80, 190], fringe: [150, 90, 255], sky: [[2, 3, 10], [8, 16, 30]] },
+    northern: { low: [70, 255, 120],  mid: [140, 255, 150], high: [120, 220, 140], fringe: [90, 200, 160], sky: [[2, 4, 8], [6, 18, 22]] },
+    southern: { low: [255, 90, 120],  mid: [230, 90, 200],  high: [160, 80, 255], fringe: [255, 150, 120], sky: [[4, 2, 10], [18, 8, 28]] },
+    neon:     { low: [0, 255, 220],   mid: [80, 180, 255],  high: [255, 60, 220], fringe: [255, 240, 80], sky: [[2, 2, 12], [10, 6, 34]] },
+    mono:     { low: [200, 200, 200], mid: [230, 230, 230], high: [150, 150, 150], fringe: [120, 120, 120], sky: [[3, 3, 5], [14, 14, 18]] },
+};
+const PAL = PALETTES[P_PALETTE] || PALETTES.aurora;
+
+// ─── Canvases ────────────────────────────────────────────────────────────────
+const backdrop = document.getElementById('backdrop');
+const bctx = backdrop.getContext('2d');
+const canvas = document.getElementById('aurora-canvas');
+const ctx = canvas.getContext('2d');
+// The aurora's soft glow is painted at low resolution and scaled up.
+const glowLayer = document.createElement('canvas');
+const gctx = glowLayer.getContext('2d');
+
+let W = 0, H = 0, FS = 12, CW = 7.2, CH = 12, COLS = 0;
+let horizon = 0, lakeTop = 0;
+let stars = [], milky = [], mountains = [], trees = [];
+const GLOW_SCALE = 8;
+// One curtain's colour profile, bottom (index 0) to top, rendered once and
+// stretched onto each glow column.
+const strip = document.createElement('canvas');
+strip.width = 1; strip.height = 64;
+(function paintStrip() {
+    const g = strip.getContext('2d');
+    const grad = g.createLinearGradient(0, 64, 0, 0);
+    grad.addColorStop(0, css(PAL.fringe, 0));
+    grad.addColorStop(0.08, css(PAL.low, 0.55));
+    grad.addColorStop(0.4, css(PAL.mid, 0.32));
+    grad.addColorStop(0.75, css(PAL.high, 0.22));
+    grad.addColorStop(1, css(PAL.high, 0));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 1, 64);
+})();
+
 function resize() {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-    measureFont();
-    cols = Math.floor(canvas.width  / CHAR_W);
-    rows = Math.floor(canvas.height / CHAR_H);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    for (const c of [backdrop, canvas]) {
+        c.width = Math.max(1, W); c.height = Math.max(1, H);
+        c.style.width = W + 'px'; c.style.height = H + 'px';
+    }
+    glowLayer.width = Math.max(1, Math.ceil(W / GLOW_SCALE));
+    glowLayer.height = Math.max(1, Math.ceil(H / GLOW_SCALE));
+    FS = clamp(Math.round(Math.min(W, H) / 60), 8, 18);
+    CW = FS * 0.6;
+    CH = FS * 1.05;
+    COLS = Math.ceil(W / CW);
+    horizon = H * 0.72;
+    lakeTop = H * 0.78;
+    glyphCache.clear();
+
+    stars = [];
+    for (let i = 0; i < P_STARS; i++) stars.push({ x: hash(i * 1.7) * W, y: hash(i * 3.3) * horizon, b: 0.2 + hash(i * 5.1) * 0.8, p: hash(i) * 6.3 });
+    // The Milky Way: a faint diagonal river of tiny stars.
+    milky = [];
+    for (let i = 0; i < 700; i++) {
+        const u = hash(i * 9.3), off = (hash(i * 2.9) + hash(i * 4.1) - 1) * H * 0.12;
+        milky.push({ x: u * W, y: H * 0.05 + u * H * 0.45 + off, b: 0.1 + hash(i * 7.7) * 0.25 });
+    }
+    mountains = [];
+    for (let c = 0; c <= COLS; c++) {
+        const u = c / COLS;
+        // Ridged peaks: folded sines give sharp summits and broad valleys.
+        const ridge = (f, p) => 1 - Math.abs(Math.sin(u * f + p));
+        const far = H * (0.05 + 0.12 * Math.pow(ridge(4.1, 0.6), 1.6) + 0.05 * ridge(11.3, 1.9) + 0.02 * ridge(29, 0.3));
+        const near = H * (0.02 + 0.06 * Math.pow(ridge(6.7, 2.2), 1.4) + 0.02 * ridge(19, 0.8));
+        mountains.push({ far, near });
+    }
+    trees = [];
+    for (let x = 0; x < W; x += CW * 0.9) {
+        if (hash(x * 0.13) < 0.7) trees.push({ x, h: 1 + Math.floor(hash(x * 0.71) * 4) });
+    }
+    backdropDirty = true;
+}
+
+// ─── Sprite cache ────────────────────────────────────────────────────────────
+const glyphCache = new Map();
+if (document.fonts) document.fonts.ready.then(() => { glyphCache.clear(); backdropDirty = true; });
+function sprite(ch, col, size) {
+    size = size || FS;
+    const q = (v) => (clamp(v, 0, 255) >> 3) << 3;
+    const r = q(col[0]), g = q(col[1]), b = q(col[2]);
+    const key = ch + '|' + size + '|' + r + ',' + g + ',' + b;
+    let s = glyphCache.get(key);
+    if (!s) {
+        if (glyphCache.size > 6000) glyphCache.clear();
+        const w = Math.ceil(size * 0.62 * ch.length + size * 0.4) + 2, h = Math.ceil(size * 1.3) + 2;
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d');
+        x.font = `700 ${size}px "JetBrains Mono", monospace`;
+        x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillStyle = `rgb(${r},${g},${b})`;
+        x.fillText(ch, w / 2, h / 2);
+        s = { c, w, h };
+        glyphCache.set(key, s);
+    }
+    return s;
+}
+function stampOn(g, ch, x, y, col, alpha, size) {
+    if (alpha <= 0.01) return;
+    const s = sprite(ch, col, size);
+    g.globalAlpha = Math.min(1, alpha);
+    g.drawImage(s.c, x - s.w / 2, y - s.h / 2);
+}
+const stamp = (ch, x, y, col, alpha, size) => stampOn(ctx, ch, x, y, col, alpha, size);
+
+// ─── The aurora's cycle ──────────────────────────────────────────────────────
+// quiet → growth → breakup (substorm) → recovery (pulsating) → quiet …
+const STAGES = [
+    { name: 'quiet',    len: [25, 45], power: 0.45, speed: 0.4, fold: 0.3, corona: 0 },
+    { name: 'growth',   len: [15, 25], power: 0.75, speed: 0.7, fold: 0.5, corona: 0 },
+    { name: 'breakup',  len: [14, 22], power: 1.35, speed: 1.9, fold: 1.1, corona: 1 },
+    { name: 'recovery', len: [20, 35], power: 0.7,  speed: 0.5, fold: 0.4, corona: 0, pulse: 1 },
+];
+const sky = { stage: 0, t: 0, len: 30, power: 0.45, speed: 0.4, fold: 0.3, corona: 0, pulse: 0 };
+function updateCycle(dt) {
+    sky.t += dt;
+    if (sky.t > sky.len) {
+        sky.stage = (sky.stage + 1) % STAGES.length;
+        // Low activity lingers in quiet; high activity skips it faster.
+        if (STAGES[sky.stage].name === 'quiet' && P_ACTIVITY >= 1.6) sky.stage = 1;
+        const st = STAGES[sky.stage];
+        sky.t = 0;
+        sky.len = rand(st.len[0], st.len[1]) * (st.name === 'quiet' ? 1.6 - P_ACTIVITY * 0.5 : 1);
+    }
+    const st = STAGES[sky.stage];
+    const k = Math.min(1, dt * 0.4);
+    const act = 0.6 + 0.4 * P_ACTIVITY;
+    sky.power += (st.power * act - sky.power) * k;
+    sky.speed += (st.speed - sky.speed) * k;
+    sky.fold += (st.fold - sky.fold) * k;
+    sky.corona += (st.corona - sky.corona) * Math.min(1, dt * 0.6);
+    sky.pulse += ((st.pulse || 0) - sky.pulse) * k;
+}
+
+// Each band is a curtain: its lower edge is a slowly travelling fold.
+const bands = Array.from({ length: P_BANDS }, (_, i) => ({
+    base: 0.34 + i * 0.09 + rand(-0.03, 0.03),      // lower edge height (fraction of horizon)
+    height: rand(0.16, 0.28),                          // ray length (fraction of horizon)
+    phase: rand(0, 100), drift: rand(-1, 1), seed: rand(0, 1000), bright: 0.7 + rand(0, 0.3),
+}));
+
+function curtainAt(b, u, t) {
+    // Lower edge: a few travelling folds, bigger during a substorm.
+    const y = b.base
+        + 0.05 * sky.fold * Math.sin(u * 7 + t * 0.35 * sky.speed + b.phase)
+        + 0.03 * sky.fold * Math.sin(u * 17 - t * 0.6 * sky.speed + b.phase * 2)
+        + 0.015 * Math.sin(u * 3 + t * 0.1 + b.seed);
+    // Brightness along the curtain: rays run along it, patches drift.
+    const along = u * 30 + t * sky.speed * (1 + b.drift * 0.5) + b.seed;
+    const ray = Math.pow(noise(along * 1.9), 1.6) * 0.7 + 0.3;
+    const patch = smoothstep(0.25, 0.8, noise(u * 4 + t * 0.05 * sky.speed + b.seed));
+    // Recovery: patches pulse on and off.
+    const pulse = 1 - sky.pulse * 0.6 * (0.5 + 0.5 * Math.sin(t * 2.2 + noise(u * 6 + b.seed) * 12));
+    const len = b.height * (0.7 + 0.6 * noise(u * 9 + t * 0.2 + b.seed)) * (0.8 + sky.power * 0.4);
+    return { y, bright: ray * patch * pulse * b.bright, len };
+}
+
+// ─── Backdrop ────────────────────────────────────────────────────────────────
+let backdropDirty = true;
+function paintBackdrop() {
+    const g = bctx;
+    g.globalAlpha = 1;
+    const grad = g.createLinearGradient(0, 0, 0, horizon);
+    grad.addColorStop(0, css(PAL.sky[0]));
+    grad.addColorStop(1, css(PAL.sky[1]));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, H);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `700 ${Math.round(FS * 0.7)}px "JetBrains Mono", monospace`;
+    g.fillStyle = css([200, 210, 240], 0.2);
+    for (const m of milky) { g.globalAlpha = m.b; g.fillText('.', m.x, m.y); }
+    g.globalAlpha = 1;
+
+    // Snowy mountains, far then near.
+    g.font = `700 ${FS}px "JetBrains Mono", monospace`;
+    const farCol = mix(PAL.sky[1], [70, 80, 110], 0.3), nearCol = scale(PAL.sky[1], 0.55);
+    const range = (key, col, snow) => {
+        const off = key === 'near' ? H * 0.04 : 0;
+        // Rock, then a snowcap wherever the slope is high enough.
+        const grad = g.createLinearGradient(0, horizon - H * 0.2, 0, lakeTop);
+        grad.addColorStop(0, css(mix(col, snow, 0.35)));
+        grad.addColorStop(1, css(col));
+        g.fillStyle = grad;
+        g.beginPath(); g.moveTo(0, lakeTop);
+        mountains.forEach((m, c) => g.lineTo(c * CW, horizon - m[key] + off));
+        g.lineTo(W, lakeTop); g.closePath(); g.fill();
+        mountains.forEach((m, c) => {
+            const y = horizon - m[key] + off;
+            const prev = mountains[Math.max(0, c - 1)][key], next = mountains[Math.min(mountains.length - 1, c + 1)][key];
+            const slope = (next - prev) / 2;
+            const ch = Math.abs(slope) < H * 0.002 ? '_' : slope > 0 ? '/' : '\\';
+            g.fillStyle = css(snow, key === 'far' ? 0.6 : 0.4);
+            g.fillText(ch, c * CW, y);
+            // Snow streaks down from the high summits.
+            if (m[key] > H * (key === 'far' ? 0.12 : 0.06)) {
+                for (let k = 1; k <= 2; k++) if (hash(c * 7 + k) < 0.55) { g.fillStyle = css(snow, 0.35 / k); g.fillText(':', c * CW, y + CH * k); }
+            }
+        });
+    };
+    range('far', farCol, [200, 210, 235]);
+    range('near', nearCol, [160, 170, 200]);
+
+    // Boreal treeline along the shore.
+    g.fillStyle = css(scale(PAL.sky[0], 0.4));
+    g.fillRect(0, lakeTop - CH * 0.6, W, CH * 0.7);
+    for (const t of trees) {
+        for (let k = 0; k < t.h; k++) g.fillText(k === t.h - 1 ? '^' : 'A', t.x, lakeTop - CH * (0.3 + k * 0.75));
+    }
+
+    // Frozen lake.
+    const lake = g.createLinearGradient(0, lakeTop, 0, H);
+    lake.addColorStop(0, css(scale(PAL.sky[1], 0.9)));
+    lake.addColorStop(1, css(scale(PAL.sky[0], 0.8)));
+    g.fillStyle = lake;
+    g.fillRect(0, lakeTop, W, H - lakeTop);
+    // Snow on the near shore, with the cabin and the watcher.
+    g.fillStyle = css([150, 160, 185], 0.35);
+    for (let y = H - CH * 2.5; y < H; y += CH) for (let x = 0; x < W; x += CW * 2) if (hash(x + y * 3) < 0.3) g.fillText(hash(x) < 0.5 ? '.' : '~', x, y);
+    const cabinX = W * 0.8, cabinY = lakeTop - CH * 0.5;
+    const wood = [34, 30, 36];
+    g.fillStyle = css(wood);
+    [' /\\  ', '/__\\ ', '|[]| '].forEach((line, i) => {
+        for (let j = 0; j < line.length; j++) if (line[j] !== ' ') g.fillText(line[j], cabinX + (j - 2) * CW, cabinY - CH * (2.4 - i * 0.9));
+    });
+    g.fillText('|', cabinX + CW * 1.2, cabinY - CH * 3.2);   // chimney
+}
+
+// ─── Life on the ground ──────────────────────────────────────────────────────
+const smoke = [];
+const meteors = [];
+let untilMeteor = rand(8, 16);
+
+function updateGround(dt, t) {
+    const cx = W * 0.8 + CW * 1.2, cy = lakeTop - CH * 4;
+    if (Math.random() < dt * 3) smoke.push({ x: cx, y: cy, life: 0, seed: rand(0, 6) });
+    for (let i = smoke.length - 1; i >= 0; i--) {
+        const s = smoke[i];
+        s.life += dt;
+        s.y -= CH * 0.8 * dt;
+        s.x += (Math.sin(s.life * 1.3 + s.seed) * 0.5 + 0.6) * CW * 0.8 * dt;
+        if (s.life > 7) smoke.splice(i, 1);
+    }
+    untilMeteor -= dt;
+    if (untilMeteor <= 0) {
+        untilMeteor = rand(8, 22);
+        const a = rand(0.3, 0.9) * (Math.random() < 0.5 ? 1 : -1);
+        meteors.push({ x: rand(0.1, 0.9) * W, y: rand(0.02, 0.25) * H, vx: Math.sin(a) * W * 0.5, vy: Math.cos(a) * H * 0.3, life: 0, max: rand(0.5, 1) });
+    }
+    for (let i = meteors.length - 1; i >= 0; i--) {
+        const m = meteors[i];
+        m.life += dt; m.x += m.vx * dt; m.y += m.vy * dt;
+        if (m.life > m.max) meteors.splice(i, 1);
+    }
+}
+
+// ─── Drawing ─────────────────────────────────────────────────────────────────
+const RAY = ['.', ':', '!', '|'];
+
+function draw(t) {
+    const g = ctx;
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    g.clearRect(0, 0, W, H);
+    const power = sky.power * P_BRIGHTNESS;
+
+    // Stars, dimmed where the aurora is bright.
+    for (const s of stars) {
+        const a = s.b * (0.6 + 0.4 * Math.sin(t * (0.7 + s.b) + s.p)) * (1 - Math.min(0.6, power * 0.3));
+        stamp(a > 0.7 ? '*' : a > 0.4 ? '+' : '.', s.x, s.y, [220, 228, 255], a * 0.8);
+    }
+
+    // Soft glow: each column of each curtain as a vertical gradient on a small
+    // canvas, scaled up — cheap, and smoother than glyphs could be.
+    const gw = glowLayer.width, gh = glowLayer.height;
+    gctx.clearRect(0, 0, gw, gh);
+    gctx.globalCompositeOperation = 'lighter';
+    const cells = [];   // bright cells to overlay as ray glyphs
+    for (const b of bands) {
+        for (let gx = 0; gx < gw; gx++) {
+            const u = gx / gw;
+            const c = curtainAt(b, u, t);
+            const a = c.bright * power;
+            if (a < 0.03) continue;
+            const yBase = c.y * horizon / GLOW_SCALE, yTop = (c.y - c.len) * horizon / GLOW_SCALE;
+            gctx.globalAlpha = Math.min(1, a);
+            gctx.drawImage(strip, gx, yTop, 1, yBase - yTop + 2);
+        }
+        // Ray glyphs on the bright parts, on the character grid.
+        for (let col = 0; col < COLS; col += 1) {
+            const u = col / COLS;
+            const c = curtainAt(b, u, t);
+            const a = c.bright * power;
+            if (a < 0.28) continue;
+            const x = col * CW + CW / 2;
+            const yBase = c.y * horizon, len = c.len * horizon;
+            for (let k = 0; k < len; k += CH) {
+                const f = k / len;
+                const v = a * (1 - f) * (0.6 + 0.4 * noise(col * 0.7 + k * 0.1 + t * 3 * sky.speed));
+                if (v < 0.22) continue;
+                cells.push({ x, y: yBase - k, v, f });
+            }
+        }
+    }
+    // Corona: during a breakup, rays converge on a point overhead.
+    if (sky.corona > 0.05) {
+        const cx = W * 0.5, cy = horizon * 0.12;
+        const n = 40;
+        for (let i = 0; i < n; i++) {
+            const ang = Math.PI * (0.1 + 0.8 * i / (n - 1));
+            const flick = noise(i * 3.7 + t * 4) * sky.corona;
+            if (flick < 0.3) continue;
+            const L = horizon * 0.35 * flick;
+            for (let k = horizon * 0.05; k < L; k += CH * 1.2) {
+                cells.push({ x: cx + Math.cos(ang) * k, y: cy + Math.sin(ang) * k, v: flick * (1 - k / L) * 1.1, f: 1 - k / L });
+            }
+        }
+    }
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = 1;
+    g.imageSmoothingEnabled = true;
+    g.drawImage(glowLayer, 0, 0, W, H);
+    for (const c of cells) {
+        const col = c.f < 0.35 ? mix(PAL.low, PAL.mid, c.f / 0.35) : mix(PAL.mid, PAL.high, (c.f - 0.35) / 0.65);
+        stamp(RAY[Math.min(3, Math.floor(c.v * 4))], c.x, c.y, col, Math.min(1, c.v));
+    }
+
+    // The frozen lake mirrors the sky: the glow, flipped and dimmed.
+    g.globalCompositeOperation = 'lighter';
+    g.save();
+    g.beginPath(); g.rect(0, lakeTop, W, H - lakeTop); g.clip();
+    // Mirror about the shoreline, compressed so the whole sky fits the lake.
+    g.globalAlpha = 0.4;
+    g.translate(0, lakeTop);
+    g.scale(1, -(H - lakeTop) / lakeTop);
+    g.translate(0, -lakeTop);
+    g.drawImage(glowLayer, 0, 0, W, H);
+    g.restore();
+    g.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < cells.length; i += 3) {
+        const c = cells[i];
+        const ry = lakeTop + (lakeTop - c.y) * (H - lakeTop) / lakeTop;
+        if (ry > H) continue;
+        const ripple = Math.sin(c.x * 0.05 + t * 1.5) * CW * 0.3;
+        stamp(c.v > 0.6 ? '=' : '-', c.x + ripple, ry, PAL.low, c.v * 0.3);
+    }
+
+    // Meteors.
+    for (const m of meteors) {
+        const k = 1 - m.life / m.max;
+        for (let i = 0; i < 9; i++) stamp(i === 0 ? '*' : '.', m.x - m.vx * i * 0.012, m.y - m.vy * i * 0.012, [240, 245, 255], k * (1 - i / 9));
+    }
+
+    // Cabin: a warm window, and chimney smoke drifting and fading.
+    const cabinX = W * 0.8, cabinY = lakeTop - CH * 0.5;
+    const flick = 0.8 + 0.2 * Math.sin(t * 5) * Math.sin(t * 2.3);
+    stamp('#', cabinX - CW * 0.5, cabinY - CH * 0.6, [255, 190, 110], flick);
+    const wglow = g.createRadialGradient(cabinX, cabinY - CH * 0.6, 0, cabinX, cabinY - CH * 0.6, CW * 8);
+    wglow.addColorStop(0, css([255, 170, 90], 0.25 * flick));
+    wglow.addColorStop(1, css([255, 170, 90], 0));
+    g.globalAlpha = 1;
+    g.fillStyle = wglow;
+    g.fillRect(cabinX - CW * 8, cabinY - CH * 0.6 - CW * 8, CW * 16, CW * 16);
+    for (const s of smoke) stamp(s.life < 2 ? '(' : s.life < 4 ? '~' : '.', s.x, s.y, [150, 150, 170], 0.45 * (1 - s.life / 7));
+
+    // The watcher on the shore, face turned up to the sky.
+    const wx = W * 0.3, wy = lakeTop + CH * 1.4;
+    const lit = mix([20, 22, 30], PAL.low, Math.min(0.35, power * 0.2));
+    const fz = FS * 1.4, fh = fz * 1.05;
+    stamp('o', wx, wy - fh * 1.6, lit, 1, fz);
+    stamp('|', wx, wy - fh * 0.8, lit, 1, fz);
+    stamp('/\\', wx, wy, lit, 1, fz);
+    // …and their reflection, trembling.
+    const tr = Math.sin(t * 1.2) * CW * 0.15;
+    stamp('\\/', wx + tr, wy + CH * 1.1, lit, 0.3);
+    stamp('|', wx + tr, wy + CH * 1.9, lit, 0.25);
+    g.globalAlpha = 1;
+}
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+let clock = 0, lastTs = 0;
+function frame(ts) {
+    requestAnimationFrame(frame);
+    if (window.innerWidth !== W || window.innerHeight !== H) resize();
+    if (W === 0 || H === 0) return;
+    if (lastTs && ts - lastTs < 40) return;   // ~24 fps
+    const dt = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 1 / 24) * P_SPEED;
+    lastTs = ts;
+    clock += dt;
+    updateCycle(dt);
+    updateGround(dt, clock);
+    if (backdropDirty) { paintBackdrop(); backdropDirty = false; }
+    draw(clock);
+}
+
+function start() {
+    backdrop.style.opacity = 1;
+    canvas.style.opacity = 1;
+    requestAnimationFrame(frame);
 }
 
 window.addEventListener('resize', resize);
-
-const PALETTES = {
-    aurora: {
-        bands: [
-            ['#0a8030', '#18b050', '#50e080', '#90ffc0'],
-            ['#10a060', '#20d080', '#60ffb0', '#b0ffd0'],
-            ['#209060', '#40c080', '#80e0a0', '#c0f0d0'],
-        ],
-        reflection: ['#0a4020', '#105030', '#206040', '#408060'],
-        skyTop: '#010104',
-        skyBot: '#0a1020',
-        starColor: '#7080a0',
-    },
-    northern: {
-        bands: [
-            ['#0a8030', '#20b050', '#60e080', '#a0ffc0'],
-            ['#402080', '#6040c0', '#a070f0', '#d0b0ff'],
-            ['#801060', '#b03090', '#e060c0', '#f0a0e0'],
-        ],
-        reflection: ['#201040', '#301860', '#402880', '#6040a0'],
-        skyTop: '#020108',
-        skyBot: '#0a0620',
-        starColor: '#7060a0',
-    },
-    southern: {
-        bands: [
-            ['#a02010', '#c04020', '#e07040', '#ffa080'],
-            ['#c06010', '#e08020', '#f0a040', '#ffc080'],
-            ['#a03040', '#c05060', '#e08090', '#f0b0c0'],
-        ],
-        reflection: ['#501008', '#702010', '#803020', '#a05040'],
-        skyTop: '#040204',
-        skyBot: '#140810',
-        starColor: '#907070',
-    },
-    neon: {
-        bands: [
-            ['#008080', '#00b0b0', '#40e0e0', '#90ffff'],
-            ['#800080', '#c000c0', '#f040f0', '#f0a0f0'],
-            ['#008040', '#00b060', '#40e090', '#90ffc0'],
-        ],
-        reflection: ['#004040', '#006060', '#008080', '#40a0a0'],
-        skyTop: '#020108',
-        skyBot: '#080420',
-        starColor: '#6070a0',
-    },
-    mono: {
-        bands: [
-            ['#282828', '#404040', '#707070', '#a0a0a0'],
-            ['#202020', '#383838', '#606060', '#909090'],
-            ['#303030', '#484848', '#808080', '#b0b0b0'],
-        ],
-        reflection: ['#101010', '#181818', '#282828', '#404040'],
-        skyTop: '#010101',
-        skyBot: '#080808',
-        starColor: '#505050',
-    },
-};
-
-const PAL = PALETTES[P_PALETTE] || PALETTES.aurora;
-
-const DENSITY_CHARS = ['@', '#', '8', 'O', 'o', '+', ':', '.', '`', ' '];
-const STREAK_CHARS = ['─', '═', '━'];
-const SHIMMER_CHARS = ['│', '┃', '║', '|', '¦'];
-
-const LANDSCAPE = [
-    '                                            ',
-    '           ~~                               ',
-    '     ~~~~~     ~~~~                         ',
-    '   ~~~~~~~   ~~~~~~~~~    ~                 ',
-    '  ~~~~~~~~~ ~~~~~~~~~~~~ ~~~~  ~            ',
-    ' ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  ~~~~~~',
-    '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
-    '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
-];
-
-let stars = [];
-function initStars() {
-    stars = [];
-    const landH = LANDSCAPE.length;
-    const skyRows = rows - landH;
-    for (let i = 0; i < P_STARS; i++) {
-        const gy = Math.floor(Math.random() * skyRows * 0.7);
-        const starDensity = 1 - (gy / (skyRows * 0.7)) * 0.4;
-        if (Math.random() > starDensity) continue;
-        stars.push({
-            gx: Math.floor(Math.random() * cols),
-            gy: gy,
-            char: Math.random() < 0.15 ? '*' : '.',
-            base: 0.15 + Math.random() * 0.5,
-            twinkle: Math.random() * Math.PI * 2,
-            speed: 0.2 + Math.random() * 1.2,
-        });
-    }
+resize();
+if (_params.has('stage')) {   // testing hook: jump to a stage of the cycle
+    sky.stage = clamp(parseInt(_params.get('stage'), 10), 0, 3);
+    Object.assign(sky, STAGES[sky.stage], { t: 0, len: 60 });
 }
 
-/* ── Shooting Stars ── */
-let shootingStars = [];
-function maybeSpawnShootingStar() {
-    if (Math.random() > 0.003) return;
-    const landH = LANDSCAPE.length;
-    const skyRows = rows - landH;
-    shootingStars.push({
-        x: Math.random() * cols * 0.8,
-        y: Math.random() * skyRows * 0.4,
-        vx: 2.5 + Math.random() * 3,
-        vy: 0.8 + Math.random() * 1.5,
-        life: 12 + Math.floor(Math.random() * 18),
-        age: 0,
-        trail: [],
-    });
-}
-
-function updateShootingStars() {
-    for (const ss of shootingStars) {
-        ss.trail.push({ x: ss.x, y: ss.y });
-        if (ss.trail.length > 6) ss.trail.shift();
-        ss.x += ss.vx;
-        ss.y += ss.vy;
-        ss.age++;
-    }
-    shootingStars = shootingStars.filter(ss => ss.age < ss.life);
-}
-
-function drawShootingStars() {
-    for (const ss of shootingStars) {
-        const fade = 1 - ss.age / ss.life;
-        for (let i = 0; i < ss.trail.length; i++) {
-            const tp = ss.trail[i];
-            const trailFade = (i / ss.trail.length) * fade;
-            ctx.globalAlpha = trailFade * 0.9;
-            ctx.fillStyle = '#ffffffcc';
-            ctx.fillText('─', tp.x * CHAR_W, tp.y * CHAR_H);
-        }
-        ctx.globalAlpha = fade;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText('*', ss.x * CHAR_W, ss.y * CHAR_H);
-    }
-}
-
-/* ── Aurora Band ── */
-class AuroraBand {
-    constructor(index, total) {
-        this.index = index;
-        this.phase = Math.random() * Math.PI * 2;
-        this.freq1 = 0.006 + Math.random() * 0.006;
-        this.freq2 = 0.003 + Math.random() * 0.004;
-        this.freq3 = 0.012 + Math.random() * 0.008;
-        this.amp1 = 0.07 + Math.random() * 0.05;
-        this.amp2 = 0.03 + Math.random() * 0.04;
-        this.amp3 = 0.02 + Math.random() * 0.03;
-        this.speed1 = 0.2 + Math.random() * 0.2;
-        this.speed2 = 0.1 + Math.random() * 0.15;
-        this.speed3 = 0.3 + Math.random() * 0.2;
-        this.baseY = 0.06 + (index / Math.max(1, total - 1)) * 0.15;
-        this.height = 0.20 + Math.random() * 0.08;
-        this.bandColors = PAL.bands[index % PAL.bands.length];
-        this.reflectColors = PAL.reflection;
-        this.colorShift = Math.random() * Math.PI * 2;
-        this.thicknessBob = Math.random() * Math.PI * 2;
-        // Shimmer ray parameters
-        this.shimmerCount = 5 + Math.floor(Math.random() * 4);
-        this.shimmerSeeds = [];
-        for (let i = 0; i < this.shimmerCount; i++) {
-            this.shimmerSeeds.push({
-                freq: 0.01 + Math.random() * 0.02,
-                speed: 0.3 + Math.random() * 0.5,
-                phase: Math.random() * Math.PI * 2,
-                width: 1 + Math.random() * 2,
-            });
-        }
-    }
-
-    getOffset(gx, t) {
-        const wt = t * P_SPEED;
-        return (
-            this.amp1 * Math.sin(this.freq1 * gx + this.speed1 * wt + this.phase) +
-            this.amp2 * Math.sin(this.freq2 * gx * 0.5 + this.speed2 * wt * 0.7 + this.phase * 1.3) +
-            this.amp3 * Math.sin(this.freq3 * gx * 1.7 - this.speed3 * wt * 1.2 + 1.5) +
-            this.amp1 * 0.4 * Math.sin(this.freq1 * 3.1 * gx + this.speed1 * 0.4 * wt + 2.7)
-        );
-    }
-
-    // Store band peak info for bloom & reflection
-    draw(t, canvasW, canvasH) {
-        const shimmer = 0.12 * Math.sin(t * P_SPEED * 0.9 + this.phase * 2);
-        const colorCycle = 0.5 + 0.5 * Math.sin(t * P_SPEED * 0.15 + this.colorShift);
-        const thicknessMod = 1 + 0.15 * Math.sin(t * P_SPEED * 0.1 + this.thicknessBob);
-        const bandH = Math.floor(this.height * rows * thicknessMod);
-
-        this._peakPositions = [];
-
-        for (let gx = 0; gx < cols; gx++) {
-            const offset = this.getOffset(gx, t);
-            const baseRow = Math.floor((this.baseY + offset) * rows);
-            const colors = this.bandColors;
-
-            // Compute shimmer ray intensity at this column
-            let rayIntensity = 0;
-            for (const seed of this.shimmerSeeds) {
-                const rayPos = Math.sin(seed.freq * gx + seed.speed * t * P_SPEED + seed.phase);
-                if (rayPos > 0.85) {
-                    rayIntensity = Math.max(rayIntensity, (rayPos - 0.85) / 0.15);
-                }
-            }
-
-            for (let dy = 0; dy < bandH; dy++) {
-                const gy = baseRow + dy;
-                if (gy < 0 || gy >= rows) continue;
-
-                const progress = dy / bandH;
-                const envelope = Math.pow(1 - progress, 1.8);
-                let alpha = envelope * P_BRIGHTNESS * (0.8 + shimmer);
-
-                // Shimmer rays boost alpha and use vertical chars
-                const isRay = rayIntensity > 0.1 && progress < 0.85;
-                if (isRay) {
-                    alpha = Math.min(1, alpha + rayIntensity * 0.35 * envelope);
-                }
-
-                if (alpha < 0.02) continue;
-
-                const ci = Math.min(colors.length - 1, Math.floor(progress * colors.length));
-                const ciNext = Math.min(colors.length - 1, ci + 1);
-                const frac = (progress * colors.length) - ci;
-
-                const c1 = colors[ci];
-                const c2 = colors[ciNext];
-                let r = Math.round((parseInt(c1.slice(1,3),16) * (1-frac) + parseInt(c2.slice(1,3),16) * frac));
-                let g = Math.round((parseInt(c1.slice(3,5),16) * (1-frac) + parseInt(c2.slice(3,5),16) * frac));
-                let b = Math.round((parseInt(c1.slice(5,7),16) * (1-frac) + parseInt(c2.slice(5,7),16) * frac));
-
-                // Brighten shimmer rays
-                if (isRay) {
-                    const boost = rayIntensity * 0.5;
-                    r = Math.min(255, Math.round(r + (255 - r) * boost));
-                    g = Math.min(255, Math.round(g + (255 - g) * boost));
-                    b = Math.min(255, Math.round(b + (255 - b) * boost));
-                }
-
-                const charIdx = Math.min(DENSITY_CHARS.length - 1, Math.floor(Math.pow(1 - envelope * (0.7 + 0.3 * colorCycle), 0.8) * (DENSITY_CHARS.length - 1)));
-                const ch = (isRay && rayIntensity > 0.4 && progress < 0.6)
-                    ? SHIMMER_CHARS[Math.floor(Math.random() * SHIMMER_CHARS.length)]
-                    : DENSITY_CHARS[charIdx];
-
-                ctx.globalAlpha = Math.min(1, alpha);
-                ctx.fillStyle = `rgb(${r},${g},${b})`;
-                ctx.fillText(ch, gx * CHAR_W, gy * CHAR_H);
-            }
-
-            // Store peak position for bloom/reflection
-            if (baseRow >= 0 && baseRow < rows) {
-                this._peakPositions.push({ gx, baseRow, offset });
-            }
-        }
-
-        // Horizontal streaks at band leading edge
-        for (let gx = 0; gx < cols; gx++) {
-            const offset = this.getOffset(gx, t);
-            const baseRow = Math.floor((this.baseY + offset) * rows);
-            if (baseRow < 0 || baseRow >= rows) continue;
-
-            const colors = this.bandColors;
-            const progress = 0.15;
-            const ci = Math.min(colors.length - 1, Math.floor(progress * colors.length));
-            const c1 = colors[ci];
-            const r = Math.round(parseInt(c1.slice(1,3),16));
-            const g = Math.round(parseInt(c1.slice(3,5),16));
-            const b = Math.round(parseInt(c1.slice(5,7),16));
-
-            const peakAlpha = P_BRIGHTNESS * (0.8 + shimmer);
-            const streakCount = Math.floor(P_BRIGHTNESS * (1 + 2 * shimmer));
-            for (let s = 0; s < streakCount; s++) {
-                const sx = gx * CHAR_W + (Math.random() - 0.5) * CHAR_W * 0.9;
-                ctx.globalAlpha = peakAlpha * 0.5 * (0.3 + 0.7 * Math.random());
-                ctx.fillStyle = `rgb(${Math.min(255,r+40)},${Math.min(255,g+40)},${Math.min(255,b+20)})`;
-                ctx.fillText(STREAK_CHARS[s % STREAK_CHARS.length], sx, baseRow * CHAR_H);
-            }
-        }
-    }
-
-    // Additive bloom pass
-    drawBloom(t) {
-        if (!this._peakPositions || this._peakPositions.length === 0) return;
-        const colors = this.bandColors;
-        const c1 = colors[0];
-        const r = parseInt(c1.slice(1,3),16);
-        const g = parseInt(c1.slice(3,5),16);
-        const b = parseInt(c1.slice(5,7),16);
-
-        const prevComp = ctx.globalCompositeOperation;
-        ctx.globalCompositeOperation = 'lighter';
-
-        // Sample every few columns for glow spots
-        for (let i = 0; i < this._peakPositions.length; i += 3) {
-            const pp = this._peakPositions[i];
-            const px = pp.gx * CHAR_W;
-            const py = pp.baseRow * CHAR_H;
-            const grad = ctx.createRadialGradient(px, py, 0, px, py, CHAR_H * 4);
-            grad.addColorStop(0, `rgba(${r},${g},${b},${0.06 * P_BRIGHTNESS})`);
-            grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
-            ctx.fillStyle = grad;
-            ctx.fillRect(px - CHAR_H * 4, py - CHAR_H * 4, CHAR_H * 8, CHAR_H * 8);
-        }
-
-        ctx.globalCompositeOperation = prevComp;
-    }
-
-    // Reflection on landscape
-    drawReflection(t, landStartRow) {
-        if (!this._peakPositions || this._peakPositions.length === 0) return;
-        const colors = this.reflectColors;
-        const shimmer = 0.1 * Math.sin(t * P_SPEED * 1.3 + this.phase * 3);
-
-        for (let gx = 0; gx < cols; gx += 2) {
-            const offset = this.getOffset(gx, t);
-            const baseRow = Math.floor((this.baseY + offset) * rows);
-            const dist = landStartRow - baseRow;
-            if (dist <= 0) continue;
-            const intensity = Math.max(0, 1 - dist / (rows * 0.5));
-            if (intensity < 0.05) continue;
-
-            const ci = Math.min(colors.length - 1, Math.floor(intensity * colors.length));
-            const c = colors[ci];
-            const r = parseInt(c.slice(1,3),16);
-            const g = parseInt(c.slice(3,5),16);
-            const b = parseInt(c.slice(5,7),16);
-
-            for (let dy = 0; dy < 3; dy++) {
-                const gy = landStartRow + dy;
-                if (gy >= rows) break;
-                const falloff = intensity * (1 - dy * 0.3) * (0.25 + shimmer);
-                ctx.globalAlpha = Math.min(0.3, falloff * P_BRIGHTNESS);
-                ctx.fillStyle = `rgb(${r},${g},${b})`;
-                ctx.fillText('~', gx * CHAR_W, gy * CHAR_H);
-            }
-        }
-    }
-}
-
-function drawLandscape() {
-    const landH = LANDSCAPE.length;
-    const startRow = rows - landH;
-    if (startRow < 0) return;
-    const repeats = Math.ceil(cols / LANDSCAPE[0].length);
-
-    for (let dy = 0; dy < landH; dy++) {
-        const gy = startRow + dy;
-        if (gy >= rows) continue;
-        const line = LANDSCAPE[dy];
-        for (let rep = 0; rep < repeats; rep++) {
-            const offset = rep * line.length;
-            for (let dx = 0; dx < line.length; dx++) {
-                const cx = offset + dx;
-                if (cx >= cols) break;
-                const ch = line[dx];
-                if (ch === ' ') continue;
-                const dark = Math.floor(4 + (dy / landH) * 10);
-                ctx.globalAlpha = 0.4 + (dy / landH) * 0.5;
-                ctx.fillStyle = `rgb(${dark},${Math.floor(dark * 0.6)},${Math.floor(dark * 0.7)})`;
-                ctx.fillText(ch, cx * CHAR_W, gy * CHAR_H);
-            }
-        }
-    }
-    ctx.globalAlpha = 1;
-}
-
-let bands = [];
-function initBands() {
-    bands = [];
-    const count = Math.max(1, Math.min(5, P_BANDS));
-    for (let i = 0; i < count; i++) {
-        bands.push(new AuroraBand(i, count));
-    }
-}
-
-// Compute dominant band color for sky bleed
-function getDominantColor(t) {
-    const colors = PAL.bands[0];
-    const c = colors[1];
-    const r = parseInt(c.slice(1,3),16);
-    const g = parseInt(c.slice(3,5),16);
-    const b = parseInt(c.slice(5,7),16);
-    const pulse = 0.3 + 0.15 * Math.sin(t * P_SPEED * 0.08);
-    return { r: Math.floor(r * pulse), g: Math.floor(g * pulse), b: Math.floor(b * pulse) };
-}
-
-let animTime = 0;
-
-function render(t) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Sky gradient with aurora color bleed
-    const dom = getDominantColor(animTime);
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    skyGrad.addColorStop(0, PAL.skyTop);
-    skyGrad.addColorStop(0.25, `rgb(${Math.floor(dom.r*0.15)},${Math.floor(dom.g*0.15)},${Math.floor(dom.b*0.15)+8})`);
-    skyGrad.addColorStop(0.6, PAL.skyBot);
-    skyGrad.addColorStop(0.85, '#0a0f18');
-    skyGrad.addColorStop(1, '#05080c');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    for (const s of stars) {
-        const sx = s.gx * CHAR_W;
-        const sy = s.gy * CHAR_H;
-        const a = s.base * (0.5 + 0.5 * Math.sin(t * s.speed * 0.0008 + s.twinkle));
-        const pulse = 0.8 + 0.2 * Math.sin(t * 0.0003 + s.twinkle * 0.5);
-        ctx.globalAlpha = a * 0.7 * pulse;
-        ctx.fillStyle = PAL.starColor;
-        ctx.fillText(s.char, sx, sy);
-    }
-
-    // Shooting stars
-    maybeSpawnShootingStar();
-    updateShootingStars();
-    drawShootingStars();
-
-    // Draw aurora bands
-    for (const band of bands) {
-        band.draw(animTime, canvas.width, canvas.height);
-    }
-
-    // Additive bloom pass
-    for (const band of bands) {
-        band.drawBloom(animTime);
-    }
-
-    drawLandscape();
-
-    // Reflection pass on landscape
-    const landStartRow = rows - LANDSCAPE.length;
-    if (landStartRow > 0) {
-        for (const band of bands) {
-            band.drawReflection(animTime, landStartRow);
-        }
-    }
-
-    ctx.globalAlpha = 1;
-}
-
-let raf;
-function loop(t) {
-    animTime += 0.016 * P_SPEED;
-    render(t);
-    raf = requestAnimationFrame(loop);
-}
-
-function startAnimation() {
-    canvas.style.opacity = '1';
-    document.fonts.ready.then(() => {
-        resize();
-        initStars();
-        initBands();
-        raf = requestAnimationFrame(loop);
-    });
-}
-
-if (START_AT > 0) {
-    const delay = Math.max(100, START_AT - Date.now());
-    setTimeout(startAnimation, delay);
-} else if (DELAYED_START) {
-    setTimeout(startAnimation, 4000);
-} else {
-    setTimeout(startAnimation, 500);
-}
+if (START_AT > 0) setTimeout(start, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(start, 4000);
+else setTimeout(start, 500);
 </script>
 </body>
 </html>

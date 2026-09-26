@@ -1,9 +1,9 @@
 {
   "id": "incense",
   "name": "Incense",
-  "description": "A relaxing smoke particle simulation rising from a burning incense stick. It features fully adjustable wind and turbulence controls, allowing the wispy ASCII smoke to gently curl and dissipate into the surrounding digital air.",
+  "description": "An altar at night: incense burns in a bowl of sand between two candles, its smoke curling up before a seated figure and a lotus mandala that swells and settles with a slow breath. Sticks burn down and are relit, the singing bowl sounds in rings, a moonbeam slants through, and petals fall from the offering.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "preview": "preview.gif",
   "params": [
     {
@@ -79,6 +79,36 @@
       "max": 2,
       "step": 0.05,
       "integer": false
+    },
+    {
+      "key": "stickCount",
+      "type": "range",
+      "label": "Stick Count",
+      "defaultValue": 3,
+      "min": 1,
+      "max": 3,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "glowIntensity",
+      "type": "range",
+      "label": "Glow Intensity",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
+    },
+    {
+      "key": "breath",
+      "type": "select",
+      "label": "Breath",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
     }
   ]
 }

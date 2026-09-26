@@ -1,9 +1,9 @@
 {
   "id": "pipes",
   "name": "Pipes",
-  "description": "A classic 3D pipe network generator using Unicode box-drawing characters. The procedural network grows in real-time, twisting and turning in 3D space with customizable palettes, adjustable density, and spawn rate controls.",
+  "description": "Glossy 3D pipes grow through a lattice, turning at elbows and ball joints \u2014 shaded like real lit metal tubes, then rendered as ASCII by brightness \u2014 dissolving and rebuilding from a fresh angle each time.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "preview": "preview.gif",
   "params": [
     {

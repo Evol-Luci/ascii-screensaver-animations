@@ -1,9 +1,9 @@
 {
   "id": "campfire",
   "name": "Campfire",
-  "description": "A cozy, layered noise-driven simulation of flame tongues crackling in the dark. It comes complete with rising embers, a subtle dark forest silhouette in the background, and a drifting firefly that occasionally wanders through the warm glow of the fire.",
+  "description": "A fire in a clearing: flames from a small heat simulation over crossed logs in a ring of stones, crackles throwing sparks, embers rising toward stars glimpsed through the canopy. The firelight breathes on the trunks around it; someone sits in stillness; an owl watches, a deer steps to the edge of the light, moths circle.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "preview": "preview.gif",
   "params": [
     {
@@ -68,6 +68,16 @@
         0,
         1
       ]
+    },
+    {
+      "key": "wildlife",
+      "type": "range",
+      "label": "Wildlife",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
     }
   ]
 }

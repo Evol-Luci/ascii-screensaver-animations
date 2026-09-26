@@ -1,9 +1,9 @@
 {
   "id": "thunderstorm",
   "name": "Thunderstorm",
-  "description": "A dramatic, atmospheric simulation of dynamic rain, striking lightning bolts, and heavy storm clouds. It features multiple color palettes and fully adjustable wind and lightning intensity to let you weather the perfect ASCII storm.",
+  "description": "A storm with a life: it gathers, breaks, peaks and clears. Rain drives in gusts, branching bolts strike and crawl the cloud base, each flash silhouetting the land, the sky rumbles, and a rainbow follows. Each palette is its own place: plains with a farmhouse, a tropical coast, desert mesas, or arctic thundersnow.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "preview": "preview.gif",
   "params": [
     {
@@ -48,6 +48,16 @@
         "arctic",
         "mono"
       ]
+    },
+    {
+      "key": "cycleTime",
+      "type": "range",
+      "label": "Cycle Time",
+      "defaultValue": 4,
+      "min": 0,
+      "max": 20,
+      "step": 0.5,
+      "integer": false
     }
   ]
 }

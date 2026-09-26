@@ -1,9 +1,9 @@
 {
   "id": "spiderweb",
   "name": "Spider Web",
-  "description": "A fascinating ecosystem simulation where a spider builds its web strand by strand. It hunts drifting prey, flees from simulated wasp raids and bird strikes, and diligently repairs any damage\u2014all under a soft, atmospheric moonlight glow.",
+  "description": "An orb weaver's night: she spins a real orb web \u2014 frame, radii, then the capture spiral from outside in \u2014 between garden twigs, silk swaying and beaded with moonlit dew. Moths blunder in and she runs out to wrap them; wasps send her to her leaf hide; birds tear through and she mends the damage thread by thread.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "preview": "preview.gif",
   "params": [
     {
