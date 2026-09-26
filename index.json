@@ -5,8 +5,8 @@
     {
       "id": "aquarium",
       "name": "Aquarium",
-      "description": "A living reef: the fish school rests at night, flees a roaming predator, and swarms feeding events, under a day/night lighting cycle with sunbeams, plankton, kelp, and sand crabs.",
-      "author": "Luci Evol",
+      "description": "A living reef ecosystem rendered in ASCII art. The simulated fish school rests at night, flees a roaming predator, and swarms feeding events, all under a dynamic day and night lighting cycle complete with sunbeams, drifting plankton, swaying kelp, and scurrying sand crabs.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aquarium/preview.gif",
       "params": [
@@ -103,8 +103,8 @@
     {
       "id": "attractor",
       "name": "Attractor",
-      "description": "A particle tracing a real strange-attractor equation \u2014 Lorenz butterfly and R\u00f6ssler ribbon rendered as speed-weighted ASCII glyphs through a slowly rotating 3D camera.",
-      "author": "Luci Evol",
+      "description": "A mesmerizing visualization of a particle tracing a real strange-attractor equation. It features Lorenz butterfly and R\u00f6ssler ribbon patterns rendered as speed-weighted ASCII glyphs, viewed through a slowly rotating 3D camera to create a deep sense of mathematical complexity.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/attractor/preview.gif",
       "params": [
@@ -170,8 +170,8 @@
     {
       "id": "aurora",
       "name": "Aurora",
-      "description": "Procedural aurora borealis ribbons with twinkling star field.",
-      "author": "Luci Evol",
+      "description": "Procedural aurora borealis ribbons dancing gracefully across a twinkling star field. The simulation uses noise functions to create organic, shifting curtains of light that mimic the natural phenomena of the northern lights in a purely text-based format.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.jpg",
       "params": [
@@ -238,8 +238,8 @@
     {
       "id": "blackhole",
       "name": "Black Hole",
-      "description": "Accretion disk animation with jet toggle, disk size, and inclination.",
-      "author": "Luci Evol",
+      "description": "A stunning depiction of a black hole's accretion disk and event horizon. The animation includes a customizable jet toggle, adjustable disk size, and inclination controls, allowing you to view the gravitational lensing effects from various angles and intensities.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/blackhole/preview.gif",
       "params": [
@@ -306,7 +306,7 @@
       "id": "boids",
       "name": "Murmuration",
       "description": "Starlings over a meadow through a full day: groups settle on the telegraph wire and ripple off it, a falcon stoops on the flock and panic runs through it in waves, and at dusk the flock swells into a murmuration over the wood before streaming down to roost. A heron crosses by day; bats and fireflies come out at night.",
-      "author": "Luci Evol",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/boids/preview.gif",
       "params": [
@@ -402,8 +402,8 @@
     {
       "id": "bonsai",
       "name": "Bonsai",
-      "description": "Procedural tree growth with leaf density and rest time between redraws.",
-      "author": "Luci Evol",
+      "description": "A peaceful procedural tree growth simulation that brings digital nature to your terminal. It features customizable leaf density and rest times between redraws, letting you watch a unique bonsai tree slowly take shape, flourish, and then clear to begin anew.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/bonsai/preview.gif",
       "params": [
@@ -461,8 +461,8 @@
     {
       "id": "campfire",
       "name": "Campfire",
-      "description": "Layered noise-driven flame tongues with rising embers, a dark forest silhouette, and a drifting firefly.",
-      "author": "Luci Evol",
+      "description": "A cozy, layered noise-driven simulation of flame tongues crackling in the dark. It comes complete with rising embers, a subtle dark forest silhouette in the background, and a drifting firefly that occasionally wanders through the warm glow of the fire.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/campfire/preview.gif",
       "params": [
@@ -539,8 +539,8 @@
     {
       "id": "crawl",
       "name": "Crawl",
-      "description": "Retro title crawl with selectable episode and text speed.",
-      "author": "Luci Evol",
+      "description": "An epic retro title crawl inspired by classic sci-fi cinema. You can select your favorite episode text, adjust the scrolling speed, and watch as the golden characters slowly drift into the vanishing point of a starry cosmos.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crawl/preview.gif",
       "params": [
@@ -587,8 +587,8 @@
     {
       "id": "crystals",
       "name": "Crystals",
-      "description": "Geological cave growth simulation with procedural stalactites, stalagmites, and a glowing bioluminescent pool.",
-      "author": "Luci Evol",
+      "description": "A geological cave growth simulation featuring procedural stalactites and stalagmites. Watch as the crystal formations slowly grow over time, illuminating a glowing bioluminescent pool that shimmers gently at the bottom of the cavern.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/crystals/preview.gif",
       "params": [
@@ -655,8 +655,8 @@
     {
       "id": "cyber_deck",
       "name": "Cyber Deck",
-      "description": "A fictional 1998 hacker terminal that never finishes booting \u2014 boot sequence, hex dumps, hardware diagrams, glitches and the occasional kernel panic.",
-      "author": "Luci Evol",
+      "description": "A nostalgic and fictional 1998 hacker terminal that never quite finishes booting. It endlessly loops through a chaotic sequence of boot screens, hex dumps, hardware diagrams, digital glitches, and the occasional dramatic kernel panic.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/cyber_deck/preview.gif",
       "params": [
@@ -833,8 +833,8 @@
     {
       "id": "fluid",
       "name": "Fluid",
-      "description": "Real-time fluid dynamics simulation with dye injection rendered in ASCII.",
-      "author": "Luci Evol",
+      "description": "A real-time fluid dynamics simulation with interactive dye injection. Rendered entirely in ASCII, the solver computes velocity and pressure fields to create incredibly smooth and realistic swirling vortices across your terminal.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/fluid/preview.gif",
       "params": [
@@ -974,8 +974,8 @@
     {
       "id": "gameoflife",
       "name": "Game of Life",
-      "description": "Conway cells rendered as growing and wilting garden glyphs.",
-      "author": "Luci Evol",
+      "description": "Conway's Game of Life reimagined as a digital garden. Cellular automata rules are applied to render the grid as growing and wilting botanical glyphs, turning the classic mathematical simulation into a beautiful, organic time-lapse.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/gameoflife/preview.gif",
       "params": [
@@ -1042,8 +1042,8 @@
     {
       "id": "glitch_field",
       "name": "Glitch Field",
-      "description": "A broken digital reality \u2014 a character grid torn by drifting corruption bands, RGB split, scanline tearing and packet loss.",
-      "author": "Luci Evol",
+      "description": "A broken digital reality simulation perfect for cyberpunk aesthetics. It features a character grid torn apart by drifting corruption bands, RGB color splitting, simulated scanline tearing, and visual packet loss.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/glitch_field/preview.jpg",
       "params": [
@@ -1119,8 +1119,8 @@
     {
       "id": "incense",
       "name": "Incense",
-      "description": "Smoke particle simulation rising from an incense stick with wind and turbulence controls.",
-      "author": "Luci Evol",
+      "description": "A relaxing smoke particle simulation rising from a burning incense stick. It features fully adjustable wind and turbulence controls, allowing the wispy ASCII smoke to gently curl and dissipate into the surrounding digital air.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/incense/preview.gif",
       "params": [
@@ -1208,8 +1208,8 @@
     {
       "id": "jellyfish",
       "name": "Jellyfish Drift",
-      "description": "Bioluminescent jellyfish drifting through deep-sea darkness with pulsing bell glow, wavy trailing tentacles, and plankton sparkle.",
-      "author": "Luci Evol",
+      "description": "A serene underwater scene of a bioluminescent jellyfish drifting through deep-sea darkness. It features a softly pulsing bell glow, wavy trailing tentacles that respond to fluid physics, and a subtle plankton sparkle in the background.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/jellyfish/preview.gif",
       "params": [
@@ -1276,8 +1276,8 @@
     {
       "id": "mandelbrot",
       "name": "Mandelbrot",
-      "description": "Zooming ASCII fractal with auto-jumping boundary regions.",
-      "author": "Luci Evol",
+      "description": "A deeply zooming ASCII fractal explorer. The simulation automatically navigates the Mandelbrot set, intelligently jumping between interesting boundary regions and rendering the infinitely complex mathematical shapes in crisp terminal characters.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/mandelbrot/preview.gif",
       "params": [
@@ -1345,8 +1345,8 @@
     {
       "id": "matrix",
       "name": "Matrix",
-      "description": "Digital rain effect in ASCII.",
-      "author": "Luci Evol",
+      "description": "A cascading digital rain effect directly inspired by the iconic visuals of The Matrix movie. Streams of glowing green glyphs fall endlessly down the screen, featuring fading trails, random character mutations, and bright leading heads that capture the quintessential cyberpunk aesthetic.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/matrix/preview.gif",
       "params": [
@@ -1395,8 +1395,8 @@
     {
       "id": "moon",
       "name": "Moon",
-      "description": "Orbital ASCII scene with star count, floaters, glow, and palette.",
-      "author": "Luci Evol",
+      "description": "A tranquil orbital ASCII scene featuring a large, cratered moon. The simulation includes a customizable star count, floating space debris, atmospheric glow, and various color palettes to set the perfect nighttime mood.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/moon/preview.gif",
       "params": [
@@ -1463,8 +1463,8 @@
     {
       "id": "nixie",
       "name": "Nixie",
-      "description": "Vintage nixie tube clock with cathode poisoning, neon glow bloom, and per-tube flicker. Inspired by joeparadiso/nixie-tube-clock.",
-      "author": "Luci Evol",
+      "description": "A vintage nixie tube clock simulation that brings retro-futuristic timekeeping to your screen. Inspired by joeparadiso/nixie-tube-clock, it features simulated cathode poisoning, rich neon glow bloom, and realistic per-tube electrical flicker.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/nixie/preview.gif",
       "params": [
@@ -1593,8 +1593,8 @@
     {
       "id": "oscilloscope",
       "name": "Oscilloscope",
-      "description": "A CRT lab instrument left running forever \u2014 a glowing phosphor Lissajous trace with decay, scanlines and bloom.",
-      "author": "Luci Evol",
+      "description": "A simulation of a CRT lab instrument left running forever in a forgotten workshop. It renders a glowing phosphor Lissajous trace with adjustable decay, authentic scanlines, and a warm cathode-ray bloom effect.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/oscilloscope/preview.gif",
       "params": [
@@ -1691,8 +1691,8 @@
     {
       "id": "pendulum_wave",
       "name": "Pendulum Wave",
-      "description": "Pendulums of progressively shorter period swinging in and out of phase \u2014 travelling waves that periodically snap back into perfect sync.",
-      "author": "Luci Evol",
+      "description": "A physics simulation of uncoupled pendulums with progressively shorter periods. Watch as they swing in and out of phase, creating mesmerizing travelling waves that periodically snap back into perfect, satisfying synchronization.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pendulum_wave/preview.gif",
       "params": [
@@ -1758,8 +1758,8 @@
     {
       "id": "pipes",
       "name": "Pipes",
-      "description": "Growing pipe network using Unicode box-drawing characters.",
-      "author": "Luci Evol",
+      "description": "A classic 3D pipe network generator using Unicode box-drawing characters. The procedural network grows in real-time, twisting and turning in 3D space with customizable palettes, adjustable density, and spawn rate controls.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pipes/preview.gif",
       "params": [
@@ -1826,8 +1826,8 @@
     {
       "id": "planet",
       "name": "Planet",
-      "description": "Rotating planet sphere with atmosphere, optional rings, and polar aurora.",
-      "author": "Luci Evol",
+      "description": "A dynamic rotating planet sphere suspended in space. The simulation features a visible atmosphere, optional planetary rings, and a glowing polar aurora that shifts as the globe slowly turns on its axis.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/planet/preview.gif",
       "params": [
@@ -1940,8 +1940,8 @@
     {
       "id": "sandmandala",
       "name": "Sand Mandala",
-      "description": "Radial sand mandala that builds grain by grain, holds, dissolves, and rebuilds.",
-      "author": "Luci Evol",
+      "description": "A meditative simulation of a radial sand mandala. The intricate geometric pattern builds grain by grain, holds its complete form for a moment of reflection, and then slowly dissolves back into the void before rebuilding a new unique design.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/sandmandala/preview.gif",
       "params": [
@@ -2011,8 +2011,8 @@
     {
       "id": "spiderweb",
       "name": "Spider Web",
-      "description": "A spider builds its web strand by strand, hunts drifting prey, flees wasp raids and bird strikes, and repairs the damage \u2014 all under a soft moonlight glow.",
-      "author": "Luci Evol",
+      "description": "A fascinating ecosystem simulation where a spider builds its web strand by strand. It hunts drifting prey, flees from simulated wasp raids and bird strikes, and diligently repairs any damage\u2014all under a soft, atmospheric moonlight glow.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/spiderweb/preview.gif",
       "params": [
@@ -2111,8 +2111,8 @@
     {
       "id": "terrarium",
       "name": "Terrarium",
-      "description": "A living ecosystem: plants grow, seed, wilt and decay; fungi recycle litter into soil nutrients; detritivores, leaf-grazing snails, a centipede predator, and a foraging ant colony cycle through closed water, nutrient, and light cycles under day/night and seasons. Nothing goes extinct.",
-      "author": "Luci Evol",
+      "description": "An incredibly complex living ecosystem in a glass jar. Plants grow, seed, and decay; fungi recycle the litter; while snails, a centipede, and an ant colony interact in a closed simulation of water, nutrients, and light across shifting day and night cycles. Nothing goes permanently extinct.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/terrarium/preview.gif",
       "params": [
@@ -2219,8 +2219,8 @@
     {
       "id": "thunderstorm",
       "name": "Thunderstorm",
-      "description": "Dynamic rain, lightning bolts, and storm clouds in ASCII.",
-      "author": "Luci Evol",
+      "description": "A dramatic, atmospheric simulation of dynamic rain, striking lightning bolts, and heavy storm clouds. It features multiple color palettes and fully adjustable wind and lightning intensity to let you weather the perfect ASCII storm.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/thunderstorm/preview.gif",
       "params": [
@@ -2277,8 +2277,8 @@
     {
       "id": "vinyl",
       "name": "Vinyl Spin",
-      "description": "Spinning turntable with a rotating groove sheen, procedural radial label, tracking tonearm, and lamplit dust motes.",
-      "author": "Luci Evol",
+      "description": "A spinning turntable simulation for music lovers. It features a rotating groove sheen, a procedural radial label, a tracking tonearm that slowly advances, and atmospheric lamplit dust motes dancing in the air above the record.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/vinyl/preview.gif",
       "params": [
@@ -2335,8 +2335,8 @@
     {
       "id": "volcano",
       "name": "Volcanic Flow",
-      "description": "Night mountain with a glowing crater, lava flowing down a fixed channel, eruption sparks, and a rising smoke plume.",
-      "author": "Luci Evol",
+      "description": "A majestic night mountain scene dominated by a glowing crater. Lava flows continuously down a fixed channel, accompanied by sudden eruption sparks and a rising, noise-driven smoke plume against the dark sky.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/volcano/preview.gif",
       "params": [
@@ -2403,8 +2403,8 @@
     {
       "id": "waterfall",
       "name": "Waterfall",
-      "description": "Cascading waterfall through a mossy rock channel with a base mist/spray burst and an optional faint rainbow arc.",
-      "author": "Luci Evol",
+      "description": "A peaceful cascading waterfall flowing through a mossy rock channel. The simulation includes a turbulent base mist and spray burst, crowned by an optional, faint rainbow arc that appears in the ambient light.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.jpg",
       "params": [
@@ -2471,8 +2471,8 @@
     {
       "id": "windchimes",
       "name": "Wind Chimes",
-      "description": "Hanging chime tubes swaying as damped pendulums in a gusty breeze, with proximity glint flashes and synthesized bell tones (press M to toggle sound).",
-      "author": "Luci Evol",
+      "description": "A relaxing physical simulation of hanging chime tubes swaying as damped pendulums in a gusty breeze. It features proximity glint flashes and synthesized bell tones to create a fully audiovisual meditative experience.",
+      "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "1.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/windchimes/preview.gif",
       "params": [
