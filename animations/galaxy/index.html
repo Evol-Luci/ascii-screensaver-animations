@@ -10,99 +10,282 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background: #0a0a12;
+            background: #04040a;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
         }
-
-        body.screensaver-mode { cursor: none; }
 
         #galaxy-canvas {
             display: block;
             opacity: 0;
             transition: opacity 2s ease-in;
         }
+
+        /* Static layers live in CSS so they're painted once, not every frame. */
+        #vignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.6) 100%);
+        }
     </style>
 </head>
 <body>
 <canvas id="galaxy-canvas"></canvas>
+<div id="vignette"></div>
 <script>
+// ─── Parameters ──────────────────────────────────────────────────────────────
 const _params = new URLSearchParams(window.location.search);
-const P_SPEED = parseFloat(_params.get('speed') || '1');
-const P_ARMS = parseInt(_params.get('arms') || '2', 10);
-const P_DENSITY = parseFloat(_params.get('density') || '1');
+const P_SPEED   = clamp(parseFloat(_params.get('speed') || '1'), 0.1, 3);
+const P_ARMS    = Math.round(clamp(parseFloat(_params.get('arms') || '2'), 2, 8));
+const P_DENSITY = clamp(parseFloat(_params.get('density') || '1'), 0.5, 3);
 const P_PALETTE = _params.get('palette') || 'purple';
+const START_AT  = parseInt(_params.get('startAt') || '0', 10);
+const DELAYED_START = _params.has('delayedStart');
 
+function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+function gauss() { return (Math.random() + Math.random() + Math.random() - 1.5) / 1.5; }
+
+// RGB triples: core, inner arm, outer arm, star-forming knots, background tint.
+const PALETTES = {
+    purple: { core: [255, 236, 214], inner: [218, 112, 214], outer: [120, 60, 200], knot: [255, 120, 200], bg: [8, 4, 16] },
+    blue:   { core: [255, 244, 220], inner: [110, 160, 255], outer: [40, 80, 200],  knot: [150, 220, 255], bg: [3, 6, 16] },
+    fiery:  { core: [255, 246, 210], inner: [255, 120, 40],  outer: [170, 30, 20],  knot: [255, 210, 90],  bg: [12, 4, 3] },
+    nebula: { core: [255, 250, 230], inner: [60, 230, 210],  outer: [200, 60, 180], knot: [255, 150, 230], bg: [3, 8, 12] },
+};
+const PAL = PALETTES[P_PALETTE] || PALETTES.purple;
+document.body.style.background = `rgb(${PAL.bg[0]},${PAL.bg[1]},${PAL.bg[2]})`;
+
+// Brightness ramp, dim to bright.
+const RAMP = " .'`:-~=+*oxO#%@";
+
+// ─── Canvas and character grid ───────────────────────────────────────────────
+// Re-measured on every resize: the window may not have its real size yet
+// when this script first runs, and a canvas sized once at 0x0 draws nothing.
 const canvas = document.getElementById('galaxy-canvas');
 const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+let FS = 12, CW = 7.4, CH = 12, COLS = 0, ROWS = 0;
+let lum, cr, cg, cb;          // per-cell accumulated brightness and colour
+let background = [];          // fixed field stars
+// Indexed by ramp position * 216 + quantized colour (6 levels per channel).
+let glyphCache = [];
+// Glyphs cached before the web font arrived were drawn in the fallback font.
+if (document.fonts) document.fonts.ready.then(() => { glyphCache = []; });
 
-let cw = window.innerWidth;
-let ch = window.innerHeight;
-canvas.width = cw;
-canvas.height = ch;
-setTimeout(() => canvas.style.opacity = 1, 100);
+// Laying out thousands of characters a frame with fillText is what makes a
+// canvas ASCII renderer expensive. Each (character, colour) pair is drawn once
+// into a sprite and stamped with drawImage; colours are quantized to 6 levels
+// per channel and brightness is applied as alpha, so the cache stays small.
+function sprite(ci, r, g, b) {
+    const key = ci * 216 + r * 36 + g * 6 + b;
+    let s = glyphCache[key];
+    if (!s) {
+        const ch = RAMP[ci];
+        const c = document.createElement('canvas');
+        c.width = Math.ceil(CW * DPR) + 2; c.height = Math.ceil(CH * DPR) + 2;
+        const x = c.getContext('2d');
+        x.scale(DPR, DPR);
+        x.font = `700 ${FS}px "JetBrains Mono", monospace`;
+        x.textBaseline = 'top';
+        x.fillStyle = `rgb(${r * 51},${g * 51},${b * 51})`;
+        x.fillText(ch, 0, 0);
+        s = c;
+        glyphCache[key] = s;
+    }
+    return s;
+}
 
-let time = 0;
-const palettes = {
-    'purple': ['#800080', '#DA70D6', '#FFF'],
-    'blue': ['#000080', '#4169E1', '#FFF'],
-    'fiery': ['#8B0000', '#FF4500', '#FFF']
-};
-const colors = palettes[P_PALETTE] || palettes['purple'];
+function resize() {
+    // 1:1 CSS pixels like the other animations: on a scaled display a
+    // device-resolution canvas costs ~1.5-2x the GPU upload every frame.
+    DPR = 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.max(1, Math.round(W * DPR));
+    canvas.height = Math.max(1, Math.round(H * DPR));
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    glyphCache = [];
 
-function draw() {
-    ctx.fillStyle = 'rgba(10, 10, 18, 0.1)';
-    ctx.fillRect(0, 0, cw, ch);
-    
-    time += 0.02 * P_SPEED;
-    const maxRadius = Math.min(cw, ch) * 0.4;
-    
-    ctx.font = '10px "JetBrains Mono"';
-    
-    for (let i = 0; i < 300 * P_DENSITY; i++) {
-        let r = Math.random() * maxRadius;
-        let armOffset = (Math.PI * 2 / P_ARMS) * Math.floor(Math.random() * P_ARMS);
-        let theta = r * 0.02 + time + armOffset + (Math.random() - 0.5) * 0.5;
-        
-        let x = cw/2 + r * Math.cos(theta);
-        let y = ch/2 + r * Math.sin(theta);
-        
-        let colorIndex = Math.floor(Math.random() * colors.length);
-        ctx.fillStyle = colors[colorIndex];
-        
-        let chars = ".*+oO";
-        let char = chars[Math.floor(Math.random() * chars.length)];
-        
-        ctx.fillText(char, x, y);
+    FS = clamp(Math.round(Math.min(W, H) / 70), 8, 16);
+    CW = FS * 0.62;
+    CH = FS * 1.0;
+    COLS = Math.max(1, Math.ceil(W / CW));
+    ROWS = Math.max(1, Math.ceil(H / CH));
+    const n = COLS * ROWS;
+    lum = new Float32Array(n);
+    cr = new Float32Array(n); cg = new Float32Array(n); cb = new Float32Array(n);
+
+    background = [];
+    const count = Math.round(n * 0.012);
+    for (let i = 0; i < count; i++) {
+        background.push({ c: Math.floor(Math.random() * COLS), r: Math.floor(Math.random() * ROWS),
+                          b: rand(0.05, 0.3), phase: rand(0, Math.PI * 2), rate: rand(0.3, 1.5) });
+    }
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── The galaxy: stars generated once, in galaxy units (disc radius 1) ──────
+const stars = [];
+(function build() {
+    const count = Math.round(9000 * P_DENSITY);
+    const winding = 3.2;                       // how tightly the arms wrap
+    for (let i = 0; i < count; i++) {
+        const kind = Math.random();
+        if (kind < 0.14) {
+            // Bulge: a dense, warm, faster-turning core.
+            const r = Math.abs(gauss()) * 0.16;
+            stars.push({ r, a: rand(0, Math.PI * 2), z: gauss() * 0.05, b: rand(0.5, 1.4),
+                         col: mix(PAL.core, PAL.inner, r / 0.2), spin: 1.8 });
+        } else if (kind < 0.34) {
+            // Diffuse disc between the arms: a faint haze.
+            const r = 0.1 + Math.pow(Math.random(), 0.7) * 0.9;
+            stars.push({ r, a: rand(0, Math.PI * 2), z: gauss() * 0.03, b: rand(0.08, 0.25),
+                         col: mix(PAL.inner, PAL.outer, r), spin: 1 });
+        } else {
+            // Disc: stars along logarithmic spiral arms, spreading with radius.
+            const r = 0.08 + Math.pow(Math.random(), 0.8) * 0.92;
+            const arm = Math.floor(Math.random() * P_ARMS);
+            const spread = gauss() * (0.3 + r * 0.55);
+            const a = arm * (Math.PI * 2 / P_ARMS) + Math.log(r) * winding + spread;
+            const onArm = 1 - Math.min(1, Math.abs(spread) / 0.6);
+            const knot = onArm > 0.7 && Math.random() < 0.04;
+            stars.push({ r, a, z: gauss() * 0.03 * (1 - r), b: rand(0.15, 0.55) * (0.4 + onArm) * (knot ? 3 : 1),
+                         col: knot ? PAL.knot : mix(PAL.inner, PAL.outer, r), spin: 1 });
+        }
+    }
+})();
+
+function mix(a, b, k) {
+    k = clamp(k, 0, 1);
+    return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+}
+
+// ─── Shooting stars ──────────────────────────────────────────────────────────
+let meteor = null;
+let untilMeteor = rand(6, 14);
+
+// ─── Frame ───────────────────────────────────────────────────────────────────
+let t = 0;
+let lastTs = 0;
+
+function deposit(c, r, b, col) {
+    if (c < 0 || r < 0 || c >= COLS || r >= ROWS) return;
+    const i = r * COLS + c;
+    lum[i] += b;
+    cr[i] += col[0] * b; cg[i] += col[1] * b; cb[i] += col[2] * b;
+}
+
+function frame(ts) {
+    requestAnimationFrame(frame);
+    if (window.innerWidth !== W || window.innerHeight !== H) resize();
+    if (W === 0 || H === 0) return;
+    if (lastTs && ts - lastTs < 40) return;   // ~24 fps: the galaxy turns slowly
+    const dt = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 0);
+    lastTs = ts;
+    t += dt;
+
+    lum.fill(0); cr.fill(0); cg.fill(0); cb.fill(0);
+
+    // Camera: the disc slowly nods between face-on-ish and edge-on-ish, and
+    // the whole pattern turns.
+    const spin = t * 0.06 * P_SPEED;
+    const incl = 0.95 + 0.3 * Math.sin(t * 0.045);   // radians from face-on
+    const ci = Math.cos(incl), si = Math.sin(incl);
+    const roll = 0.35 * Math.sin(t * 0.03);
+    const cRoll = Math.cos(roll), sRoll = Math.sin(roll);
+    const scale = Math.min(W, H / Math.max(ci, 0.45)) * 0.46;
+    const cx = W / 2, cy = H / 2;
+
+    for (let i = 0; i < stars.length; i++) {
+        const s = stars[i];
+        const a = s.a + spin * s.spin;
+        let x = Math.cos(a) * s.r;
+        let y = Math.sin(a) * s.r * ci + s.z * si;
+        const xr = x * cRoll - y * sRoll;
+        const yr = x * sRoll + y * cRoll;
+        const px = cx + xr * scale, py = cy + yr * scale;
+        deposit(Math.floor(px / CW), Math.floor(py / CH), s.b, s.col);
+    }
+
+    // Field stars twinkling behind everything.
+    for (const b of background) {
+        const tw = b.b * (0.55 + 0.45 * Math.sin(t * b.rate + b.phase));
+        deposit(b.c, b.r, tw, [200, 210, 255]);
+    }
+
+    // Occasional shooting star with a fading tail.
+    untilMeteor -= dt;
+    if (!meteor && untilMeteor <= 0) {
+        const fromLeft = Math.random() < 0.5;
+        meteor = { x: fromLeft ? rand(-0.1, 0.4) * W : rand(0.6, 1.1) * W, y: rand(-0.05, 0.3) * H,
+                   vx: (fromLeft ? 1 : -1) * rand(0.5, 0.8) * W, vy: rand(0.2, 0.35) * H, life: 0 };
+    }
+    if (meteor) {
+        meteor.life += dt;
+        meteor.x += meteor.vx * dt;
+        meteor.y += meteor.vy * dt;
+        for (let k = 0; k < 14; k++) {
+            const tx = meteor.x - meteor.vx * k * 0.012, ty = meteor.y - meteor.vy * k * 0.012;
+            deposit(Math.floor(tx / CW), Math.floor(ty / CH), 2.5 * (1 - k / 14), [255, 255, 255]);
+        }
+        if (meteor.life > 1.6 || meteor.x < -W * 0.2 || meteor.x > W * 1.2 || meteor.y > H) {
+            meteor = null; untilMeteor = rand(8, 18);
+        }
+    }
+
+    // Background and core glow.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, W, H);   // the page background shows through
+    const glowR = scale * 0.55;
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+    const [gr, gg, gb] = PAL.inner;
+    glow.addColorStop(0, `rgba(${PAL.core[0]},${PAL.core[1]},${PAL.core[2]},0.35)`);
+    glow.addColorStop(0.3, `rgba(${gr},${gg},${gb},0.12)`);
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(roll);
+    ctx.scale(1, Math.max(ci, 0.35));
+    ctx.translate(-cx, -cy);
+    ctx.fillRect(cx - glowR, cy - glowR, glowR * 2, glowR * 2);
+    ctx.restore();
+
+    // The grid, drawn as characters.
+    ctx.globalCompositeOperation = 'lighter';
+    const sw = Math.ceil(CW * DPR) + 2, sh = Math.ceil(CH * DPR) + 2;
+    // Normalised by stars per cell, so it looks the same at any resolution
+    // and density.
+    const gain = 0.55 * (COLS * ROWS) / stars.length;
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const i = r * COLS + c;
+            const L = lum[i];
+            if (L < 0.06) continue;
+            const v = 1 - Math.exp(-L * gain);       // tone-map to 0..1
+            const ci = Math.min(RAMP.length - 1, 1 + Math.floor(v * (RAMP.length - 1)));
+            const k = 1 / (L * 51);
+            const spr = sprite(ci, Math.min(5, Math.round(cr[i] * k)), Math.min(5, Math.round(cg[i] * k)), Math.min(5, Math.round(cb[i] * k)));
+            ctx.globalAlpha = Math.min(1, 0.25 + v) * (0.35 + 0.65 * v);
+            ctx.drawImage(spr, c * CW, r * CH, sw / DPR, sh / DPR);
+        }
     }
 }
 
-setInterval(draw, 50);
-
-// ─── Screensaver Dismiss Logic ────────────────────────────────────────────────
-if (new URLSearchParams(window.location.search).get('screensaver') === '1') {
-    let armed = false;
-    setTimeout(() => { armed = true; }, 1500);
-    const dismiss = () => {
-        if (!armed) return;
-        try { window.close(); } catch(e) {}
-        document.body.innerHTML = '';
-        document.body.style.background = '#000';
-    };
-    window.addEventListener('keydown', dismiss);
-    window.addEventListener('mousedown', dismiss);
-    window.addEventListener('mousemove', (() => {
-        let lastX = -1, lastY = -1, moveCount = 0;
-        return (e) => {
-            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
-            if (e.clientX === lastX && e.clientY === lastY) return;
-            lastX = e.clientX; lastY = e.clientY;
-            if (++moveCount > 10) dismiss();
-        };
-    })());
+// ─── Start (synchronised across monitors when startAt is given) ─────────────
+function start() {
+    canvas.style.opacity = 1;
+    requestAnimationFrame(frame);
 }
-
+if (START_AT > 0) setTimeout(start, Math.max(0, START_AT - Date.now()));
+else setTimeout(start, DELAYED_START ? 1500 : 50);
 </script>
 </body>
 </html>

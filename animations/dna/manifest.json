@@ -1,9 +1,9 @@
 {
   "id": "dna",
   "name": "DNA Helix",
-  "description": "3D rotating DNA double helix structure.",
-  "author": "Luci Evol",
-  "version": "1.0.0",
+  "description": "A 3D ASCII double helix: colour-coded A-T and G-C base pairs twist in perspective as the strand scrolls and sways, with free nucleotides drifting behind it. Every so often a replication fork travels down the helix, unzipping it and zipping it back together.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
+  "version": "1.1.0",
   "preview": "preview.gif",
   "params": [
     {
@@ -36,7 +36,9 @@
       "defaultValue": "classic",
       "options": [
         "classic",
-        "neon"
+        "neon",
+        "bio",
+        "ember"
       ]
     }
   ]

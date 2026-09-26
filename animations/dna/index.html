@@ -10,98 +10,267 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background: #0a0a12;
+            background: #06060c;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
         }
 
-        body.screensaver-mode { cursor: none; }
-
         #dna-canvas {
             display: block;
             opacity: 0;
-            transition: opacity 2s ease-in;
+            transition: opacity 1.5s ease-in;
         }
     </style>
 </head>
 <body>
 <canvas id="dna-canvas"></canvas>
 <script>
-const _params = new URLSearchParams(window.location.search);
-const P_SPEED = parseFloat(_params.get('speed') || '1');
-const P_ZOOM = parseFloat(_params.get('zoom') || '1');
+// ─── Parameters ──────────────────────────────────────────────────────────────
+const _params  = new URLSearchParams(window.location.search);
+const P_SPEED  = clamp(parseFloat(_params.get('speed') || '1'), 0.1, 3);
+const P_ZOOM   = clamp(parseFloat(_params.get('zoom') || '1'), 0.5, 2);
 const P_PALETTE = _params.get('palette') || 'classic';
+const START_AT = parseInt(_params.get('startAt') || '0', 10);
+const DELAYED_START = _params.has('delayedStart');
 
+function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; }
+
+// Per-base colours, the backbone, the background and a glow tint.
+const PALETTES = {
+    classic: { backbone: '#d8ecff', A: '#4fc3ff', T: '#ff6b8b', G: '#7dffa8', C: '#ffd166', bg: '#06060c', fog: '#1b2a44' },
+    neon:    { backbone: '#ff7bff', A: '#00f0ff', T: '#ff2fb0', G: '#39ff14', C: '#fff200', bg: '#07040c', fog: '#2a1038' },
+    bio:     { backbone: '#c9ffe0', A: '#3dffb0', T: '#b8ff3d', G: '#34d1ff', C: '#e8ff9a', bg: '#030a07', fog: '#0f2c20' },
+    ember:   { backbone: '#ffe2c4', A: '#ff8a3d', T: '#ff3d5a', G: '#ffd23d', C: '#ff5fa2', bg: '#0b0506', fog: '#3a1410' },
+};
+const PAL = PALETTES[P_PALETTE] || PALETTES.classic;
+const PAIR = { A: 'T', T: 'A', G: 'C', C: 'G' };
+
+// ─── Canvas ──────────────────────────────────────────────────────────────────
+// Re-measured on every resize: the window may not have its real size yet
+// when this script first runs, and a canvas sized once at 0x0 draws nothing.
 const canvas = document.getElementById('dna-canvas');
 const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+let particles = [];
+const glyphCache = new Map();
+// Glyphs cached before the web font arrived were drawn in the fallback font.
+if (document.fonts) document.fonts.ready.then(() => glyphCache.clear());
 
-let cw = window.innerWidth;
-let ch = window.innerHeight;
-canvas.width = cw;
-canvas.height = ch;
-setTimeout(() => canvas.style.opacity = 1, 100);
+function resize() {
+    // 1:1 CSS pixels like the other animations: on a scaled display a
+    // device-resolution canvas costs ~1.5-2x the GPU upload every frame.
+    DPR = 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.max(1, Math.round(W * DPR));
+    canvas.height = Math.max(1, Math.round(H * DPR));
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    glyphCache.clear();
+    seedParticles();
+}
+window.addEventListener('resize', resize);
+resize();
 
-let time = 0;
-const palettes = {
-    'classic': ['#FFF', '#4AF'],
-    'neon': ['#F0F', '#0FF']
-};
-const colors = palettes[P_PALETTE] || palettes['classic'];
-
-function draw() {
-    ctx.fillStyle = '#0a0a12';
-    ctx.fillRect(0, 0, cw, ch);
-    ctx.font = Math.floor(16 * P_ZOOM) + 'px "JetBrains Mono"';
-    ctx.textAlign = 'center';
-    
-    time += 0.05 * P_SPEED;
-    
-    for (let i = 0; i < 30; i++) {
-        let y = (ch / 2) - (15 * 20 * P_ZOOM) + (i * 20 * P_ZOOM);
-        let xOff = Math.sin(time + i * 0.3) * 100 * P_ZOOM;
-        let zOff = Math.cos(time + i * 0.3);
-        
-        ctx.fillStyle = colors[0];
-        if (zOff < 0) ctx.fillStyle = '#555';
-        ctx.fillText('A', cw/2 + xOff, y);
-        
-        ctx.fillStyle = colors[1];
-        if (zOff > 0) ctx.fillStyle = '#555';
-        ctx.fillText('T', cw/2 - xOff, y);
-        
-        if (Math.abs(xOff) > 10) {
-            ctx.fillStyle = '#333';
-            ctx.fillText('-', cw/2, y - 5);
-        }
-    }
+// ─── Deterministic base sequence ─────────────────────────────────────────────
+function baseAt(i) {
+    let h = (i * 2654435761) >>> 0;
+    h ^= h >>> 15; h = Math.imul(h, 2246822519) >>> 0; h ^= h >>> 13;
+    return 'ATGC'[h & 3];
 }
 
-setInterval(draw, 33);
-
-// ─── Screensaver Dismiss Logic ────────────────────────────────────────────────
-if (new URLSearchParams(window.location.search).get('screensaver') === '1') {
-    let armed = false;
-    setTimeout(() => { armed = true; }, 1500);
-    const dismiss = () => {
-        if (!armed) return;
-        try { window.close(); } catch(e) {}
-        document.body.innerHTML = '';
-        document.body.style.background = '#000';
+// ─── Free-floating nucleotides in the background ─────────────────────────────
+function seedParticles() {
+    const count = Math.round((W * H) / 9000);
+    particles = [];
+    for (let i = 0; i < count; i++) particles.push(newParticle(true));
+}
+function newParticle(anywhere) {
+    const depth = Math.random();
+    return {
+        x: Math.random() * W,
+        y: anywhere ? Math.random() * H : H + 20,
+        depth,
+        vy: -(6 + depth * 18),
+        drift: (Math.random() - 0.5) * 8,
+        ch: 'ATGC'[Math.floor(Math.random() * 4)],
+        phase: Math.random() * Math.PI * 2,
     };
-    window.addEventListener('keydown', dismiss);
-    window.addEventListener('mousedown', dismiss);
-    window.addEventListener('mousemove', (() => {
-        let lastX = -1, lastY = -1, moveCount = 0;
-        return (e) => {
-            if (lastX === -1) { lastX = e.clientX; lastY = e.clientY; return; }
-            if (e.clientX === lastX && e.clientY === lastY) return;
-            lastX = e.clientX; lastY = e.clientY;
-            if (++moveCount > 10) dismiss();
-        };
-    })());
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function smooth(x) { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); }
+
+// Laying out text (and blurring it) thousands of times a frame is what makes
+// a canvas animation expensive. Each distinct glyph is rendered once into a
+// small sprite and stamped with drawImage from then on; sizes are rounded to
+// half pixels so the cache stays small.
+function sprite(ch, size, color, glow) {
+    size = Math.round(size * 2) / 2;
+    const key = ch + '|' + size + '|' + color + '|' + glow;
+    let g = glyphCache.get(key);
+    if (!g) {
+        if (glyphCache.size > 4000) glyphCache.clear();
+        const pad = Math.ceil(glow * 1.5) + 2;
+        const w = Math.ceil(size * 0.75) + pad * 2, h = Math.ceil(size * 1.3) + pad * 2;
+        const c = document.createElement('canvas');
+        c.width = Math.ceil(w * DPR); c.height = Math.ceil(h * DPR);
+        const x = c.getContext('2d');
+        x.scale(DPR, DPR);
+        x.font = `700 ${size}px "JetBrains Mono", monospace`;
+        x.textAlign = 'center';
+        x.textBaseline = 'middle';
+        x.fillStyle = color;
+        if (glow > 0) { x.shadowColor = color; x.shadowBlur = glow; }
+        x.fillText(ch, w / 2, h / 2);
+        g = { c, w, h };
+        glyphCache.set(key, g);
+    }
+    return g;
+}
+
+function drawGlyph(ch, x, y, size, color, alpha, glow) {
+    const g = sprite(ch, size, color, glow);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(g.c, x - g.w / 2, y - g.h / 2, g.w, g.h);
+}
+
+// ─── Frame ───────────────────────────────────────────────────────────────────
+let t = 0;
+let scroll = 0;
+let lastTs = 0;
+// A replication fork: a window that travels down the helix, unzipping it.
+const fork = { pos: null, wait: 6 };
+
+function frame(ts) {
+    requestAnimationFrame(frame);
+    if (window.innerWidth !== W || window.innerHeight !== H) resize();
+    if (W === 0 || H === 0) return;
+    if (lastTs && ts - lastTs < 31) return;   // ~30 fps is plenty for this
+    const dt = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 0);
+    lastTs = ts;
+    t += dt * P_SPEED;
+
+    // Glyphs scale with the screen (15px at 1080p); zoom scales on top.
+    const size = clamp(Math.min(W, H) / 60, 9, 30) * P_ZOOM;
+    const rowH = size * 1.2;
+    scroll += dt * P_SPEED * 2.2; // rows per second, scrolling upward
+
+    // Background, with a soft glow behind the helix.
+    const sway = Math.sin(t * 0.21) * W * 0.07;
+    const tilt = Math.sin(t * 0.09) * 0.22;
+    const cx = W / 2 + sway;
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = PAL.bg;
+    ctx.fillRect(0, 0, W, H);
+    const glow = ctx.createRadialGradient(cx, H / 2, 0, cx, H / 2, Math.max(W, H) * 0.55);
+    glow.addColorStop(0, PAL.fog);
+    glow.addColorStop(1, PAL.bg);
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // Drifting nucleotides, parallaxed by depth.
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        p.y += p.vy * dt * P_SPEED;
+        p.x += (p.drift + Math.sin(t + p.phase) * 4) * dt;
+        if (p.y < -20) particles[i] = newParticle(false);
+        drawGlyph(p.ch, p.x, p.y, size * (0.45 + Math.round(p.depth * 6) / 6 * 0.5), PAL[p.ch], 0.05 + p.depth * 0.14, 0);
+    }
+
+    // Replication fork: waits, then sweeps top to bottom.
+    const rows = Math.ceil(H / rowH) + 4;
+    if (fork.pos === null) {
+        fork.wait -= dt * P_SPEED;
+        if (fork.wait <= 0) fork.pos = -10;
+    } else {
+        fork.pos += dt * P_SPEED * 7;
+        if (fork.pos > rows + 10) { fork.pos = null; fork.wait = 10 + Math.random() * 8; }
+    }
+
+    const radius = Math.min(W * 0.16, H * 0.3) * P_ZOOM;
+    const twist = 0.34;
+    const first = Math.floor(scroll);
+    const offset = (scroll - first) * rowH;
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (let r = -2; r < rows; r++) {
+        const idx = first + r;               // sequence index of this rung
+        const y = r * rowH - offset;
+        const edge = clamp(1 - Math.abs(y - H / 2) / (H * 0.62), 0, 1); // fade at top/bottom
+        if (edge <= 0) continue;
+        const axis = cx + (y - H / 2) * tilt;
+        const a = idx * twist + t * 1.3;
+
+        // Near the fork the strands part and the rungs break in the middle.
+        const f = fork.pos === null ? 0 : smooth(1 - Math.abs(r - fork.pos) / 7);
+        const rad = radius * (1 + 0.8 * f);
+
+        const s = Math.sin(a), c = Math.cos(a);
+        const xA = axis + rad * s, zA = c;       // z: +1 toward the viewer
+        const xB = axis - rad * s, zB = -c;
+
+        const base = baseAt(idx);
+        const partner = PAIR[base];
+
+        const drawStrand = (x, z) => {
+            const d = (z + 1) / 2;
+            const ch = d > 0.8 ? '@' : d > 0.55 ? 'O' : d > 0.3 ? 'o' : '.';
+            drawGlyph(ch, x, y, size * (0.8 + 0.45 * d), PAL.backbone,
+                      (0.25 + 0.75 * d) * edge, d > 0.6 ? 10 * P_ZOOM : 0);
+        };
+
+        // Back to front: far strand, rung, near strand.
+        if (zA < zB) drawStrand(xA, zA); else drawStrand(xB, zB);
+
+        const span = Math.abs(xA - xB);
+        const n = Math.max(2, Math.floor(span / (size * 0.62)));
+        for (let k = 1; k < n; k++) {
+            const u = k / n;                       // 0 at strand A, 1 at strand B
+            if (f > 0.05 && Math.abs(u - 0.5) < 0.5 * f) continue; // broken bond
+            const x = xA + (xB - xA) * u;
+            const z = zA + (zB - zA) * u;
+            const d = (z + 1) / 2;
+            const letter = k === 1 || k === n - 1;
+            let ch, col;
+            if (k === 1) { ch = base; col = PAL[base]; }
+            else if (k === n - 1) { ch = partner; col = PAL[partner]; }
+            else {
+                ch = Math.abs(u - 0.5) <= 0.5 / n ? ':' : '-';
+                col = u < 0.5 ? PAL[base] : PAL[partner];
+            }
+            drawGlyph(ch, x, y, size * (0.75 + 0.35 * d), col,
+                      (letter ? 0.35 + 0.65 * d : 0.12 + 0.4 * d) * edge,
+                      letter && d > 0.6 ? 8 * P_ZOOM : 0);
+        }
+
+        if (zA < zB) drawStrand(xB, zB); else drawStrand(xA, zA);
+    }
+
+    // Vignette.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    const vig = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,0.65)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+}
+
+// ─── Start (synchronised across monitors when startAt is given) ─────────────
+function start() {
+    canvas.style.opacity = 1;
+    requestAnimationFrame(frame);
+}
+if (START_AT > 0) setTimeout(start, Math.max(0, START_AT - Date.now()));
+else setTimeout(start, DELAYED_START ? 1500 : 50);
 </script>
 </body>
 </html>
