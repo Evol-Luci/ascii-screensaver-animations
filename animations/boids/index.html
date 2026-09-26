@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ASCII Boids</title>
+    <title>ASCII Murmuration</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
 
@@ -16,528 +16,1054 @@
             height: 100vh;
         }
 
-        body.screensaver-mode { cursor: none; }
-
-        #boids-canvas {
+        #backdrop, #boids-canvas {
+            position: fixed;
+            inset: 0;
             display: block;
             opacity: 0;
             transition: opacity 2s ease-in;
         }
-
-        .credits-popup {
-            position: fixed;
-            bottom: 32px;
-            right: 32px;
-            background: rgba(8, 10, 16, 0.92);
-            border: 1px solid rgba(80, 140, 200, 0.35);
-            border-radius: 8px;
-            padding: 20px 24px;
-            font-family: 'JetBrains Mono', 'Courier New', monospace;
-            font-size: 12px;
-            color: #88a8c8;
-            max-width: 280px;
-            opacity: 0;
-            transition: opacity 2s ease-in-out;
-            z-index: 100;
-            line-height: 1.6;
-        }
-        .credits-popup.visible { opacity: 1; }
-        .credits-popup h2 {
-            font-size: 14px;
-            font-weight: 700;
-            color: #50a0e0;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .credits-popup .credits-label {
-            font-size: 10px;
-            color: #507090;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 10px;
-            margin-bottom: 4px;
-        }
-        .credits-popup hr {
-            border: none;
-            border-top: 1px solid rgba(80, 140, 200, 0.3);
-            margin: 12px 0;
-        }
-        .credits-popup a { color: #50a0e0; text-decoration: none; }
     </style>
 </head>
 <body>
+<canvas id="backdrop"></canvas>
 <canvas id="boids-canvas"></canvas>
 <script>
-// ─── Screensaver mode ──────────────────────────────────────────────────────────
-const _params = new URLSearchParams(window.location.search);
-const DELAYED_START    = _params.has('delayedStart');
-const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+// A starling murmuration over a meadow, through a full day.
+//
+// By day the flock roams the sky, and groups settle on the telegraph wire and
+// take off again in a ripple along it. At dusk it gathers over the wood into a
+// dense, swirling murmuration, then streams down into the trees to roost; at
+// dawn it bursts back out. A falcon circles and stoops on the flock — panic
+// runs through it as a travelling wave, and sometimes a bird is taken. A heron
+// crosses by day; bats and fireflies come out at night.
+//
+// Flocking is 3D and topological: each bird reacts to its seven nearest
+// neighbours (as real starlings do) rather than to everything within a radius,
+// which is what lets density waves travel through the flock.
 
-const P_SPEED      = parseFloat(_params.get('speed')      || '1');
-const P_PALETTE    = _params.get('palette') || 'birds';
-const P_FLOCK_SIZE = Math.max(20, Math.min(150, parseInt(_params.get('flockSize') || '60', 10)));
-const P_COHESION   = parseFloat(_params.get('cohesion')   || '1.0');
-const P_SEPARATION = parseFloat(_params.get('separation') || '1.0');
-const P_PREDATOR   = _params.get('predator') === '1';
-const P_PREDATOR_SPEED = parseFloat(_params.get('predatorSpeed') || '1.35');
+// ─── Parameters ──────────────────────────────────────────────────────────────
+const _params       = new URLSearchParams(window.location.search);
+const DELAYED_START = _params.has('delayedStart');
+const START_AT      = parseInt(_params.get('startAt') || '0', 10);
 
-// ─── Palettes ──────────────────────────────────────────────────────────────────
-// Each palette defines a low-speed → high-speed color gradient (lo/hi as [r,g,b])
-// plus a glyph and predator color. headingColor() linearly interpolates lo→hi by
-// normalized speed (0..1 of MAX_SPEED).
-const PALETTES = {
-    birds: {
-        lo: [70, 110, 160], hi: [200, 220, 255],
-        glyph: '>', predator: '#ff4040',
-    },
-    fish: {
-        lo: [20, 90, 110], hi: [80, 220, 200],
-        glyph: '>', predator: '#ff8030',
-    },
-    abstract: {
-        lo: [120, 40, 160], hi: [255, 120, 220],
-        glyph: '>', predator: '#ffe040',
-    },
-    mono: {
-        lo: [120, 120, 120], hi: [230, 230, 230],
-        glyph: '>', predator: '#ffffff',
-    },
+function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; }
+const P_SPEED        = clamp(parseFloat(_params.get('speed') || '1'), 0.2, 4);
+const P_PALETTE      = _params.get('palette') || 'birds';
+const P_FLOCK_SIZE   = Math.round(clamp(parseFloat(_params.get('flockSize') || '150'), 20, 400));
+const P_COHESION     = clamp(parseFloat(_params.get('cohesion') || '1'), 0, 2);
+const P_SEPARATION   = clamp(parseFloat(_params.get('separation') || '1'), 0, 2);
+const P_PREDATOR     = (_params.get('predator') ?? '1') !== '0';
+const P_PREDATOR_SPEED = clamp(parseFloat(_params.get('predatorSpeed') || '1.35'), 0.5, 3);
+const P_CYCLE_TIME   = clamp(parseFloat(_params.get('cycleTime') || '8'), 0, 30);  // minutes; 0 = fixed hour
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function lerp(a, b, k) { return a + (b - a) * k; }
+function mix(a, b, k) { return [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)]; }
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+function scale(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+
+// Deterministic pseudo-random for scenery that must not change between repaints.
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+
+// ─── Palettes ────────────────────────────────────────────────────────────────
+// Sky keyframes are shared; palettes set the land, the season's weather and
+// how colour is treated (mono desaturates everything).
+const SKY = {
+    night:   { top: [6, 8, 20],     low: [18, 22, 44] },
+    day:     { top: [70, 130, 205], low: [180, 210, 235] },
+    dawn:    { top: [60, 60, 120],  low: [245, 160, 120] },
+    dusk:    { top: [55, 40, 100],  low: [252, 128, 64] },
 };
-const ACTIVE_PALETTE = PALETTES[P_PALETTE] || PALETTES.birds;
+const PALETTES = {
+    birds:  { farHill: [92, 128, 110], nearHill: [52, 92, 60],  ground: [48, 86, 44],   tree: [30, 62, 36],   grass: [90, 150, 70],  weather: 'seeds' },
+    autumn: { farHill: [150, 110, 80], nearHill: [120, 70, 36], ground: [96, 70, 36],   tree: [120, 60, 24],  grass: [170, 130, 60], weather: 'leaves' },
+    winter: { farHill: [196, 206, 222], nearHill: [224, 230, 240], ground: [232, 236, 244], tree: [70, 70, 84], grass: [200, 206, 216], weather: 'snow' },
+    mono:   { farHill: [120, 120, 120], nearHill: [80, 80, 80], ground: [60, 60, 60],   tree: [40, 40, 40],   grass: [140, 140, 140], weather: 'none' },
+};
+const PAL = PALETTES[P_PALETTE] || PALETTES.birds;
+const MONO = P_PALETTE === 'mono';
+function tone(c) {
+    if (!MONO) return c;
+    const l = c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+    return [l, l, l];
+}
 
-// ─── Canvas ────────────────────────────────────────────────────────────────────
+// ─── Canvases ────────────────────────────────────────────────────────────────
+// Static scenery lives on a backdrop repainted a couple of times a second (the
+// light changes slowly); the main canvas redraws only what moves.
+const backdrop = document.getElementById('backdrop');
+const bctx = backdrop.getContext('2d');
 const canvas = document.getElementById('boids-canvas');
-const ctx    = canvas.getContext('2d');
+const ctx = canvas.getContext('2d');
 
-const FONT_SIZE = 15;
-let CHAR_W = 9.0, CHAR_H = 18.75;
-let cols = 0, rows = 0;
-let W = 0, H = 0;
+let W = 0, H = 0, BASE = 1, FS = 14, CW = 8.7;
+let horizon = 0;          // top of the meadow
+let farHill = [], nearHill = [];   // per-column heights
+let treeGlyphs = [];      // roost wood: [{x, y, ch, shade}]
+let roostSpots = [];      // points inside the canopy birds roost at
+let wood = { x0: 0, x1: 0, top: 0 };
+let wire = null;          // telegraph line: poles + two sagging wires with perch slots
+let grass = [];           // meadow tufts
 
 function resize() {
-    canvas.width  = W = window.innerWidth;
-    canvas.height = H = window.innerHeight;
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    CHAR_W = ctx.measureText('M').width;
-    CHAR_H = FONT_SIZE * 1.25;
-    cols = Math.floor(W / CHAR_W);
-    rows = Math.floor(H / CHAR_H);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    for (const c of [backdrop, canvas]) {
+        c.width = Math.max(1, W);
+        c.height = Math.max(1, H);
+        c.style.width = W + 'px';
+        c.style.height = H + 'px';
+    }
+    BASE = Math.max(1, Math.min(W, H));
+    FS = clamp(Math.round(BASE / 55), 9, 22);
+    CW = FS * 0.62;
+    horizon = H * 0.8;
+    glyphCache.clear();
+    buildScenery();
+    if (birds.length === 0) initFlock();
+    lastBackdrop = -1;
 }
-window.addEventListener('resize', resize);
 
-// ─── Boid simulation constants ─────────────────────────────────────────────────
-// NOTE: the design spec's param table (cohesion, separation) does not include an
-// `alignment` param even though alignment is one of the three classic boid rules.
-// ALIGNMENT_WEIGHT is therefore a fixed internal constant, not a URL/config param —
-// this matches the spec's table exactly rather than adding an undocumented param.
-const ALIGNMENT_WEIGHT   = 1.2;  // stronger heading consensus
-const SEPARATION_RADIUS  = 1.6 * CHAR_H;  // tighter — boids tolerate closer packing
-const ALIGNMENT_RADIUS   = 6.0 * CHAR_H;  // wider — heading spreads across larger groups
-const COHESION_RADIUS    = 7.0 * CHAR_H;  // wider — pulls distant stragglers back in
-const MAX_SPEED          = 2.6;
-const MAX_FORCE          = 0.10;
-const WANDER_NOISE       = 0.018; // per-frame random nudge — breaks up lockstep perfection
-const INERTIA            = 0.82;  // fraction of old speed preserved each frame (0=instant, 1=frozen)
-const MAX_TURN_RATE      = 0.07;  // max radians a boid can rotate per frame (~4° at 60fps)
+// ─── Sprite cache ────────────────────────────────────────────────────────────
+// fillText is the expensive part of an ASCII canvas; each (glyph, size, colour)
+// is drawn once into a sprite and stamped from then on. Colours are quantized
+// so a slowly shifting light doesn't flood the cache.
+const glyphCache = new Map();
+if (document.fonts) document.fonts.ready.then(() => { glyphCache.clear(); lastBackdrop = -1; });
 
-// ─── SOA agent buffers ──────────────────────────────────────────────────────────
-const bX   = new Float32Array(P_FLOCK_SIZE);
-const bY   = new Float32Array(P_FLOCK_SIZE);
-const bVX  = new Float32Array(P_FLOCK_SIZE);
-const bVY  = new Float32Array(P_FLOCK_SIZE);
-const bLag = new Float32Array(P_FLOCK_SIZE); // per-boid response lag (0.7–1.0)
+function sprite(ch, size, col) {
+    size = Math.round(size * 2) / 2;
+    const q = (v) => (clamp(v, 0, 255) >> 3) << 3;
+    const r = q(col[0]), g = q(col[1]), b = q(col[2]);
+    const key = ch + '|' + size + '|' + r + ',' + g + ',' + b;
+    let s = glyphCache.get(key);
+    if (!s) {
+        if (glyphCache.size > 6000) glyphCache.clear();
+        const w = Math.ceil(size * 0.62 * ch.length + size * 0.4) + 2;
+        const h = Math.ceil(size * 1.3) + 2;
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d');
+        x.font = `700 ${size}px "JetBrains Mono", monospace`;
+        x.textAlign = 'center';
+        x.textBaseline = 'middle';
+        x.fillStyle = `rgb(${r},${g},${b})`;
+        x.fillText(ch, w / 2, h / 2);
+        s = { c, w, h };
+        glyphCache.set(key, s);
+    }
+    return s;
+}
+function stamp(ch, x, y, size, col, alpha) {
+    if (alpha <= 0.01) return;
+    const s = sprite(ch, size, col);
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.drawImage(s.c, x - s.w / 2, y - s.h / 2);
+}
+
+// ─── Scenery (generated on resize) ───────────────────────────────────────────
+function buildScenery() {
+    const cols = Math.ceil(W / CW) + 1;
+    farHill = []; nearHill = [];
+    for (let i = 0; i < cols; i++) {
+        const x = i / cols;
+        farHill.push(H * (0.07 + 0.05 * Math.sin(x * 5.1 + 1.3) + 0.03 * Math.sin(x * 13.7 + 0.4)));
+        nearHill.push(H * (0.035 + 0.03 * Math.sin(x * 7.9 + 2.1) + 0.015 * Math.sin(x * 21.3)));
+    }
+
+    // The roost wood: a cluster of broad trees on the left.
+    wood.x0 = W * 0.03; wood.x1 = W * 0.3;
+    treeGlyphs = []; roostSpots = [];
+    let topMost = horizon;
+    const trees = 5;
+    for (let t = 0; t < trees; t++) {
+        const cx = lerp(wood.x0, wood.x1, (t + 0.5) / trees) + (hash(t * 7) - 0.5) * W * 0.03;
+        const rx = W * (0.045 + hash(t * 3) * 0.03);
+        const ry = H * (0.09 + hash(t * 11) * 0.06);
+        const cy = horizon - H * 0.07 - ry;
+        topMost = Math.min(topMost, cy - ry);
+        for (let y = cy - ry; y < cy + ry; y += FS * 0.8) {
+            for (let x = cx - rx; x < cx + rx; x += CW) {
+                const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
+                const n = hash(x * 0.13 + y * 0.71 + t);
+                if (d > 1 - n * 0.25) continue;
+                treeGlyphs.push({ x, y, ch: '@%&#8*'[Math.floor(n * 6)], shade: 0.55 + 0.45 * (1 - (y - (cy - ry)) / (2 * ry)) * (0.7 + n * 0.3) });
+                if (d < 0.55 && n < 0.22) roostSpots.push({ x, y });
+            }
+        }
+        for (let y = cy + ry * 0.6; y < horizon; y += FS * 0.8) {
+            treeGlyphs.push({ x: cx, y, ch: '|', shade: 0.45, trunk: true });
+            if (hash(y + t) < 0.4) treeGlyphs.push({ x: cx + CW, y, ch: '|', shade: 0.4, trunk: true });
+        }
+    }
+    wood.top = topMost;
+
+    // Telegraph line: three poles, two sagging wires between each pair.
+    const poles = [W * 0.46, W * 0.7, W * 0.94];
+    const poleTop = horizon - H * 0.2;
+    const spans = [];
+    for (let p = 0; p < poles.length - 1; p++) {
+        for (let k = 0; k < 2; k++) {
+            spans.push({ x0: poles[p], x1: poles[p + 1], y0: poleTop + k * FS * 1.1, sag: H * 0.035 });
+        }
+    }
+    const slots = [];
+    for (const s of spans) {
+        for (let x = s.x0 + CW * 2; x < s.x1 - CW * 2; x += CW * 1.6) {
+            slots.push({ x, y: wireY(s, x) - FS * 0.45, taken: -1 });
+        }
+    }
+    wire = { poles, poleTop, spans, slots };
+
+    grass = [];
+    for (let x = 0; x < W; x += CW * 0.9) {
+        grass.push({ x, h: hash(x * 0.37), ch: [',', '\'', '"', ';', 'v', 'Y', '|'][Math.floor(hash(x * 1.7) * 7)] });
+    }
+}
+
+function wireY(s, x) {
+    const u = (x - s.x0) / (s.x1 - s.x0);
+    return s.y0 + s.sag * (1 - (2 * u - 1) ** 2);
+}
+
+function hillAt(arr, x) {
+    const i = clamp(Math.floor(x / CW), 0, arr.length - 1);
+    return arr[i];
+}
+
+// ─── Time of day ─────────────────────────────────────────────────────────────
+// phase 0 = midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset. Starts mid-afternoon
+// so the first thing on screen is a busy flock; dusk arrives within a minute or
+// two at the default cycle length.
+// (startPhase is a testing hook: jump straight to a time of day.)
+let phase = clamp(parseFloat(_params.get('startPhase') || (P_CYCLE_TIME > 0 ? '0.62' : '0.68')), 0, 1);
+let sun = {}, light = 1, twilight = 0, duskness = 0, dawnness = 0;
+
+function updateLight() {
+    const alt = Math.sin((phase - 0.25) * Math.PI * 2);   // -1..1, 0 at the horizon
+    light = smoothstep(-0.22, 0.35, alt);
+    twilight = Math.exp(-(((alt + 0.02) / 0.2) ** 2));
+    duskness = phase > 0.5 ? twilight : 0;
+    dawnness = phase < 0.5 ? twilight : 0;
+    sun = {
+        alt,
+        x: W * (0.08 + 0.84 * (((phase - 0.25) % 1 + 1) % 1) / 0.5),
+        y: horizon - alt * H * 0.7,
+        moonX: W * (0.08 + 0.84 * (((phase + 0.25) % 1 + 1) % 1) / 0.5),
+        moonY: horizon + alt * H * 0.7,
+    };
+}
+
+function skyColors() {
+    let top = mix(SKY.night.top, SKY.day.top, light);
+    let low = mix(SKY.night.low, SKY.day.low, light);
+    const tw = phase > 0.5 ? SKY.dusk : SKY.dawn;
+    top = mix(top, tw.top, twilight * 0.7);
+    low = mix(low, tw.low, twilight * 0.85);
+    if (P_PALETTE === 'winter') { top = mix(top, [150, 165, 185], 0.3 * light); low = mix(low, [220, 225, 232], 0.4 * light); }
+    return { top: tone(top), low: tone(low) };
+}
+
+// Light falling on the land: dim at night, warm at the ends of the day.
+function lit(c) {
+    const k = 0.18 + 0.82 * light;
+    let out = scale(c, k);
+    out = mix(out, scale(SKY.dusk.low, 0.6 * k), twilight * 0.25);
+    return tone(out);
+}
+
+// ─── Backdrop painting ───────────────────────────────────────────────────────
+let lastBackdrop = -1;
+
+function paintBackdrop() {
+    const g = bctx;
+    const sky = skyColors();
+    g.globalAlpha = 1;
+    const grad = g.createLinearGradient(0, 0, 0, horizon);
+    grad.addColorStop(0, css(sky.top));
+    grad.addColorStop(1, css(sky.low));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, horizon + 1);
+
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+
+    // Sun or moon, with a halo.
+    const body = sun.alt > -0.1
+        ? { x: sun.x, y: sun.y, c: tone(mix([255, 245, 210], [255, 150, 70], twilight)), r: BASE * 0.045, ch: '#' }
+        : { x: sun.moonX, y: sun.moonY, c: tone([235, 235, 250]), r: BASE * 0.03, ch: '@' };
+    if (body.y < horizon + body.r) {
+        const halo = g.createRadialGradient(body.x, body.y, 0, body.x, body.y, body.r * 6);
+        halo.addColorStop(0, css(body.c, 0.35));
+        halo.addColorStop(1, css(body.c, 0));
+        g.fillStyle = halo;
+        g.fillRect(body.x - body.r * 6, body.y - body.r * 6, body.r * 12, body.r * 12);
+        g.font = `700 ${FS}px "JetBrains Mono", monospace`;
+        g.fillStyle = css(body.c, 0.95);
+        for (let y = -body.r; y <= body.r; y += FS * 0.85) {
+            const half = Math.sqrt(Math.max(0, body.r * body.r - y * y));
+            for (let x = -half; x <= half; x += CW) {
+                if (body.y + y < horizon) g.fillText(body.ch, body.x + x, body.y + y);
+            }
+        }
+    }
+
+    // Hills, far then near: a solid silhouette with ASCII ridges.
+    g.font = `700 ${FS}px "JetBrains Mono", monospace`;
+    const paintHill = (arr, base, col, ridge) => {
+        g.fillStyle = css(col);
+        g.beginPath();
+        g.moveTo(0, horizon + 2);
+        for (let i = 0; i < arr.length; i++) g.lineTo(i * CW, base - arr[i]);
+        g.lineTo(W, horizon + 2);
+        g.closePath();
+        g.fill();
+        g.fillStyle = css(mix(col, [255, 255, 255], 0.12));
+        for (let i = 0; i < arr.length; i += 1) {
+            const y = base - arr[i];
+            g.fillText(ridge[i % ridge.length], i * CW, y);
+            if (hash(i * 3.1) < 0.25) g.fillText('.', i * CW, y + FS * (1 + hash(i) * 2));
+        }
+    };
+    paintHill(farHill, horizon, lit(mix(PAL.farHill, sky.low, 0.35)), '^^-^~^');
+    paintHill(nearHill, horizon, lit(PAL.nearHill), '^n^^m^');
+
+    // The meadow.
+    const groundCol = lit(PAL.ground);
+    g.fillStyle = css(groundCol);
+    g.fillRect(0, horizon, W, H - horizon);
+    g.fillStyle = css(mix(groundCol, [0, 0, 0], 0.25));
+    for (let y = horizon + FS; y < H; y += FS * 0.9) {
+        for (let x = (y * 7) % CW; x < W; x += CW * 3) {
+            const n = hash(x * 0.21 + y * 1.3);
+            if (n < 0.35) g.fillText(n < 0.12 ? ',' : '.', x, y);
+        }
+    }
+
+    // Roost wood.
+    const treeCol = lit(PAL.tree);
+    for (const t of treeGlyphs) {
+        g.fillStyle = css(scale(treeCol, t.trunk ? 0.7 : t.shade));
+        g.fillText(t.ch, t.x, t.y);
+    }
+
+    // Telegraph poles and wires.
+    const poleCol = lit([60, 48, 40]);
+    g.fillStyle = css(poleCol);
+    for (const px of wire.poles) {
+        for (let y = wire.poleTop - FS * 0.5; y < horizon; y += FS * 0.8) g.fillText('|', px, y);
+        g.fillText('=+=', px, wire.poleTop - FS * 0.6);
+    }
+    const wireCol = lit([40, 40, 48]);
+    g.fillStyle = css(wireCol, 0.9);
+    for (const s of wire.spans) {
+        for (let x = s.x0; x <= s.x1; x += CW * 0.5) g.fillText('-', x, wireY(s, x));
+    }
+}
+
+// ─── Wind ────────────────────────────────────────────────────────────────────
+let wind = 0, gust = 0, gustTarget = 0, untilGust = rand(8, 16);
+function updateWind(dt, t) {
+    untilGust -= dt;
+    if (untilGust <= 0) { gustTarget = rand(-1, 1); untilGust = rand(10, 22); }
+    gustTarget *= Math.exp(-dt * 0.15);
+    gust += (gustTarget - gust) * Math.min(1, dt * 0.8);
+    wind = 0.35 * Math.sin(t * 0.05) + gust;
+}
+
+// ─── Birds ───────────────────────────────────────────────────────────────────
+const FLY = 0, LAND = 1, PERCH = 2, ROOST_GO = 3, ROOSTED = 4, DEAD = 5, LEAVE = 6;
+const birds = [];
+const K_NEIGHBOURS = 7;
+
+function newBird(x, y) {
+    return {
+        x, y, z: rand(0.15, 0.85) * BASE * 0.5,
+        vx: rand(-1, 1) * BASE * 0.15, vy: rand(-0.4, 0.4) * BASE * 0.1, vz: rand(-1, 1) * BASE * 0.05,
+        state: FLY, flap: rand(0, 1), flapRate: rand(7, 10), panic: 0, panicNext: 0,
+        slot: -1, perchUntil: 0, delay: 0, roostAt: rand(0.785, 0.83), wakeAt: rand(0.2, 0.25),
+        roost: null, respawnAt: 0, idle: rand(0, 10), turn: 0,
+    };
+}
+
+// Residents are around all day. Visitors are the groups that stream in from
+// the surrounding country at dusk to join the roost — which is why real
+// murmurations swell as the light goes — and leave again at dawn.
+const VISITORS = Math.round(P_FLOCK_SIZE * 0.7);
 
 function initFlock() {
+    birds.length = 0;
+    const cx = W * 0.55, cy = H * 0.35;
     for (let i = 0; i < P_FLOCK_SIZE; i++) {
-        bX[i]   = Math.random() * W;
-        bY[i]   = Math.random() * H;
-        const angle = Math.random() * Math.PI * 2;
-        const spd   = MAX_SPEED * (0.4 + Math.random() * 0.6);
-        bVX[i]  = Math.cos(angle) * spd;
-        bVY[i]  = Math.sin(angle) * spd;
-        bLag[i] = 0.7 + Math.random() * 0.3; // each boid reacts at its own rate
+        birds.push(newBird(cx + rand(-1, 1) * W * 0.15, cy + rand(-1, 1) * H * 0.1));
+    }
+    for (let i = 0; i < VISITORS; i++) {
+        const b = newBird(0, 0);
+        b.visitor = true; b.state = DEAD; b.respawnAt = Infinity;
+        birds.push(b);
     }
 }
 
-// Toroidal shortest-path delta — returns the signed distance along one axis
-// accounting for wrap-around (picks whichever route is shorter).
-function torusDelta(a, b, size) {
-    let d = a - b;
-    if (d >  size * 0.5) d -= size;
-    if (d < -size * 0.5) d += size;
-    return d;
-}
-
-// ─── Predator agent (optional) ─────────────────────────────────────────────────
-const PREDATOR_SPEED          = MAX_SPEED * P_PREDATOR_SPEED;
-const PREDATOR_CHASE_FORCE    = 0.18;  // how hard it steers toward prey
-const PREDATOR_WANDER_FORCE   = 0.03;  // gentle wander nudge so path feels organic
-const PREDATOR_FLEE_RADIUS    = 6.0 * CHAR_H;
-const PREDATOR_FLEE_FORCE     = 0.22;
-const PREDATOR_CONSUME_RADIUS   = 1.0 * CHAR_H; // distance at which a boid is eaten
-const PREDATOR_WAKE_FORCE       = 0.20; // pushes boids out of the predator's rear arc
-const PREDATOR_HUNGER_TIMEOUT   = 250; // frames without a kill before escape burst fires
-
-let predX = 0, predY = 0, predVX = 0, predVY = 0;
-let predHungerTimer = 0; // counts frames since last successful consume
-
-function initPredator() {
-    if (!P_PREDATOR) return;
-    predX = Math.random() * W;
-    predY = Math.random() * H;
-    const angle = Math.random() * Math.PI * 2;
-    predVX = Math.cos(angle) * PREDATOR_SPEED;
-    predVY = Math.sin(angle) * PREDATOR_SPEED;
-}
-
-// Predator hunts the center of the nearest local cluster.
-// If the flock splits, a global centroid causes the predator to chase empty space.
-// Instead, we find the nearest boid, then average the positions of all nearby
-// boids to find the true center of that specific group.
-function stepPredator(scaledDt) {
-    if (!P_PREDATOR) return;
-    const stepScale = scaledDt / 16.67;
-
-    // 1. Find nearest boid
-    let nearestDist = Infinity;
-    let nearestIdx = -1;
-    for (let i = 0; i < P_FLOCK_SIZE; i++) {
-        const dx = torusDelta(bX[i], predX, W);
-        const dy = torusDelta(bY[i], predY, H);
-        const dist = dx * dx + dy * dy; // squared dist is fine for comparison
-        if (dist < nearestDist) {
-            nearestDist = dist;
-            nearestIdx = i;
+// Visitors arrive in groups of a dozen or so from the edge of the screen.
+let untilArrival = 0;
+function updateVisitors(dt) {
+    if (P_CYCLE_TIME <= 0) return;
+    const arriving = phase > 0.7 && phase < b0RoostStart();
+    if (arriving) {
+        untilArrival -= dt;
+        if (untilArrival > 0) return;
+        untilArrival = rand(2.5, 6);
+        const away = birds.filter(b => b.visitor && b.state === DEAD);
+        if (!away.length) return;
+        const n = Math.min(away.length, Math.floor(rand(8, 18)));
+        const fromLeft = Math.random() < 0.35;   // most arrive from the open side
+        const ex = fromLeft ? -30 : W + 30, ey = rand(0.08, 0.35) * H;
+        for (let i = 0; i < n; i++) {
+            const b = away[i];
+            Object.assign(b, newBird(ex + rand(-1, 1) * FS * 3, ey + rand(-1, 1) * FS * 3));
+            b.visitor = true;
+            b.vx = (fromLeft ? 1 : -1) * BASE * 0.28;
+            b.vy = rand(-0.05, 0.05) * BASE;
         }
     }
+}
+function b0RoostStart() { return 0.785; }
 
-    let targetX = predX, targetY = predY;
-    if (nearestIdx >= 0) {
-        // 2. Compute centroid of the local cluster (boids within ~2x cohesion radius)
-        const CLUSTER_RADIUS = COHESION_RADIUS * 2.0;
-        let sumDX = 0, sumDY = 0;
-        let clusterCount = 0;
-        const refX = bX[nearestIdx], refY = bY[nearestIdx];
-        
-        for (let i = 0; i < P_FLOCK_SIZE; i++) {
-            const dx = torusDelta(bX[i], refX, W);
-            const dy = torusDelta(bY[i], refY, H);
-            if (dx * dx + dy * dy < CLUSTER_RADIUS * CLUSTER_RADIUS) {
-                sumDX += dx;
-                sumDY += dy;
-                clusterCount++;
-            }
-        }
-        targetX = (refX + sumDX / clusterCount + W) % W;
-        targetY = (refY + sumDY / clusterCount + H) % H;
-    }
-
-    // Steer toward the local cluster centroid
-    const cdx = torusDelta(targetX, predX, W);
-    const cdy = torusDelta(targetY, predY, H);
-    const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
-
-    let fx = 0, fy = 0;
-    if (cdist > 0) {
-        fx = (cdx / cdist) * PREDATOR_CHASE_FORCE;
-        fy = (cdy / cdist) * PREDATOR_CHASE_FORCE;
-    }
-
-    // Small random nudge so path feels organic rather than laser-straight
-    fx += (Math.random() - 0.5) * PREDATOR_WANDER_FORCE;
-    fy += (Math.random() - 0.5) * PREDATOR_WANDER_FORCE;
-
-    predVX += fx * stepScale;
-    predVY += fy * stepScale;
-
-    // ── Hunger / stuck failsafe ────────────────────────────────────────────────
-    // If the predator hasn't eaten in PREDATOR_HUNGER_TIMEOUT frames it's almost
-    // certainly trapped inside a ring. Snap to a fully random heading so it
-    // punches clean through the encirclement instead of orbiting forever.
-    predHungerTimer++;
-    if (predHungerTimer >= PREDATOR_HUNGER_TIMEOUT) {
-        const escapeAngle = Math.random() * Math.PI * 2;
-        predVX = Math.cos(escapeAngle) * PREDATOR_SPEED;
-        predVY = Math.sin(escapeAngle) * PREDATOR_SPEED;
-        predHungerTimer = 0;
-    }
-
-    const [lvx, lvy] = limitVec(predVX, predVY, PREDATOR_SPEED);
-    predVX = lvx;
-    predVY = lvy;
-
-    predX = (predX + predVX * stepScale + W) % W;
-    predY = (predY + predVY * stepScale + H) % H;
+// A slowly wandering point the flock is loosely drawn toward; at dusk it
+// settles over the wood, which is what gathers the murmuration there.
+const goal = { x: 0, y: 0, a: rand(0, 6.3) };
+function updateGoal(dt, t) {
+    goal.a += dt * 0.07;
+    const roamX = W * (0.55 + 0.3 * Math.sin(goal.a * 1.3) * Math.cos(goal.a * 0.37));
+    const roamY = H * (0.32 + 0.12 * Math.sin(goal.a * 0.9 + 1));
+    // At dusk the goal sweeps wide arcs over the wood: the murmuration.
+    const woodX = wood.x1 + Math.sin(t * 0.21) * W * 0.18;
+    const woodY = wood.top - H * 0.14 + Math.sin(t * 0.34 + 1) * H * 0.07;
+    const k = smoothstep(0.0, 0.6, duskness) * (P_CYCLE_TIME > 0 ? 1 : 0.6);
+    goal.x = lerp(roamX, woodX, k);
+    goal.y = lerp(roamY, woodY, k);
 }
 
-// Teleport boid i to a random screen edge with a velocity pointing inward.
-// Called on init (via initFlock) and whenever the predator consumes a boid.
-function respawnBoid(i) {
-    const edge = Math.floor(Math.random() * 4); // 0=top 1=right 2=bottom 3=left
-    // Inward base angles: top→down, right→left, bottom→up, left→right
-    const baseAngles = [Math.PI / 2, Math.PI, -Math.PI / 2, 0];
-    const angle = baseAngles[edge] + (Math.random() - 0.5) * (Math.PI * 0.5);
-    switch (edge) {
-        case 0: bX[i] = Math.random() * W; bY[i] = 1;     break;
-        case 1: bX[i] = W - 1;             bY[i] = Math.random() * H; break;
-        case 2: bX[i] = Math.random() * W; bY[i] = H - 1; break;
-        case 3: bX[i] = 1;                 bY[i] = Math.random() * H; break;
-    }
-    const spd = MAX_SPEED * (0.5 + Math.random() * 0.5);
-    bVX[i]  = Math.cos(angle) * spd;
-    bVY[i]  = Math.sin(angle) * spd;
-    bLag[i] = 0.7 + Math.random() * 0.3;
-}
-
-// Check whether the predator is within consume range of any boid.
-// Consumes at most one per frame (the closest within range) so the flock
-// shrinks one-at-a-time rather than being wiped out in a single pass.
-// The consumed boid is immediately respawned from a random edge.
-function checkConsume() {
-    if (!P_PREDATOR) return;
-    let closestDist = Infinity, closestIdx = -1;
-    for (let i = 0; i < P_FLOCK_SIZE; i++) {
-        const dx = torusDelta(bX[i], predX, W);
-        const dy = torusDelta(bY[i], predY, H);
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < closestDist) { closestDist = dist; closestIdx = i; }
-    }
-    if (closestIdx >= 0 && closestDist < PREDATOR_CONSUME_RADIUS) {
-        respawnBoid(closestIdx);
-        predHungerTimer = 0; // successful eat — reset the stuck-detection timer
-        // Bump the predator off its current heading so it doesn't
-        // immediately loop back and consume the freshly respawned boid.
-        predVX += (Math.random() - 0.5) * PREDATOR_SPEED * 0.6;
-        predVY += (Math.random() - 0.5) * PREDATOR_SPEED * 0.6;
+// Spatial grid for neighbour search.
+let grid = new Map();
+function cellKey(cx, cy) { return cx * 73856093 ^ cy * 19349663; }
+function buildGrid(cell) {
+    grid.clear();
+    for (let i = 0; i < birds.length; i++) {
+        const b = birds[i];
+        if (b.state !== FLY && b.state !== LAND) continue;
+        const k = cellKey(Math.floor(b.x / cell), Math.floor(b.y / cell));
+        let list = grid.get(k);
+        if (!list) grid.set(k, list = []);
+        list.push(i);
     }
 }
 
-function drawPredator() {
-    if (!P_PREDATOR) return;
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
+const nbIdx = new Int32Array(K_NEIGHBOURS), nbD = new Float32Array(K_NEIGHBOURS);
 
-    const angle = Math.atan2(predVY, predVX);
-    ctx.save();
-    ctx.translate(predX, predY);
-    ctx.rotate(angle);
-    ctx.fillStyle = ACTIVE_PALETTE.predator;
-    ctx.fillText('▶', 0, 0);
-    ctx.restore();
+function stepBirds(dt, t) {
+    const vmax = BASE * 0.3, vmin = BASE * 0.11;
+    const cell = BASE * 0.07;
+    const sepR = BASE * 0.028 * (0.6 + P_SEPARATION * 0.6);
+    const zMax = BASE * 0.5;
+    const skyTop = H * 0.06, skyBottom = Math.min(wood.top, wire.poleTop) - H * 0.04;
+    buildGrid(cell);
+    // The whole flock's centre: a weak pull toward it keeps one big body
+    // rather than a scatter of small groups.
+    const centre = flockCentre();
 
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-}
+    for (let i = 0; i < birds.length; i++) {
+        const b = birds[i];
+        b.flap = (b.flap + dt * b.flapRate * (1 + b.panic)) % 1;
+        b.panicNext = b.panic * Math.exp(-dt * 1.4);
 
-
-function limitVec(x, y, max) {
-    const mag = Math.sqrt(x * x + y * y);
-    if (mag > max && mag > 0) {
-        const s = max / mag;
-        return [x * s, y * s];
-    }
-    return [x, y];
-}
-
-// One O(n²) neighbor pass per frame using toroidal (shortest-path) distances.
-// n <= 150 keeps this cheap (<=22500 checks).
-function stepFlock(scaledDt) {
-    const stepScale = scaledDt / 16.67;
-
-    for (let i = 0; i < P_FLOCK_SIZE; i++) {
-        let sepX = 0, sepY = 0, sepCount = 0;
-        let aliX = 0, aliY = 0, aliCount = 0;
-        let cohDX = 0, cohDY = 0, cohCount = 0;
-
-        for (let j = 0; j < P_FLOCK_SIZE; j++) {
-            if (j === i) continue;
-            // Toroidal shortest-path distance
-            const dx = torusDelta(bX[i], bX[j], W);
-            const dy = torusDelta(bY[i], bY[j], H);
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist === 0 || dist > COHESION_RADIUS) continue;
-
-            if (dist < SEPARATION_RADIUS) {
-                sepX += dx / dist;
-                sepY += dy / dist;
-                sepCount++;
-            }
-            if (dist < ALIGNMENT_RADIUS) {
-                aliX += bVX[j];
-                aliY += bVY[j];
-                aliCount++;
-            }
-            if (dist < COHESION_RADIUS) {
-                // Accumulate offset vectors rather than absolute positions
-                // so cohesion steers correctly across the wrap boundary.
-                cohDX += dx;
-                cohDY += dy;
-                cohCount++;
-            }
+        if (b.state === DEAD) {
+            if (!b.visitor && t >= b.respawnAt && light > 0.25) respawn(b);
+            continue;
         }
-
-        let fx = 0, fy = 0;
-
-        if (sepCount > 0) {
-            let [sx, sy] = limitVec(sepX / sepCount, sepY / sepCount, MAX_FORCE);
-            fx += sx * P_SEPARATION;
-            fy += sy * P_SEPARATION;
+        if (b.state === ROOSTED) continue;
+        if (b.state === PERCH) {
+            if (t >= b.perchUntil) takeOff(b, 0);
+            continue;
         }
-        if (aliCount > 0) {
-            const avgVX = aliX / aliCount, avgVY = aliY / aliCount;
-            let [ax, ay] = limitVec(avgVX - bVX[i], avgVY - bVY[i], MAX_FORCE);
-            fx += ax * ALIGNMENT_WEIGHT;
-            fy += ay * ALIGNMENT_WEIGHT;
-        }
-        if (cohCount > 0) {
-            // Steer toward the average offset (negate: toward neighbors, not away)
-            let [cx, cy] = limitVec(-cohDX / cohCount, -cohDY / cohCount, MAX_FORCE);
-            fx += cx * P_COHESION;
-            fy += cy * P_COHESION;
-        }
+        if (b.delay > 0) { b.delay -= dt; continue; }
 
-        // Predator avoidance — radial flee + wake bias
-        if (P_PREDATOR) {
-            const pdx = torusDelta(bX[i], predX, W);
-            const pdy = torusDelta(bY[i], predY, H);
-            const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
-            if (pdist > 0 && pdist < PREDATOR_FLEE_RADIUS) {
-                // Radial flee: push directly away from predator
-                const fleeStrength = (1 - pdist / PREDATOR_FLEE_RADIUS) * PREDATOR_FLEE_FORCE;
-                fx += (pdx / pdist) * fleeStrength;
-                fy += (pdy / pdist) * fleeStrength;
+        let ax = 0, ay = 0, az = 0;
 
-                // Wake bias: boids in the predator's rear hemisphere get pushed
-                // forward in its travel direction so they can't orbit behind it.
-                // dot < 0  =>  boid is behind the predator's heading vector.
-                const predSpd = Math.sqrt(predVX * predVX + predVY * predVY);
-                if (predSpd > 0) {
-                    const phx = predVX / predSpd; // predator heading unit vector
-                    const phy = predVY / predSpd;
-                    const dot = pdx * phx + pdy * phy; // pred→boid projected onto heading
-                    if (dot < 0) {
-                        // Scale by how directly behind: fully behind = -1, beside = 0
-                        const wakeStrength = (-dot / pdist) * PREDATOR_WAKE_FORCE;
-                        fx += phx * wakeStrength;
-                        fy += phy * wakeStrength;
+        if (b.state === FLY) {
+            // Seven nearest neighbours (topological, like real starlings).
+            let found = 0;
+            const cx = Math.floor(b.x / cell), cy = Math.floor(b.y / cell);
+            for (let gx = cx - 1; gx <= cx + 1; gx++) {
+                for (let gy = cy - 1; gy <= cy + 1; gy++) {
+                    const list = grid.get(cellKey(gx, gy));
+                    if (!list) continue;
+                    for (const j of list) {
+                        if (j === i) continue;
+                        const o = birds[j];
+                        const dx = o.x - b.x, dy = o.y - b.y, dz = o.z - b.z;
+                        const d = dx * dx + dy * dy + dz * dz;
+                        if (found < K_NEIGHBOURS) {
+                            let k = found++;
+                            while (k > 0 && nbD[k - 1] > d) { nbD[k] = nbD[k - 1]; nbIdx[k] = nbIdx[k - 1]; k--; }
+                            nbD[k] = d; nbIdx[k] = j;
+                        } else if (d < nbD[K_NEIGHBOURS - 1]) {
+                            let k = K_NEIGHBOURS - 1;
+                            while (k > 0 && nbD[k - 1] > d) { nbD[k] = nbD[k - 1]; nbIdx[k] = nbIdx[k - 1]; k--; }
+                            nbD[k] = d; nbIdx[k] = j;
+                        }
                     }
                 }
             }
+            if (found > 0) {
+                let avx = 0, avy = 0, avz = 0, cxs = 0, cys = 0, czs = 0, maxPanic = 0;
+                for (let n = 0; n < found; n++) {
+                    const o = birds[nbIdx[n]];
+                    avx += o.vx; avy += o.vy; avz += o.vz;
+                    cxs += o.x; cys += o.y; czs += o.z;
+                    maxPanic = Math.max(maxPanic, o.panic);
+                    const d = Math.sqrt(nbD[n]) || 1;
+                    if (d < sepR) {
+                        const push = (1 - d / sepR) * vmax * 5 * P_SEPARATION;
+                        ax -= (o.x - b.x) / d * push;
+                        ay -= (o.y - b.y) / d * push;
+                        az -= (o.z - b.z) / d * push;
+                    }
+                }
+                ax += (avx / found - b.vx) * 2.2;
+                ay += (avy / found - b.vy) * 2.2;
+                az += (avz / found - b.vz) * 2.2;
+                const kc = 1.4 * P_COHESION;
+                ax += (cxs / found - b.x) * kc;
+                ay += (cys / found - b.y) * kc;
+                az += (czs / found - b.z) * kc;
+                // Panic spreads neighbour to neighbour: the travelling wave.
+                b.panicNext = Math.max(b.panicNext, maxPanic * 0.9);
+            }
+
+            // Loose pull toward the flock's goal and its centre, and soft walls.
+            ax += (goal.x - b.x) * 0.3;
+            ay += (goal.y - b.y) * 0.4;
+            if (centre) {
+                ax += (centre.x - b.x) * 0.8 * P_COHESION;
+                ay += (centre.y - b.y) * 0.8 * P_COHESION;
+            }
+            if (b.x < W * 0.04) ax += (W * 0.04 - b.x) * 6;
+            if (b.x > W * 0.96) ax -= (b.x - W * 0.96) * 6;
+            if (b.y < skyTop) ay += (skyTop - b.y) * 6;
+            if (b.y > skyBottom) ay -= (b.y - skyBottom) * 6;
+            if (b.z < 0) az -= b.z * 4;
+            if (b.z > zMax) az -= (b.z - zMax) * 4;
+
+            // A little individual restlessness; the big movements are
+            // collective (the sweeping goal and the ripples).
+            ax += rand(-1, 1) * vmax * 0.3;
+            ay += rand(-1, 1) * vmax * 0.2;
+            az += rand(-1, 1) * vmax * 0.3;
+
+            // Wind drifts the whole flock.
+            ax += wind * BASE * 0.12;
+
+            // Threats.
+            const threat = falconThreat(b);
+            if (threat) {
+                const { dx, dy, d, r } = threat;
+                if (d < r) b.panicNext = Math.max(b.panicNext, 1);
+                const k = (1 - Math.min(1, d / (r * 1.8))) * vmax * 9;
+                ax -= dx / d * k; ay -= dy / d * k;
+            }
+            if (heron.active) {
+                const dx = heron.x - b.x, dy = heron.y - b.y, d = Math.hypot(dx, dy) || 1;
+                if (d < BASE * 0.12) { ax -= dx / d * vmax * 3; ay -= dy / d * vmax * 3; }
+            }
+            // A panicked bird jinks sideways — the flash of a banking flock.
+            if (b.panic > 0.3) {
+                const s = Math.sign(Math.sin(i * 12.9898)) || 1;
+                ax += -b.vy / (Math.hypot(b.vx, b.vy) || 1) * vmax * 6 * b.panic * s;
+                ay += b.vx / (Math.hypot(b.vx, b.vy) || 1) * vmax * 6 * b.panic * s;
+            }
+        } else if (b.state === LEAVE) {
+            const dx = b.exitX - b.x, dy = -H * 0.1 - b.y, d = Math.hypot(dx, dy) || 1;
+            ax += (dx / d * vmax - b.vx) * 2;
+            ay += (dy / d * vmax * 0.5 - b.vy) * 2;
+            if (b.x < -40 || b.x > W + 40 || b.y < -40) { b.state = DEAD; b.respawnAt = Infinity; continue; }
+        } else if (b.state === LAND || b.state === ROOST_GO) {
+            // Arrive: slow down smoothly onto the perch or into the canopy.
+            const tgt = b.state === LAND ? wire.slots[b.slot] : b.roost;
+            const dx = tgt.x - b.x, dy = tgt.y - b.y, dz = zMax * 0.7 - b.z;
+            const d = Math.hypot(dx, dy) || 1;
+            const want = Math.min(vmax * 0.8, d * 1.6);
+            ax += (dx / d * want - b.vx) * 3;
+            ay += (dy / d * want - b.vy) * 3;
+            az += dz * 2 - b.vz * 2;
+            if (d < FS * 0.6) {
+                if (b.state === LAND) {
+                    b.state = PERCH; b.x = tgt.x; b.y = tgt.y; b.vx = b.vy = b.vz = 0;
+                    b.perchUntil = perchEpisode.endsAt;
+                } else {
+                    b.state = ROOSTED; b.vx = b.vy = b.vz = 0;
+                }
+                continue;
+            }
+            const threat = falconThreat(b);
+            if (threat && threat.d < threat.r) { abortLanding(b); }
         }
 
-        // Per-boid wander noise — breaks up the too-perfect lockstep feeling
-        fx += (Math.random() - 0.5) * WANDER_NOISE;
-        fy += (Math.random() - 0.5) * WANDER_NOISE;
+        b.vx += ax * dt; b.vy += ay * dt; b.vz += az * dt;
+        const sp = Math.hypot(b.vx, b.vy, b.vz) || 1;
+        const top = vmax * (1 + b.panic * 0.5);
+        const floor = b.state === FLY ? vmin : 0;
+        const k = sp > top ? top / sp : sp < floor ? floor / sp : 1;
+        b.vx *= k; b.vy *= k; b.vz *= k;
+        const heading = Math.atan2(b.vy, b.vx);
+        let dh = heading - (b.lastHeading ?? heading);
+        if (dh > Math.PI) dh -= Math.PI * 2;
+        if (dh < -Math.PI) dh += Math.PI * 2;
+        b.turn = lerp(b.turn, dh, 0.3);
+        b.lastHeading = heading;
+        b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+    }
+    for (const b of birds) b.panic = b.panicNext;
 
-        // ── Inertia + rotational dampening ────────────────────────────────────────────
-        // Desired velocity if we applied forces directly (unclamped).
-        const dvx = fx * stepScale * bLag[i];
-        const dvy = fy * stepScale * bLag[i];
-        const desiredVX = bVX[i] + dvx;
-        const desiredVY = bVY[i] + dvy;
-
-        const curSpd = Math.sqrt(bVX[i] * bVX[i] + bVY[i] * bVY[i]);
-        if (curSpd < 0.001) {
-            // Boid is nearly stopped — just apply force directly to avoid atan2 instability
-            bVX[i] = desiredVX;
-            bVY[i] = desiredVY;
-        } else {
-            // Rotational dampening: clamp angular change to MAX_TURN_RATE per frame
-            const curAngle     = Math.atan2(bVY[i], bVX[i]);
-            const desiredAngle = Math.atan2(desiredVY, desiredVX);
-            let   dAngle       = desiredAngle - curAngle;
-            // Wrap delta to [-π, π] so we always turn the short way
-            if (dAngle >  Math.PI) dAngle -= 2 * Math.PI;
-            if (dAngle < -Math.PI) dAngle += 2 * Math.PI;
-            const maxTurn = MAX_TURN_RATE * stepScale;
-            dAngle = Math.max(-maxTurn, Math.min(maxTurn, dAngle));
-            const newAngle = curAngle + dAngle;
-
-            // Inertia: speed eases toward desired speed rather than snapping
-            const desiredSpd = Math.sqrt(desiredVX * desiredVX + desiredVY * desiredVY);
-            const newSpd     = curSpd + (desiredSpd - curSpd) * (1 - INERTIA);
-
-            bVX[i] = Math.cos(newAngle) * newSpd;
-            bVY[i] = Math.sin(newAngle) * newSpd;
+    // Murmurations ripple even with no hunter in sight: at dusk a bird at the
+    // edge startles every few seconds and the wave runs through the flock.
+    rippleTimer -= dt;
+    if (rippleTimer <= 0) {
+        rippleTimer = rand(2, 5);
+        if (duskness > 0.3 || Math.random() < 0.2) {
+            const flying = birds.filter(b => b.state === FLY);
+            if (flying.length) flying[Math.floor(Math.random() * flying.length)].panic = 0.7;
         }
+    }
+}
+let rippleTimer = 3;
 
-        // Hard speed cap after inertia/dampening
-        const [lvx, lvy] = limitVec(bVX[i], bVY[i], MAX_SPEED);
-        bVX[i] = lvx;
-        bVY[i] = lvy;
+function respawn(b) {
+    const fromLeft = Math.random() < 0.5;
+    Object.assign(b, newBird(fromLeft ? -20 : W + 20, rand(0.15, 0.4) * H));
+    b.vx = (fromLeft ? 1 : -1) * BASE * 0.25;
+}
 
-        // Seamless torus wrap
-        bX[i] = (bX[i] + bVX[i] * stepScale + W) % W;
-        bY[i] = (bY[i] + bVY[i] * stepScale + H) % H;
+// ─── Perching on the wire ────────────────────────────────────────────────────
+// Every so often by day a group peels off to sit on the wire, then leaves in a
+// ripple from one end.
+const perchEpisode = { active: false, endsAt: 0, next: 12 };
+
+function updatePerching(t) {
+    if (perchEpisode.active) {
+        if (t >= perchEpisode.endsAt) perchEpisode.active = false;
+        return;
+    }
+    if (t < perchEpisode.next || light < 0.6 || duskness > 0.2) return;
+    const flying = birds.filter(b => b.state === FLY);
+    const free = wire.slots.map((s, i) => i).filter(i => wire.slots[i].taken < 0);
+    const count = Math.min(free.length, Math.floor(flying.length * rand(0.15, 0.35)));
+    if (count < 4) { perchEpisode.next = t + 10; return; }
+    // The birds nearest the wire go.
+    const mid = { x: (wire.poles[0] + wire.poles[wire.poles.length - 1]) / 2, y: wire.poleTop };
+    flying.sort((a, b) => Math.hypot(a.x - mid.x, a.y - mid.y) - Math.hypot(b.x - mid.x, b.y - mid.y));
+    free.sort(() => Math.random() - 0.5);
+    perchEpisode.active = true;
+    perchEpisode.endsAt = t + rand(14, 30);
+    perchEpisode.next = perchEpisode.endsAt + rand(18, 40);
+    for (let i = 0; i < count; i++) {
+        const b = flying[i];
+        b.state = LAND; b.slot = free[i]; wire.slots[free[i]].taken = birds.indexOf(b);
+        b.delay = rand(0, 1.5);
     }
 }
 
-// ─── Glyph rendering ────────────────────────────────────────────────────────────
-// A boid is drawn as a '>' glyph (a stand-in V/triangle shape that reads clearly
-// at 15px monospace) rotated via canvas transform to align with its heading.
-function headingColor(vx, vy) {
-    const speed = Math.sqrt(vx * vx + vy * vy);
-    const t = Math.max(0, Math.min(1, speed / MAX_SPEED));
-    const [lr, lg, lb] = ACTIVE_PALETTE.lo;
-    const [hr, hg, hb] = ACTIVE_PALETTE.hi;
-    const r = Math.round(lr + t * (hr - lr));
-    const g = Math.round(lg + t * (hg - lg));
-    const b = Math.round(lb + t * (hb - lb));
-    return `rgb(${r},${g},${b})`;
+function takeOff(b, delay) {
+    if (b.slot >= 0) wire.slots[b.slot].taken = -1;
+    b.slot = -1;
+    b.state = FLY;
+    b.delay = delay;
+    b.vx = rand(-1, 1) * BASE * 0.1;
+    b.vy = -BASE * rand(0.15, 0.25);
 }
 
-function drawFlock() {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
+function abortLanding(b) {
+    if (b.slot >= 0) wire.slots[b.slot].taken = -1;
+    b.slot = -1;
+    b.state = FLY;
+}
 
-    for (let i = 0; i < P_FLOCK_SIZE; i++) {
-        const angle = Math.atan2(bVY[i], bVX[i]);
-        ctx.save();
-        ctx.translate(bX[i], bY[i]);
-        ctx.rotate(angle);
-        ctx.fillStyle = headingColor(bVX[i], bVY[i]);
-        ctx.fillText(ACTIVE_PALETTE.glyph, 0, 0);
-        ctx.restore();
+// Scatter everything on the wire, rippling outward from the nearest bird.
+function flushWire(fromX) {
+    for (const b of birds) {
+        if (b.state === PERCH) takeOff(b, Math.abs(b.x - fromX) / (CW * 1.6) * 0.035);
+        else if (b.state === LAND) abortLanding(b);
     }
-
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
+    perchEpisode.active = false;
+    perchEpisode.endsAt = 0;
 }
 
-// ─── Render loop ───────────────────────────────────────────────────────────────
-let lastTimestamp = 0;
+// ─── Roosting ────────────────────────────────────────────────────────────────
+function updateRoost() {
+    if (P_CYCLE_TIME <= 0) return;
+    for (const b of birds) {
+        if ((b.state === FLY || b.state === PERCH || b.state === LAND) && phase > b.roostAt && phase < 0.9) {
+            if (b.slot >= 0) { wire.slots[b.slot].taken = -1; b.slot = -1; }
+            b.state = ROOST_GO;
+            b.delay = 0;
+            b.roost = roostSpots.length ? roostSpots[Math.floor(Math.random() * roostSpots.length)] : { x: wood.x0, y: wood.top };
+        }
+        if (b.state === ROOSTED && phase > b.wakeAt && phase < 0.5) {
+            b.state = b.visitor ? LEAVE : FLY;
+            b.exitX = Math.random() < 0.3 ? -60 : W + 60;
+            b.x = b.roost.x; b.y = b.roost.y;
+            b.vx = rand(0.2, 1) * BASE * 0.2; b.vy = -BASE * rand(0.1, 0.25);
+            b.roostAt = rand(0.785, 0.83);
+        }
+        if (b.state === ROOSTED && phase > 0.9) b.wakeAt = rand(0.2, 0.25);
+    }
+}
 
-function render(t) {
-    const dt       = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
-    lastTimestamp  = t;
-    const scaledDt = dt * P_SPEED;
+// ─── Falcon ──────────────────────────────────────────────────────────────────
+// Circles high over the flock, picks a bird and stoops. Birds near it panic;
+// the panic runs through the flock as a wave. About a third of stoops succeed.
+const falcon = { state: 'away', x: 0, y: 0, vx: 0, vy: 0, t: 0, next: rand(20, 35), target: null, flap: 0 };
 
+function falconThreat(b) {
+    if (falcon.state !== 'stoop' && falcon.state !== 'soar' && falcon.state !== 'climb') return null;
+    const dx = falcon.x - b.x, dy = falcon.y - b.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const r = BASE * (falcon.state === 'stoop' ? 0.14 : 0.06);
+    return d < r * 2 ? { dx, dy, d, r } : null;
+}
+
+function flockCentre() {
+    let x = 0, y = 0, n = 0, top = H;
+    for (const b of birds) if (b.state === FLY) { x += b.x; y += b.y; n++; top = Math.min(top, b.y); }
+    return n ? { x: x / n, y: y / n, n, top } : null;
+}
+
+function updateFalcon(dt, t) {
+    falcon.flap = (falcon.flap + dt * 3) % 1;
+    const f = falcon;
+    const fast = BASE * 0.3 * 2.4 * P_PREDATOR_SPEED;
+    if (f.state === 'away') {
+        const c = flockCentre();
+        if (!P_PREDATOR || !c || c.n < 15 || light < 0.3 || t < f.next) return;
+        f.state = 'soar';
+        f.t = 0;
+        f.x = Math.random() < 0.5 ? -40 : W + 40;
+        f.y = Math.max(H * 0.04, c.top - H * 0.15);
+        return;
+    }
+    f.t += dt;
+    const c = flockCentre();
+    if (f.state === 'soar') {
+        // Wide circles above the flock.
+        const cx = c ? c.x : W / 2, cy = (c ? Math.max(H * 0.05, c.top - H * 0.14) : H * 0.1);
+        const a = f.t * 0.9;
+        const tx = cx + Math.cos(a) * W * 0.12, ty = cy + Math.sin(a) * H * 0.04;
+        f.vx += ((tx - f.x) * 1.5 - f.vx) * dt * 2;
+        f.vy += ((ty - f.y) * 1.5 - f.vy) * dt * 2;
+        if (f.t > rand(5, 9) && c) {
+            // Pick a bird at the edge of the flock and stoop.
+            let best = null, bestD = -1;
+            for (const b of birds) {
+                if (b.state !== FLY) continue;
+                const d = Math.hypot(b.x - c.x, b.y - c.y) + rand(0, BASE * 0.05);
+                if (d > bestD) { bestD = d; best = b; }
+            }
+            f.target = best; f.state = 'stoop'; f.t = 0;
+        }
+    } else if (f.state === 'stoop') {
+        const b = f.target;
+        if (!b || b.state !== FLY) { f.state = 'climb'; f.t = 0; }
+        else {
+            const lead = 0.25;
+            const tx = b.x + b.vx * lead, ty = b.y + b.vy * lead;
+            const dx = tx - f.x, dy = ty - f.y, d = Math.hypot(dx, dy) || 1;
+            f.vx += (dx / d * fast - f.vx) * dt * 3;
+            f.vy += (dy / d * fast - f.vy) * dt * 3;
+            if (d < FS * 1.1) {
+                if (Math.random() < 0.35) {
+                    b.state = DEAD; b.respawnAt = t + rand(20, 40);
+                    featherBurst(b.x, b.y);
+                    f.state = 'carry';
+                } else {
+                    f.state = 'climb';
+                }
+                f.t = 0;
+            } else if (f.t > 3) { f.state = 'climb'; f.t = 0; }
+            // A stoop close to the wire scatters everything on it.
+            if (f.y > wire.poleTop - H * 0.15 && f.x > wire.poles[0] - W * 0.05) flushWire(f.x);
+        }
+    } else if (f.state === 'climb' || f.state === 'carry') {
+        // Leave the way it came, climbing.
+        const exitX = f.vx >= 0 ? W + 80 : -80;
+        const speed = f.state === 'carry' ? BASE * 0.18 : BASE * 0.35;
+        const dx = exitX - f.x, dy = -H * 0.2 - f.y, d = Math.hypot(dx, dy) || 1;
+        f.vx += (dx / d * speed - f.vx) * dt * 1.5;
+        f.vy += (dy / d * speed - f.vy) * dt * 1.5;
+        if (f.x < -60 || f.x > W + 60 || f.y < -60) {
+            f.state = 'away';
+            f.next = t + (duskness > 0.3 ? rand(12, 25) : rand(25, 55));
+        }
+    }
+    f.x += f.vx * dt; f.y += f.vy * dt;
+}
+
+// ─── Heron (daytime visitor) ─────────────────────────────────────────────────
+const heron = { active: false, x: 0, y: 0, dir: 1, next: rand(25, 45), flap: 0 };
+function updateHeron(dt, t) {
+    if (!heron.active) {
+        if (t < heron.next || light < 0.5) return;
+        heron.active = true;
+        heron.dir = Math.random() < 0.5 ? 1 : -1;
+        heron.x = heron.dir > 0 ? -60 : W + 60;
+        heron.y = rand(0.3, 0.55) * horizon;
+        return;
+    }
+    heron.flap = (heron.flap + dt * 1.1) % 1;
+    heron.x += heron.dir * BASE * 0.07 * dt;
+    heron.y += Math.sin(heron.flap * Math.PI * 2) * BASE * 0.004;
+    if (heron.x < -80 || heron.x > W + 80) { heron.active = false; heron.next = t + rand(40, 90); }
+}
+
+// ─── Night life: bats and fireflies ──────────────────────────────────────────
+const bats = Array.from({ length: 5 }, () => ({ x: rand(0, 1), y: rand(0.2, 0.6), a: rand(0, 6.3), flap: rand(0, 1) }));
+const fireflies = Array.from({ length: 40 }, () => ({ x: rand(0, 1), y: rand(0, 1), p: rand(0, 6.3), s: rand(0.4, 1.2) }));
+
+// ─── Particles: feathers and seasonal weather ────────────────────────────────
+const particles = [];
+function featherBurst(x, y) {
+    for (let i = 0; i < 14; i++) {
+        particles.push({ x, y, vx: rand(-1, 1) * BASE * 0.08, vy: rand(-1, 0.3) * BASE * 0.06,
+                         life: 0, max: rand(2, 4), ch: pick(['`', ',', '\'', '~']), kind: 'feather' });
+    }
+}
+function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+
+function spawnWeather(dt) {
+    const kind = PAL.weather;
+    const rate = kind === 'snow' ? 40 : kind === 'leaves' ? 1.5 : kind === 'seeds' ? (light > 0.5 ? 0.8 : 0) : 0;
+    let n = rate * dt;
+    while (n > 0) {
+        if (Math.random() < n) {
+            particles.push({
+                x: rand(-0.1, 1.1) * W, y: kind === 'seeds' ? horizon - rand(0, FS) : -10,
+                vx: 0,
+                vy: kind === 'snow' ? rand(0.03, 0.07) * BASE : kind === 'seeds' ? -rand(0.01, 0.025) * BASE : rand(0.02, 0.05) * BASE,
+                life: 0, max: 60, kind,
+                ch: kind === 'snow' ? pick(['*', '.', '+']) : kind === 'leaves' ? pick([',', '`', '\'', '~']) : '.',
+                spin: rand(0, 6.3), hue: rand(0, 1),
+            });
+        }
+        n -= 1;
+    }
+}
+
+function updateParticles(dt, t) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life += dt;
+        if (p.kind === 'feather') { p.vy += BASE * 0.02 * dt; p.vx *= Math.exp(-dt); p.vy *= Math.exp(-dt * 0.8); }
+        else {
+            p.vx = wind * BASE * (p.kind === 'snow' ? 0.08 : 0.15) + Math.sin(t * 1.3 + p.spin) * BASE * 0.02;
+        }
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        if (p.life > p.max || p.y > H + 10 || p.y < -20) particles.splice(i, 1);
+    }
+}
+
+// ─── Drawing ─────────────────────────────────────────────────────────────────
+const clouds = [];
+function seedClouds() {
+    clouds.length = 0;
+    for (let i = 0; i < 6; i++) clouds.push(newCloud(true));
+}
+function newCloud(anywhere) {
+    const len = Math.floor(rand(12, 28)), rows = Math.floor(rand(2, 4));
+    const cells = [];
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < len; c++) {
+            const u = (c / (len - 1)) * 2 - 1, v = (r / Math.max(1, rows - 1)) * 2 - 1;
+            const dens = 1 - u * u - v * v * 0.6 + rand(-0.15, 0.15);
+            if (dens > 0.05) cells.push({ c, r, ch: dens > 0.7 ? '@' : dens > 0.45 ? 'O' : dens > 0.25 ? 'o' : '~', under: r === rows - 1 });
+        }
+    }
+    return { x: anywhere ? rand(-0.1, 1) * W : (wind >= 0 ? -len * CW : W + 10), y: rand(0.06, 0.4) * horizon, cells, speed: rand(0.6, 1.4) };
+}
+
+function birdInk(depth) {
+    // Dark silhouettes by day, fading toward the sky colour with distance.
+    const sky = skyColors();
+    // Near-black against a sunset; moonlit blue only once twilight is gone.
+    const ink = tone(mix([22, 20, 28], [40, 44, 70], (1 - light) * (1 - twilight)));
+    return mix(ink, sky.low, (1 - depth) * 0.35 * (0.4 + light * 0.6));
+}
+
+function drawScene(t) {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
     ctx.clearRect(0, 0, W, H);
-    stepPredator(scaledDt);
-    checkConsume();
-    stepFlock(scaledDt);
-    drawFlock();
-    drawPredator();
+    const sky = skyColors();
 
-    requestAnimationFrame(render);
+    // Stars (above the hills), fading in at night.
+    const night = 1 - light;
+    if (night > 0.05) {
+        for (let i = 0; i < 160; i++) {
+            const x = hash(i) * W, y = hash(i + 0.5) * (horizon - H * 0.15);
+            const a = night * (1 - twilight * 0.85) * (0.4 + 0.6 * Math.sin(t * (0.5 + hash(i + 2)) + i)) * 0.8;
+            stamp(hash(i + 3) < 0.15 ? '*' : '.', x, y, FS * 0.8, [230, 235, 255], a);
+        }
+    }
+
+    // Clouds, lit by the sky: pale by day, flushed at dusk, grey at night.
+    const cloudCol = tone(mix(mix([90, 95, 120], [250, 250, 255], light), [255, 175, 130], twilight * 0.6));
+    const underCol = tone(mix(cloudCol, sky.low, 0.35));
+    for (let i = 0; i < clouds.length; i++) {
+        const c = clouds[i];
+        c.x += (0.15 + wind) * c.speed * BASE * 0.02 / 30;
+        if (c.x > W + 40 * CW || c.x < -40 * CW) clouds[i] = newCloud(false);
+        for (const cell of c.cells) {
+            stamp(cell.ch, c.x + cell.c * CW, c.y + cell.r * FS * 0.9, FS, cell.under ? underCol : cloudCol, 0.55);
+        }
+    }
+
+    // Heron: slow, broad wingbeats.
+    if (heron.active) {
+        const up = heron.flap < 0.5;
+        const col = birdInk(0.9);
+        stamp(up ? '\\_/' : '-v-', heron.x, heron.y, FS * 1.5, col, 0.95);
+        stamp(heron.dir > 0 ? '>' : '<', heron.x + heron.dir * FS * 1.6, heron.y + FS * 0.2, FS * 1.1, col, 0.95);
+    }
+
+    // The flock, far birds first.
+    const order = [];
+    for (let i = 0; i < birds.length; i++) {
+        const b = birds[i];
+        if (b.state === FLY || b.state === LAND || b.state === ROOST_GO || b.state === LEAVE) order.push(b);
+    }
+    order.sort((a, b) => a.z - b.z);
+    const zMax = BASE * 0.5;
+    for (const b of order) {
+        const depth = clamp(b.z / zMax, 0, 1);
+        const size = FS * (0.7 + depth * 0.8) * (1 + b.panic * 0.35);
+        // Wingbeat: up, level, down, level. Gliding birds hold level; hard
+        // turns show as a bank.
+        const f = b.flap;
+        let ch = f < 0.25 ? 'v' : f < 0.5 ? '-' : f < 0.75 ? '^' : '-';
+        // A banking bird shows the whole spread of its wings: a bold V. This
+        // is what makes a panic wave read as a dark band moving through.
+        if (Math.abs(b.turn) > 0.14 || b.panic > 0.5) ch = 'V';
+        const col = mix(birdInk(depth), [0, 0, 0], b.panic * 0.4);
+        const alpha = b.state === ROOST_GO ? 0.9 : 0.7 + depth * 0.3;
+        stamp(ch, b.x, b.y, size, col, alpha);
+    }
+
+    // Birds on the wire: hunched, the odd wing stretch or turn.
+    for (const b of birds) {
+        if (b.state !== PERCH) continue;
+        b.idle += 1 / 30;
+        const ch = Math.sin(b.idle * 0.7) > 0.97 ? 'm' : Math.sin(b.idle * 0.3 + b.x) > 0.9 ? 'r' : 'n';
+        stamp(ch, b.x, b.y, FS * 0.9, birdInk(1), 0.95);
+    }
+
+    // Falcon.
+    if (falcon.state !== 'away') {
+        const col = tone(mix([40, 30, 24], [70, 60, 60], 1 - light));
+        const ch = falcon.state === 'stoop' ? 'V'
+            : falcon.state === 'carry' ? (falcon.flap < 0.5 ? 'W' : 'w')
+            : (falcon.flap < 0.5 ? 'M' : '~');
+        stamp(ch, falcon.x, falcon.y, FS * 1.4, col, 1);
+        if (falcon.state === 'carry') stamp('.', falcon.x, falcon.y + FS * 0.8, FS, col, 1);
+    }
+
+    // Meadow grass, swaying in the wind.
+    const grassCol = tone(scale(PAL.grass, 0.25 + 0.75 * light));
+    for (const g of grass) {
+        const sway = (wind * 0.6 + Math.sin(t * 1.7 + g.x * 0.02) * 0.3) * FS * 0.35;
+        stamp(g.ch, g.x + sway, horizon - FS * 0.2 - g.h * FS * 0.5, FS, grassCol, 0.9);
+    }
+
+    // Night: bats over the wood, fireflies over the meadow.
+    if (night > 0.3) {
+        for (const bat of bats) {
+            bat.a += rand(-1, 1) * 0.5;
+            bat.x = (bat.x + Math.cos(bat.a) * 0.004 + 1) % 1;
+            bat.y = clamp(bat.y + Math.sin(bat.a) * 0.004, 0.15, 0.7);
+            bat.flap = (bat.flap + 0.4) % 1;
+            stamp(bat.flap < 0.5 ? 'w' : 'm', bat.x * W, bat.y * horizon, FS * 1.1, tone([120, 110, 150]), night * 0.9);
+        }
+        for (const f of fireflies) {
+            const glow = Math.max(0, Math.sin(t * f.s + f.p)) ** 6;
+            if (glow < 0.05) continue;
+            const x = f.x * W + Math.sin(t * 0.3 + f.p) * 20;
+            const y = horizon + f.y * (H - horizon) * 0.8 - FS;
+            stamp(glow > 0.6 ? '*' : '.', x, y, FS * 0.8, tone([210, 255, 120]), glow * night);
+        }
+    }
+
+    // Feathers and weather.
+    for (const p of particles) {
+        let col;
+        if (p.kind === 'feather') col = birdInk(1);
+        else if (p.kind === 'snow') col = [240, 244, 255];
+        else if (p.kind === 'leaves') col = tone(mix([200, 90, 30], [230, 170, 50], p.hue));
+        else col = [240, 240, 230];
+        const a = p.kind === 'feather' ? 1 - p.life / p.max : p.kind === 'seeds' ? 0.6 * Math.min(1, (p.max - p.life) / 5) : 0.85;
+        stamp(p.ch, p.x, p.y, FS * (p.kind === 'snow' || p.kind === 'seeds' ? 0.8 : 1), col, a);
+    }
+    ctx.globalAlpha = 1;
 }
 
-function startAnimation() {
-    canvas.style.opacity = '1';
-    document.fonts.ready.then(() => {
-        resize();
-        initFlock();
-        initPredator();
-        requestAnimationFrame(render);
-    });
+// ─── Main loop ───────────────────────────────────────────────────────────────
+let clock = 0;
+let lastTs = 0;
+
+function frame(ts) {
+    requestAnimationFrame(frame);
+    if (window.innerWidth !== W || window.innerHeight !== H) resize();
+    if (W === 0 || H === 0) return;
+    if (lastTs && ts - lastTs < 31) return;   // ~30 fps
+    const dt = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 1 / 30) * P_SPEED;
+    lastTs = ts;
+    clock += dt;
+
+    // Night passes three times faster (it's the quiet part of the day) and
+    // dawn and dusk more slowly (they're the best part).
+    if (P_CYCLE_TIME > 0) {
+        const rate = light < 0.15 && twilight < 0.3 ? 3 : twilight > 0.4 ? 0.4 : 1;
+        phase = (phase + dt / (P_CYCLE_TIME * 60) * rate) % 1;
+    }
+    updateLight();
+    updateWind(dt, clock);
+    updateGoal(dt, clock);
+    updatePerching(clock);
+    updateRoost();
+    updateVisitors(dt);
+    updateFalcon(dt, clock);
+    updateHeron(dt, clock);
+    stepBirds(dt, clock);
+    spawnWeather(dt);
+    updateParticles(dt, clock);
+
+    if (clock - lastBackdrop > 0.5 || lastBackdrop < 0) { paintBackdrop(); lastBackdrop = clock; }
+    drawScene(clock);
 }
 
-if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
-else if (DELAYED_START) setTimeout(startAnimation, 4000);
-else setTimeout(startAnimation, 500);
+function start() {
+    backdrop.style.opacity = 1;
+    canvas.style.opacity = 1;
+    requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', resize);
+resize();
+updateLight();
+seedClouds();
+
+if (START_AT > 0) setTimeout(start, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(start, 4000);
+else setTimeout(start, 500);
 </script>
 </body>
 </html>
