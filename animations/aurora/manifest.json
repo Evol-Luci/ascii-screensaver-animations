@@ -1,10 +1,10 @@
 {
   "id": "aurora",
   "name": "Aurora",
-  "description": "A northern night: curtains of aurora with running rays, green at their feet and crimson at their crowns, cycle from quiet arcs through a substorm \u2014 flaring, racing, a corona overhead \u2014 to slow pulsing, over snowy peaks and a frozen lake that mirrors them. A cabin glows and smokes; a lone watcher stands on the shore.",
+  "description": "A northern night: curtains of aurora with running rays, green at their feet and crimson at their crowns, cycle from quiet arcs through a substorm — flaring, racing, a corona overhead — to slow pulsing, over snowy peaks and a frozen lake that mirrors them. A cabin glows and smokes; a lone watcher stands on the shore.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "2.0.0",
-  "preview": "preview.jpg",
+  "preview": "preview.gif",
   "params": [
     {
       "key": "speed",

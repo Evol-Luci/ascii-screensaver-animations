@@ -4,7 +4,7 @@
   "description": "A living gorge: a river pours over the lip as a particle simulation, breaking into spray and churning foam that drifts downstream; the flow swells with rain; mist holds a rainbow. Dippers bob on stones, swifts nest behind the fall, trout leap at dusk, a kingfisher darts past and a deer comes down to drink, under a day and night.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
   "version": "2.0.0",
-  "preview": "preview.jpg",
+  "preview": "preview.gif",
   "params": [
     {
       "key": "speed",
