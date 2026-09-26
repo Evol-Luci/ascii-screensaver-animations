@@ -173,7 +173,7 @@
       "description": "A northern night: curtains of aurora with running rays, green at their feet and crimson at their crowns, cycle from quiet arcs through a substorm \u2014 flaring, racing, a corona overhead \u2014 to slow pulsing, over snowy peaks and a frozen lake that mirrors them. A cabin glows and smokes; a lone watcher stands on the shore.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "2.0.0",
-      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.jpg",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.gif",
       "params": [
         {
           "key": "speed",
@@ -242,8 +242,7 @@
       "files": [
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/index.html",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/manifest.json",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.gif",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.jpg"
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.gif"
       ]
     },
     {
@@ -2522,7 +2521,7 @@
       "description": "A living gorge: a river pours over the lip as a particle simulation, breaking into spray and churning foam that drifts downstream; the flow swells with rain; mist holds a rainbow. Dippers bob on stones, swifts nest behind the fall, trout leap at dusk, a kingfisher darts past and a deer comes down to drink, under a day and night.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
       "version": "2.0.0",
-      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.jpg",
+      "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.gif",
       "params": [
         {
           "key": "speed",
@@ -2601,8 +2600,7 @@
       "files": [
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/index.html",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/manifest.json",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.gif",
-        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.jpg"
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.gif"
       ]
     },
     {
