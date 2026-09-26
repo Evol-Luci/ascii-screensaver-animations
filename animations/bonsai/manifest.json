@@ -1,9 +1,9 @@
 {
   "id": "bonsai",
   "name": "Bonsai",
-  "description": "A peaceful procedural tree growth simulation that brings digital nature to your terminal. It features customizable leaf density and rest times between redraws, letting you watch a unique bonsai tree slowly take shape, flourish, and then clear to begin anew.",
+  "description": "A bonsai\u2019s life, told slowly: an ens\u014d is brushed onto the wall and a seed falls into the pot, then the tree grows year by year in one of six classic styles, through blossom, full leaf, autumn colour and bare winter branches under snow. A gardener prunes it each summer, a bird visits, incense curls by a stone lantern, and in time it returns to mist.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "preview": "preview.gif",
   "params": [
     {
@@ -48,6 +48,31 @@
       "min": 60,
       "max": 900,
       "step": 30,
+      "integer": true
+    },
+    {
+      "key": "style",
+      "type": "select",
+      "label": "Style",
+      "defaultValue": "random",
+      "options": [
+        "random",
+        "chokkan",
+        "moyogi",
+        "shakan",
+        "kengai",
+        "bunjingi",
+        "fukinagashi"
+      ]
+    },
+    {
+      "key": "seasonTime",
+      "type": "range",
+      "label": "Season Time",
+      "defaultValue": 15,
+      "min": 5,
+      "max": 60,
+      "step": 1,
       "integer": true
     }
   ]
