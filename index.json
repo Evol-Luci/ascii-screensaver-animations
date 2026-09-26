@@ -304,10 +304,10 @@
     },
     {
       "id": "boids",
-      "name": "Boids Flock",
-      "description": "Classic boid flocking \u2014 separation, alignment, cohesion \u2014 with an optional predator that scatters the flock.",
+      "name": "Murmuration",
+      "description": "Starlings over a meadow through a full day: groups settle on the telegraph wire and ripple off it, a falcon stoops on the flock and panic runs through it in waves, and at dusk the flock swells into a murmuration over the wood before streaming down to roost. A heron crosses by day; bats and fireflies come out at night.",
       "author": "Luci Evol",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/boids/preview.gif",
       "params": [
         {
@@ -327,8 +327,8 @@
           "defaultValue": "birds",
           "options": [
             "birds",
-            "fish",
-            "abstract",
+            "autumn",
+            "winter",
             "mono"
           ]
         },
@@ -336,9 +336,9 @@
           "key": "flockSize",
           "type": "range",
           "label": "Flock Size",
-          "defaultValue": 60,
+          "defaultValue": 150,
           "min": 20,
-          "max": 150,
+          "max": 400,
           "step": 1,
           "integer": true
         },
@@ -366,7 +366,7 @@
           "key": "predator",
           "type": "select",
           "label": "Predator",
-          "defaultValue": 0,
+          "defaultValue": 1,
           "options": [
             0,
             1
@@ -380,6 +380,16 @@
           "min": 0.5,
           "max": 3,
           "step": 0.05,
+          "integer": false
+        },
+        {
+          "key": "cycleTime",
+          "type": "range",
+          "label": "Cycle Time",
+          "defaultValue": 8,
+          "min": 0,
+          "max": 30,
+          "step": 0.5,
           "integer": false
         }
       ],
