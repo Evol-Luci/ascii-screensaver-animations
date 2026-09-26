@@ -10,517 +10,539 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background: #020204;
+            background: #06070b;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
         }
 
-        body.screensaver-mode { cursor: none; }
-
         #storm-canvas {
+            position: fixed;
+            inset: 0;
             display: block;
             opacity: 0;
             transition: opacity 2s ease-in;
         }
-
-        .credits-popup {
-            position: fixed;
-            bottom: 32px;
-            right: 32px;
-            background: rgba(10, 8, 22, 0.92);
-            border: 1px solid rgba(120, 100, 200, 0.35);
-            border-radius: 8px;
-            padding: 20px 24px;
-            font-family: 'JetBrains Mono', 'Courier New', monospace;
-            font-size: 12px;
-            color: #8070a0;
-            max-width: 280px;
-            opacity: 0;
-            transition: opacity 2s ease-in-out;
-            z-index: 100;
-            line-height: 1.6;
-        }
-        .credits-popup.visible { opacity: 1; }
-        .credits-popup h2 {
-            font-size: 14px;
-            font-weight: 700;
-            color: #a090d0;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .credits-popup .credits-label {
-            font-size: 10px;
-            color: #504070;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 10px;
-            margin-bottom: 4px;
-        }
-        .credits-popup hr {
-            border: none;
-            border-top: 1px solid rgba(120, 100, 200, 0.25);
-            margin: 12px 0;
-        }
-        .credits-popup a { color: #9080b0; text-decoration: none; }
     </style>
 </head>
 <body>
 <canvas id="storm-canvas"></canvas>
 <script>
-const _params = new URLSearchParams(window.location.search);
-const DELAYED_START    = _params.has('delayedStart');
-const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+// A storm with a life.
+//
+// It gathers over the land — birds hurry for shelter, the wind rises — then
+// breaks: rain drives across in gusts, bolts branch down to the ground and
+// crawl along the cloud base, each flash throwing the whole landscape into
+// silhouette. It peaks, passes, and clears into a washed sky (a rainbow if
+// the sun is behind you), before the next one gathers. Each palette is its
+// own place: plains with a farmhouse and an oak, a tropical coast, a desert
+// of mesas and saguaros, or arctic pines under thundersnow.
 
-const P_INTENSITY  = parseFloat(_params.get('intensity')  || '1');
-const P_WIND       = parseFloat(_params.get('wind')       || '0.3');
-const P_LIGHTNING  = parseFloat(_params.get('lightning')  || '1');
-const P_PALETTE    = _params.get('palette') || 'tempest';
+// ─── Parameters ──────────────────────────────────────────────────────────────
+const _params       = new URLSearchParams(window.location.search);
+const DELAYED_START = _params.has('delayedStart');
+const START_AT      = parseInt(_params.get('startAt') || '0', 10);
 
-const canvas = document.getElementById('storm-canvas');
-const ctx    = canvas.getContext('2d');
+function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; }
+const P_INTENSITY = clamp(parseFloat(_params.get('intensity') || '1'), 0.2, 2);
+const P_WIND      = clamp(parseFloat(_params.get('wind') || '0.3'), -1, 1);
+const P_LIGHTNING = clamp(parseFloat(_params.get('lightning') || '1'), 0, 2);
+const P_PALETTE   = _params.get('palette') || 'tempest';
+const P_CYCLE     = clamp(parseFloat(_params.get('cycleTime') || '4'), 0, 20);   // minutes per storm; 0 = endless storm
 
-const FONT_SIZE = 14;
-let CHAR_W = 8.4;
-let CHAR_H = 17.5;
-let cols = 0, rows = 0;
-
-function measureFont() {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    CHAR_W = ctx.measureText('M').width;
-    CHAR_H = FONT_SIZE * 1.25;
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+function lerp(a, b, k) { return a + (b - a) * k; }
+function mix(a, b, k) { return [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)]; }
+function scale(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+function noise2(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const h = (a, b) => hash(a * 157.31 + b * 811.13);
+    return lerp(lerp(h(xi, yi), h(xi + 1, yi), u), lerp(h(xi, yi + 1), h(xi + 1, yi + 1), u), v);
 }
+const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+
+// ─── Places ──────────────────────────────────────────────────────────────────
+const PLACES = {
+    tempest:  { sky: [[18, 22, 34], [40, 46, 62]], clear: [[40, 70, 120], [170, 190, 210]], cloud: [70, 76, 92], land: [22, 30, 24], grass: [60, 90, 50], rain: [150, 170, 200], bolt: [220, 230, 255], kind: 'plains' },
+    tropical: { sky: [[14, 24, 34], [34, 56, 66]], clear: [[40, 110, 160], [200, 220, 200]], cloud: [60, 80, 90], land: [30, 34, 26], grass: [60, 120, 70], rain: [150, 200, 210], bolt: [210, 240, 255], kind: 'coast' },
+    desert:   { sky: [[30, 22, 22], [70, 50, 44]], clear: [[70, 90, 140], [230, 190, 150]], cloud: [96, 80, 76], land: [70, 44, 30], grass: [120, 110, 60], rain: [190, 170, 160], bolt: [255, 230, 210], kind: 'desert' },
+    arctic:   { sky: [[20, 26, 36], [60, 70, 86]], clear: [[70, 100, 150], [210, 225, 240]], cloud: [96, 104, 120], land: [150, 160, 176], grass: [180, 190, 205], rain: [230, 236, 250], bolt: [220, 235, 255], kind: 'arctic' },
+    mono:     { sky: [[12, 12, 14], [40, 40, 44]], clear: [[60, 60, 64], [170, 170, 176]], cloud: [80, 80, 84], land: [24, 24, 26], grass: [80, 80, 84], rain: [170, 170, 176], bolt: [240, 240, 244], kind: 'plains' },
+};
+const PL = PLACES[P_PALETTE] || PLACES.tempest;
+const SNOW = PL.kind === 'arctic';
+
+// ─── Canvas ──────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('storm-canvas');
+const ctx = canvas.getContext('2d');
+const cloudLayer = document.createElement('canvas');   // ASCII cloud deck, refreshed a few times a second
+const cctx = cloudLayer.getContext('2d');
+const landLayer = document.createElement('canvas');    // landscape silhouette, painted on resize
+const lctx = landLayer.getContext('2d');
+
+let W = 0, H = 0, FS = 12, CW = 7.2, CH = 12, COLS = 0;
+let ground = [], horizonY = 0, cloudBase = 0;
+let props = [];   // trees, house, cacti… with positions
 
 function resize() {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-    measureFont();
-    cols = Math.floor(canvas.width  / CHAR_W);
-    rows = Math.floor(canvas.height / CHAR_H);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.max(1, W); canvas.height = Math.max(1, H);
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    for (const c of [cloudLayer, landLayer]) { c.width = Math.max(1, W); c.height = Math.max(1, H); }
+    FS = clamp(Math.round(Math.min(W, H) / 60), 8, 18);
+    CW = FS * 0.6; CH = FS * 1.05;
+    COLS = Math.ceil(W / CW);
+    horizonY = H * 0.74;
+    cloudBase = H * 0.36;
+    glyphCache.clear();
+    buildLand();
+    paintLand();
+}
+
+const glyphCache = new Map();
+if (document.fonts) document.fonts.ready.then(() => { glyphCache.clear(); paintLand(); });
+function sprite(ch, col, size) {
+    size = size || FS;
+    const q = (v) => (clamp(v, 0, 255) >> 3) << 3;
+    const r = q(col[0]), g = q(col[1]), b = q(col[2]);
+    const key = ch + '|' + size + '|' + r + ',' + g + ',' + b;
+    let s = glyphCache.get(key);
+    if (!s) {
+        if (glyphCache.size > 6000) glyphCache.clear();
+        const w = Math.ceil(size * 0.62 * ch.length + size * 0.4) + 2, h = Math.ceil(size * 1.3) + 2;
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d');
+        x.font = `700 ${size}px "JetBrains Mono", monospace`;
+        x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillStyle = `rgb(${r},${g},${b})`;
+        x.fillText(ch, w / 2, h / 2);
+        s = { c, w, h };
+        glyphCache.set(key, s);
+    }
+    return s;
+}
+function stampOn(g, ch, x, y, col, alpha, size) {
+    if (alpha <= 0.01) return;
+    const s = sprite(ch, col, size);
+    g.globalAlpha = Math.min(1, alpha);
+    g.drawImage(s.c, x - s.w / 2, y - s.h / 2);
+}
+const stamp = (ch, x, y, col, alpha, size) => stampOn(ctx, ch, x, y, col, alpha, size);
+
+// ─── The land ────────────────────────────────────────────────────────────────
+function buildLand() {
+    ground = [];
+    for (let c = 0; c <= COLS; c++) {
+        const u = c / COLS;
+        let h;
+        if (PL.kind === 'desert') {
+            // Flat-topped mesas.
+            const m = Math.max(0, Math.sin(u * 5.5 + 1)) > 0.55 ? 0.12 : 0.03;
+            h = H * (m + 0.01 * Math.sin(u * 40));
+        } else if (PL.kind === 'coast') {
+            h = u < 0.55 ? H * (0.02 + 0.015 * Math.sin(u * 12)) : H * 0.004;   // shore, then sea
+        } else {
+            h = H * (0.03 + 0.03 * Math.sin(u * 4.3 + 0.8) + 0.012 * Math.sin(u * 17));
+        }
+        ground.push(h);
+    }
+    props = [];
+    if (PL.kind === 'plains') {
+        props.push({ kind: 'oak', x: W * 0.28 });
+        props.push({ kind: 'house', x: W * 0.68 });
+        for (let x = W * 0.45; x < W * 0.62; x += CW * 3) props.push({ kind: 'fence', x });
+    } else if (PL.kind === 'coast') {
+        for (const f of [0.12, 0.2, 0.37, 0.45]) props.push({ kind: 'palm', x: W * f, h: rand(5, 8) });
+        props.push({ kind: 'hut', x: W * 0.3 });
+    } else if (PL.kind === 'desert') {
+        for (const f of [0.2, 0.33, 0.58, 0.8, 0.9]) props.push({ kind: 'cactus', x: W * f, h: rand(3, 5) });
+    } else {
+        for (let i = 0; i < 16; i++) props.push({ kind: 'pine', x: W * (0.04 + i * 0.062 + rand(-0.02, 0.02)), h: Math.floor(rand(3, 7)) });
+        props.push({ kind: 'cabin', x: W * 0.55 });
+    }
+}
+function groundAt(x) { return horizonY - ground[clamp(Math.round(x / CW), 0, ground.length - 1)]; }
+
+// Silhouette of the land and its fixed features.
+function paintLand() {
+    const g = lctx;
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = css(PL.land);
+    g.beginPath(); g.moveTo(0, H);
+    ground.forEach((h, c) => g.lineTo(c * CW, horizonY - h));
+    g.lineTo(W, H); g.closePath(); g.fill();
+    if (PL.kind === 'coast') {
+        g.fillStyle = css(mix(PL.land, [20, 40, 60], 0.6));
+        g.fillRect(W * 0.55, horizonY, W * 0.45, H - horizonY);
+    }
+    // A band of ground texture.
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `700 ${FS}px "JetBrains Mono", monospace`;
+    g.fillStyle = css(scale(PL.land, 1.5));
+    for (let y = horizonY + CH; y < H; y += CH) {
+        for (let x = 0; x < W; x += CW * 2) if (hash(x * 0.3 + y) < 0.2 && !(PL.kind === 'coast' && x > W * 0.55)) g.fillText(PL.kind === 'arctic' ? '.' : ',', x, y);
+    }
+}
+
+// ─── Storm cycle ─────────────────────────────────────────────────────────────
+// gather → break → peak → pass → clear → gather …
+const STAGES = ['gather', 'break', 'peak', 'pass', 'clear'];
+const STAGE_LEN = { gather: 0.18, break: 0.14, peak: 0.28, pass: 0.18, clear: 0.22 };
+const storm = { stage: 'break', t: 0, rain: 0.5, dark: 0.8, lightning: 0.6, wind: 0.5, rainbow: 0 };
+function updateStorm(dt) {
+    if (P_CYCLE <= 0) { storm.stage = 'peak'; }
+    else {
+        storm.t += dt;
+        const len = STAGE_LEN[storm.stage] * P_CYCLE * 60;
+        if (storm.t > len) { storm.t = 0; storm.stage = STAGES[(STAGES.indexOf(storm.stage) + 1) % STAGES.length]; }
+    }
+    const target = {
+        gather: { rain: 0.05, dark: 0.7, lightning: 0.15, wind: 0.7 },
+        break:  { rain: 0.6, dark: 0.9, lightning: 0.7, wind: 1.0 },
+        peak:   { rain: 1.0, dark: 1.0, lightning: 1.0, wind: 1.0 },
+        pass:   { rain: 0.4, dark: 0.6, lightning: 0.35, wind: 0.6 },
+        clear:  { rain: 0.0, dark: 0.15, lightning: 0.0, wind: 0.25 },
+    }[storm.stage];
+    const k = Math.min(1, dt * 0.25);
+    for (const key of ['rain', 'dark', 'lightning', 'wind']) storm[key] += (target[key] - storm[key]) * k;
+    storm.rainbow += ((storm.stage === 'clear' ? 1 : 0) - storm.rainbow) * Math.min(1, dt * 0.15);
+}
+
+// ─── Wind ────────────────────────────────────────────────────────────────────
+let gust = 0, gustTarget = 0, untilGust = 3;
+function windNow() { return (P_WIND + gust * Math.sign(P_WIND || 1)) * storm.wind; }
+function updateWind(dt) {
+    untilGust -= dt;
+    if (untilGust <= 0) { gustTarget = rand(0, 1) * storm.wind; untilGust = rand(3, 9); }
+    gustTarget *= Math.exp(-dt * 0.4);
+    gust += (gustTarget - gust) * Math.min(1, dt * 1.5);
+}
+
+// ─── Clouds ──────────────────────────────────────────────────────────────────
+// A rolling deck: 2D noise drifting with the wind, rendered to ASCII a few
+// times a second and lit from within by in-cloud flashes.
+let cloudOffset = 0, lastCloud = -1;
+const CLOUD_RAMP = ' .:-=+*#%@';
+function paintClouds(t) {
+    const g = cctx;
+    g.clearRect(0, 0, W, H);
+    const rows = Math.ceil(cloudBase / CH) + 2;
+    const cover = 0.25 + storm.dark * 0.6;
+    for (let r = 0; r < rows; r++) {
+        const y = r * CH;
+        const depth = r / rows;   // 0 top, 1 base
+        for (let c = 0; c < COLS; c++) {
+            const x = c * CW;
+            const n = noise2(c * 0.045 + cloudOffset, r * 0.12 + t * 0.02) * 0.6
+                    + noise2(c * 0.12 + cloudOffset * 1.6, r * 0.3 - t * 0.05) * 0.4;
+            // Thicker toward the base, with a ragged underside.
+            let d = n * cover * 1.6 - (depth > 0.85 ? (depth - 0.85) * 6 : 0) + (1 - depth) * 0.1;
+            if (d < 0.3) continue;
+            const v = clamp((d - 0.3) / 0.7, 0, 1);
+            const ch = CLOUD_RAMP[Math.min(CLOUD_RAMP.length - 1, 1 + Math.floor(v * (CLOUD_RAMP.length - 1)))];
+            // Pale, lit tops; dark, heavy bellies.
+            const top = mix(PL.cloud, [200, 205, 215], 0.45), belly = scale(PL.cloud, 0.35);
+            const col = mix(top, belly, clamp(depth * 0.8 + v * 0.3 + storm.dark * 0.2, 0, 1));
+            stampOn(g, ch, x, y, col, 0.45 + v * 0.55);
+        }
+    }
+}
+
+// ─── Lightning ───────────────────────────────────────────────────────────────
+const bolts = [];
+let flash = 0, flashX = W / 2, untilBolt = 3;
+
+function makeBolt(x0, y0, x1, y1, depth, thick) {
+    // Midpoint displacement with occasional forks.
+    const pts = [[x0, y0], [x1, y1]];
+    for (let it = 0; it < 6; it++) {
+        for (let i = pts.length - 1; i > 0; i--) {
+            const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
+            const len = Math.hypot(bx - ax, by - ay);
+            pts.splice(i, 0, [(ax + bx) / 2 + rand(-0.25, 0.25) * len, (ay + by) / 2 + rand(-0.08, 0.08) * len]);
+        }
+    }
+    const branches = [];
+    if (depth < 2) {
+        for (let i = 4; i < pts.length - 4; i += 1) {
+            if (Math.random() < 0.05) {
+                const [bx, by] = pts[i];
+                const len = (y1 - y0) * rand(0.2, 0.45) / (depth + 1);
+                branches.push(makeBolt(bx, by, bx + rand(-1, 1) * len * 0.8, by + len, depth + 1, thick * 0.5));
+            }
+        }
+    }
+    return { pts, branches, thick };
+}
+
+function strike(t) {
+    const cg = Math.random() < 0.7;   // cloud-to-ground, else a crawler along the base
+    const x = rand(0.05, 0.95) * W;
+    let bolt;
+    if (cg) {
+        bolt = makeBolt(x, cloudBase * rand(0.6, 0.95), x + rand(-0.12, 0.12) * W, groundAt(x) + 2, 0, 1);
+    } else {
+        const y = cloudBase * rand(0.7, 1);
+        bolt = makeBolt(x, y, x + rand(-0.4, 0.4) * W, y + rand(-0.05, 0.08) * H, 1, 0.6);
+    }
+    // Return strokes: the channel flickers a few times.
+    bolt.flicker = Array.from({ length: Math.floor(rand(1, 4)) }, (_, i) => i * rand(0.06, 0.12));
+    bolt.life = 0; bolt.max = 0.5 + bolt.flicker.length * 0.1; bolt.ground = cg;
+    bolts.push(bolt);
+    flash = cg ? 1 : 0.6;
+    flashX = x;
+    thunderIn = rand(0.4, 2.5);   // the sky rumbles a moment later (shown as a low tremor)
+}
+let thunderIn = -1, rumble = 0;
+
+function updateLightning(dt, t) {
+    untilBolt -= dt;
+    const rate = storm.lightning * P_LIGHTNING;
+    if (untilBolt <= 0) {
+        untilBolt = rand(1.5, 7) / Math.max(0.05, rate);
+        if (rate > 0.05) strike(t);
+    }
+    for (let i = bolts.length - 1; i >= 0; i--) { bolts[i].life += dt; if (bolts[i].life > bolts[i].max) bolts.splice(i, 1); }
+    flash *= Math.exp(-dt * 7);
+    if (thunderIn > 0) { thunderIn -= dt; if (thunderIn <= 0) rumble = 1; }
+    rumble *= Math.exp(-dt * 2);
+}
+
+function drawBolt(b, alpha) {
+    const walk = (bolt, a) => {
+        for (let i = 1; i < bolt.pts.length; i++) {
+            const [ax, ay] = bolt.pts[i - 1], [bx, by] = bolt.pts[i];
+            const dx = bx - ax, dy = by - ay;
+            const n = Math.max(1, Math.round(Math.hypot(dx, dy) / (CH * 0.6)));
+            const ch = Math.abs(dx) < Math.abs(dy) * 0.4 ? '|' : dx * dy > 0 ? '\\' : '/';
+            for (let k = 0; k < n; k++) stamp(ch, ax + dx * k / n, ay + dy * k / n, PL.bolt, a * bolt.thick + 0.2);
+        }
+        for (const br of bolt.branches) walk(br, a * 0.7);
+    };
+    walk(b, alpha);
+}
+
+// ─── Rain, splashes, props, birds ────────────────────────────────────────────
+const drops = [];
+const splashes = [];
+const birds = [];
+let untilFlock = 2;
+
+function updateRain(dt) {
+    const want = Math.floor((SNOW ? 500 : 700) * storm.rain * P_INTENSITY);
+    while (drops.length < want) drops.push({ x: rand(-0.2, 1.2) * W, y: rand(-H, cloudBase), v: rand(0.8, 1.2), z: rand(0.4, 1) });
+    if (drops.length > want) drops.length = Math.max(0, want);
+    const w = windNow();
+    for (const d of drops) {
+        const vy = (SNOW ? H * 0.12 : H * 1.3) * d.v * d.z;
+        const vx = w * (SNOW ? W * 0.12 : W * 0.35) * d.z + (SNOW ? Math.sin(d.y * 0.02 + d.x) * W * 0.02 : 0);
+        d.x += vx * dt; d.y += vy * dt;
+        const gy = groundAt(d.x);
+        if (d.y > gy) {
+            if (!SNOW && Math.random() < 0.3) splashes.push({ x: d.x, y: gy - 2, life: 0 });
+            d.x = rand(-0.2, 1.2) * W; d.y = rand(cloudBase * 0.5, cloudBase);
+        }
+        if (d.x > W * 1.25) d.x -= W * 1.4;
+        if (d.x < -W * 0.25) d.x += W * 1.4;
+    }
+    for (let i = splashes.length - 1; i >= 0; i--) { splashes[i].life += dt; if (splashes[i].life > 0.3) splashes.splice(i, 1); }
+}
+
+function updateBirds(dt) {
+    // Before the storm, flocks hurry across toward shelter.
+    untilFlock -= dt;
+    if (untilFlock <= 0 && (storm.stage === 'gather' || storm.stage === 'clear')) {
+        untilFlock = rand(6, 14);
+        const dir = P_WIND >= 0 ? 1 : -1, y = rand(0.4, 0.62) * H, n = Math.floor(rand(4, 9));
+        for (let i = 0; i < n; i++) birds.push({ x: dir > 0 ? -20 - i * CW * 2 : W + 20 + i * CW * 2, y: y + Math.abs(i - n / 2) * CH * 0.6, dir, v: W * rand(0.14, 0.18), p: rand(0, 6) });
+    }
+    for (let i = birds.length - 1; i >= 0; i--) {
+        const b = birds[i];
+        b.x += b.dir * b.v * dt; b.p += dt * 10;
+        if (b.x < -60 || b.x > W + 60) birds.splice(i, 1);
+    }
+}
+
+function drawProps(t, light) {
+    const w = windNow();
+    // Props are drawn at a larger glyph size so they read against the sky.
+    const PS = Math.round(FS * 1.5);
+    const stamp = (ch, x, y, col, a) => stampOn(ctx, ch, x, y, col, a, PS);
+    const CW = PS * 0.6, CH = PS * 1.05;
+    const sil = scale(PL.land, 0.7 + light * 0.8);
+    const leaf = mix(sil, PL.grass, 0.35 + light * 0.3);
+    for (const p of props) {
+        const gy = groundAt(p.x);
+        if (p.kind === 'oak') {
+            for (let k = 1; k <= 4; k++) stamp('||', p.x, gy - CH * k, sil, 1);
+            // A crown that leans and heaves with the wind.
+            for (let r = 0; r < 5; r++) for (let c = -6 + Math.abs(r - 2); c <= 6 - Math.abs(r - 2); c++) {
+                const lean = w * (5 - r) * CW * 0.25 + Math.sin(t * 3 + r + c) * CW * 0.15 * storm.wind;
+                if (hash(c * 3.1 + r * 7) < 0.15) continue;
+                stamp(hash(c + r * 5) < 0.5 ? '@' : '&', p.x + c * CW + lean, gy - CH * (5 + r), leaf, 1);
+            }
+        } else if (p.kind === 'house' || p.kind === 'cabin' || p.kind === 'hut') {
+            const lines = p.kind === 'hut' ? ['/^^\\', '|  |'] : ['  /\\  ', ' /  \\ ', '/____\\', '|[] []|', '|  |  |'];
+            lines.forEach((line, i) => {
+                for (let j = 0; j < line.length; j++) if (line[j] !== ' ') stamp(line[j], p.x + (j - line.length / 2) * CW, gy - CH * (lines.length - i), sil, 1);
+            });
+            // Lamplight in the window.
+            const win = [255, 200, 110], f = 0.85 + 0.15 * Math.sin(t * 6) * Math.sin(t * 2.7);
+            stamp('#', p.x - CW * 1.5, gy - CH * 2, win, f);
+            if (p.kind !== 'hut') stamp('#', p.x + CW * 1.5, gy - CH * 2, win, f * 0.9);
+        } else if (p.kind === 'fence') {
+            stamp('+', p.x, gy - CH * 0.8, sil, 1); stamp('-', p.x + CW * 1.5, gy - CH * 0.8, sil, 1);
+        } else if (p.kind === 'palm') {
+            const bend = w * CW * 0.6;
+            for (let k = 1; k <= p.h; k++) stamp(')', p.x + bend * k * k / p.h / 2, gy - CH * k, sil, 1);
+            const tx = p.x + bend * p.h / 2, ty = gy - CH * (p.h + 0.6);
+            for (let f = -3; f <= 3; f++) {
+                const sway = w * CW * 2 + Math.sin(t * 4 + f) * CW * 0.4 * storm.wind;
+                stamp(f < 0 ? '/' : f > 0 ? '\\' : '|', tx + f * CW * 1.2 + sway * 0.6, ty + Math.abs(f) * CH * 0.35, leaf, 1);
+                stamp('~', tx + f * CW * 1.8 + sway, ty + Math.abs(f) * CH * 0.5 + CH * 0.5, leaf, 0.9);
+            }
+        } else if (p.kind === 'cactus') {
+            for (let k = 1; k <= p.h; k++) stamp('|', p.x, gy - CH * k, leaf, 1);
+            stamp('L', p.x - CW, gy - CH * (p.h - 1), leaf, 1); stamp('J', p.x + CW, gy - CH * (p.h - 2), leaf, 1);
+        } else if (p.kind === 'pine') {
+            const sway = w * CW * 0.4;
+            for (let k = 0; k < p.h; k++) stamp(k === p.h - 1 ? '^' : '/\\', p.x + sway * k / p.h, gy - CH * (k + 1), leaf, 1);
+        }
+    }
+}
+
+// Sea swell on the coast.
+function drawSea(t, light) {
+    if (PL.kind !== 'coast') return;
+    const w = windNow();
+    for (let y = horizonY + CH * 0.5; y < H; y += CH) {
+        const depth = (y - horizonY) / (H - horizonY);
+        for (let x = W * 0.56; x < W; x += CW) {
+            const h = Math.sin(x * 0.03 + t * 1.5 + depth * 8) + Math.sin(x * 0.07 - t * 2.2 * (1 + storm.wind));
+            const crest = h > 1.55 - storm.wind * 0.3 && hash(Math.round(x / CW) * 3.7 + Math.round(t * 2)) < 0.5;
+            stamp(crest ? '^' : h > 0 ? '~' : '-', x + w * CW * 0.5, y, crest ? mix(PL.rain, [255, 255, 255], 0.5) : scale(PL.rain, 0.3 + light * 0.4), crest ? 0.8 : 0.4);
+        }
+    }
+}
+
+// ─── Frame ───────────────────────────────────────────────────────────────────
+let clock = 0, lastTs = 0;
+
+function draw(t) {
+    const g = ctx;
+    const light = Math.min(1, flash);
+    const clearness = 1 - storm.dark;
+    // Sky: storm-dark, clearing to a washed blue; flashes light it up.
+    const top = mix(mix(PL.sky[0], PL.clear[0], clearness), PL.bolt, light * 0.35);
+    const low = mix(mix(PL.sky[1], PL.clear[1], clearness * 0.8), PL.bolt, light * 0.5);
+    const shake = rumble * (Math.random() - 0.5) * 3;
+    g.setTransform(1, 0, 0, 1, 0, shake);
+    g.globalAlpha = 1;
+    const grad = g.createLinearGradient(0, 0, 0, horizonY);
+    grad.addColorStop(0, css(top)); grad.addColorStop(1, css(low));
+    g.fillStyle = grad;
+    g.fillRect(0, -4, W, H + 8);
+
+    // Rainbow in the clearing, opposite the setting sun.
+    if (storm.rainbow > 0.05) {
+        const cx = W * 0.62, cy = horizonY + H * 0.05, R = Math.min(W, H) * 0.55;
+        const bands = [[255, 80, 80], [255, 160, 60], [250, 230, 90], [90, 210, 110], [80, 150, 255], [150, 100, 230]];
+        bands.forEach((c, i) => {
+            const r = R - i * CH * 0.9;
+            for (let a = Math.PI * 1.05; a < Math.PI * 1.95; a += CW / r) {
+                stamp('~', cx + Math.cos(a) * r, cy + Math.sin(a) * r, c, 0.3 * storm.rainbow);
+            }
+        });
+    }
+
+    // Clouds (lit from within at the flash).
+    g.globalAlpha = 0.4 + storm.dark * 0.6;
+    g.drawImage(cloudLayer, 0, 0);
+    if (light > 0.05) {
+        const glow = g.createRadialGradient(flashX, cloudBase * 0.7, 0, flashX, cloudBase * 0.7, W * 0.4);
+        glow.addColorStop(0, css(PL.bolt, 0.5 * light));
+        glow.addColorStop(1, css(PL.bolt, 0));
+        g.globalAlpha = 1;
+        g.fillStyle = glow;
+        g.fillRect(0, 0, W, horizonY);
+    }
+
+    // Bolts.
+    for (const b of bolts) {
+        const on = b.flicker.some(f => b.life >= f && b.life < f + 0.07) || b.life < 0.05;
+        drawBolt(b, on ? 1 : 0.18 * (1 - b.life / b.max));
+    }
+
+    // Birds.
+    for (const b of birds) stamp(Math.sin(b.p) > 0 ? 'v' : '-', b.x, b.y, scale(PL.land, 0.5), 0.9);
+
+    // Land, then what stands on it; at a flash everything becomes silhouette
+    // against the lit sky.
+    g.globalAlpha = 1;
+    g.drawImage(landLayer, 0, 0);
+    drawSea(t, light);
+    drawProps(t, clearness * 0.4);
+    // Grass along the skyline, bending in the wind.
+    const w = windNow();
+    for (let c = 0; c < COLS; c += 2) {
+        const x = c * CW;
+        if (PL.kind === 'coast' && x > W * 0.55) continue;
+        stamp(Math.abs(w) > 0.5 ? (w > 0 ? '/' : '\\') : pick2(c, [',', '\'', '"']), x + w * CW * 0.4, groundAt(x) - CH * 0.3, mix(PL.grass, PL.bolt, light * 0.3), 0.8);
+    }
+
+    // Rain or snow.
+    const rainCol = mix(PL.rain, PL.bolt, light * 0.6);
+    const streak = SNOW ? '*' : Math.abs(w) < 0.25 ? '|' : w > 0 ? '\\' : '/';
+    for (const d of drops) stamp(SNOW ? (d.z > 0.7 ? '*' : '.') : streak, d.x, d.y, rainCol, (0.25 + d.z * 0.45) * (0.7 + light * 0.3));
+    for (const s of splashes) stamp(s.life < 0.12 ? 'o' : '.', s.x, s.y, rainCol, 0.6 * (1 - s.life / 0.3));
+
+    // A dark flash frame: for an instant after a strike the land goes black.
+    if (light > 0.6) {
+        g.globalAlpha = (light - 0.6) * 0.8;
+        g.fillStyle = css(PL.bolt);
+        g.fillRect(0, 0, W, horizonY * 0.2);
+    }
+    g.globalAlpha = 1;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+}
+function pick2(i, list) { return list[Math.floor(hash(i) * list.length)]; }
+
+function frame(ts) {
+    requestAnimationFrame(frame);
+    if (window.innerWidth !== W || window.innerHeight !== H) resize();
+    if (W === 0 || H === 0) return;
+    if (lastTs && ts - lastTs < 33) return;   // ~30 fps
+    const dt = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 1 / 30);
+    lastTs = ts;
+    clock += dt;
+    updateStorm(dt);
+    updateWind(dt);
+    updateLightning(dt, clock);
+    updateRain(dt);
+    updateBirds(dt);
+    cloudOffset += windNow() * dt * 0.25 + dt * 0.02;
+    if (clock - lastCloud > 0.2) { paintClouds(clock); lastCloud = clock; }
+    draw(clock);
+}
+
+function start() {
+    canvas.style.opacity = 1;
+    requestAnimationFrame(frame);
 }
 
 window.addEventListener('resize', resize);
+resize();
+if (_params.has('stage')) { storm.stage = STAGES[clamp(parseInt(_params.get('stage'), 10), 0, 4)]; }   // testing hook
 
-const PALETTES = {
-    tempest: {
-        skyDark:   [4, 4, 14],
-        skyCloud:  [16, 18, 36],
-        rain:      '#506090',
-        rainBright:'#8090c0',
-        lightning: '#c0c0ff',
-        flashTint: [36, 36, 70],
-        cloud:     '#14142a',
-        cloudLight:'#282848',
-        ground:    '#08080e',
-    },
-    tropical: {
-        skyDark:   [3, 12, 16],
-        skyCloud:  [10, 26, 34],
-        rain:      '#408070',
-        rainBright:'#70b090',
-        lightning: '#c0ffe0',
-        flashTint: [22, 54, 44],
-        cloud:     '#0c2018',
-        cloudLight:'#183830',
-        ground:    '#06100c',
-    },
-    desert: {
-        skyDark:   [16, 10, 4],
-        skyCloud:  [36, 24, 14],
-        rain:      '#b07020',
-        rainBright:'#d09040',
-        lightning: '#ffe060',
-        flashTint: [56, 40, 16],
-        cloud:     '#24180e',
-        cloudLight:'#3c2818',
-        ground:    '#100c06',
-    },
-    arctic: {
-        skyDark:   [8, 12, 20],
-        skyCloud:  [24, 32, 46],
-        rain:      '#7090b0',
-        rainBright:'#a0c0e0',
-        lightning: '#dce4ff',
-        flashTint: [32, 40, 62],
-        cloud:     '#18202e',
-        cloudLight:'#2c3850',
-        ground:    '#0a0e14',
-    },
-    mono: {
-        skyDark:   [6, 6, 6],
-        skyCloud:  [20, 20, 20],
-        rain:      '#606060',
-        rainBright:'#909090',
-        lightning: '#e0e0e0',
-        flashTint: [34, 34, 34],
-        cloud:     '#121212',
-        cloudLight:'#282828',
-        ground:    '#080808',
-    },
-};
-
-const PAL = PALETTES[P_PALETTE] || PALETTES.tempest;
-
-const RAIN_CHARS = ['/', '│', '╱', '╲', '┆', '┊'];
-
-class Raindrop {
-    constructor() {
-        this.reset();
-    }
-    reset() {
-        this.x = Math.random() * (cols + 15) - 7;
-        this.y = Math.random() * -rows * 1.5;
-        this.speed = 2.5 + Math.random() * 4;
-        this.length = 3 + Math.floor(Math.random() * 7);
-        this.char = RAIN_CHARS[Math.floor(Math.random() * RAIN_CHARS.length)];
-        this.bright = Math.random() < 0.12;
-        this.wind = P_WIND + (Math.random() - 0.5) * 0.4;
-        this.heavy = Math.random() < 0.08 * P_INTENSITY;
-    }
-}
-
-const MAX_DROPS = 600;
-let drops = [];
-for (let i = 0; i < MAX_DROPS; i++) drops.push(new Raindrop());
-
-class Cloud {
-    constructor() {
-        this.x = Math.random() * (cols + 30) - 15;
-        this.y = Math.floor(Math.random() * (rows * 0.2));
-        this.w = 12 + Math.floor(Math.random() * 24);
-        this.h = 2 + Math.floor(Math.random() * 4);
-        this.speed = 0.015 + Math.random() * 0.035;
-        this.density = 0.3 + Math.random() * 0.4;
-        this.bumpiness = Math.random() * 3 + 2;
-        this.bottomHeavy = Math.random() < 0.5;
-    }
-}
-
-let clouds = [];
-for (let i = 0; i < 10; i++) clouds.push(new Cloud());
-
-const CLOUD_CHARS = [' ', '░', '▒', '▓', '█'];
-
-class Lightning {
-    constructor(startX, startY, isConsecutive = false) {
-        this.segments = [];
-        this.branches = [];
-        this.life = 8 + Math.floor(Math.random() * 8);
-        this.age = 0;
-        this.brightness = 0.85 + Math.random() * 0.15;
-        this.flashAfterglow = 1.0;
-        this.generate(startX, startY, isConsecutive);
-    }
-
-    generate(sx, sy, isConsecutive) {
-        let x = sx;
-        let y = sy;
-        // Allow bolts to sometimes strike closer to the ground
-        const endY = rows - Math.floor(Math.random() * (rows * 0.15));
-        this.segments.push({x, y});
-        
-        // Add an overall horizontal bias to the main bolt for more natural slanting
-        const mainBias = (Math.random() - 0.5) * (isConsecutive ? 8 : 5);
-        
-        while (y < endY) {
-            // More erratic vertical jumps
-            y += 1 + Math.floor(Math.random() * 3);
-            
-            // If consecutive, spread significantly more horizontally to create bridges
-            let spread = isConsecutive ? 19 : 11;
-            let offset = isConsecutive ? 9 : 5;
-            x += Math.floor(Math.random() * spread) - offset + mainBias;
-            
-            x = Math.max(0, Math.min(cols - 1, x));
-            this.segments.push({x, y});
-
-            // Increased chance to branch, heavily increased if consecutive bridging
-            let branchProb = isConsecutive ? 0.6 : 0.35;
-            if (Math.random() < branchProb) {
-                let bx = x, by = y;
-                
-                // Longer branches, especially if consecutive (to bridge to the other bolt)
-                let maxLen = isConsecutive ? 28 : 16;
-                const bLen = 4 + Math.floor(Math.random() * maxLen);
-                
-                // Flatter branches spread further horizontally
-                const bDir = (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random() * (isConsecutive ? 4.5 : 2.5));
-                for (let b = 0; b < bLen; b++) {
-                    bx += Math.floor(Math.random() * 3) * Math.sign(bDir) + bDir;
-                    // Make bridging branches much flatter so they reach sideways
-                    let fall = isConsecutive ? (Math.random() < 0.4 ? 0 : 1) : (1 + Math.floor(Math.random() * 2));
-                    by += fall;
-                    
-                    bx = Math.max(0, Math.min(cols - 1, bx));
-                    if (by < rows) this.branches.push({x: bx, y: by});
-                    
-                    // Sub-branches for extreme complexity
-                    if (Math.random() < 0.15) {
-                        let sbx = bx, sby = by;
-                        const sbLen = 2 + Math.floor(Math.random() * 6);
-                        const sbDir = -Math.sign(bDir) * (1 + Math.random() * 2); // often branch opposite direction
-                        for (let sb = 0; sb < sbLen; sb++) {
-                            sbx += sbDir + (Math.random() - 0.5) * 3;
-                            sby += 1;
-                            sbx = Math.max(0, Math.min(cols - 1, sbx));
-                            if (sby < rows) this.branches.push({x: sbx, y: sby});
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-let lightnings = [];
-let flashIntensity = 0;
-let afterglow = 0;
-let lightningTimer = 0;
-let thunderPulse = 0;
-
-let consecutiveStrikesRemaining = 0;
-let lastStrikeX = -1;
-
-function maybeLightning() {
-    lightningTimer--;
-    if (lightningTimer <= 0) {
-        let isConsecutive = false;
-        
-        if (consecutiveStrikesRemaining > 0) {
-            consecutiveStrikesRemaining--;
-            isConsecutive = true;
-            // Short interval for back-to-back strikes (e.g., 2 to 12 frames)
-            lightningTimer = 2 + Math.floor(Math.random() * 10);
-        } else {
-            // Normal wait time
-            const interval = Math.floor((150 + Math.random() * 350) / P_LIGHTNING / P_INTENSITY);
-            lightningTimer = interval;
-            
-            // 20% chance to initiate a flurry of back-to-back strikes
-            if (Math.random() < 0.2) {
-                consecutiveStrikesRemaining = 1 + Math.floor(Math.random() * 3);
-            }
-        }
-
-        let sx = Math.floor(Math.random() * cols);
-        // If consecutive, spawn somewhat near the previous strike to simulate bridging/clustering
-        if (isConsecutive && lastStrikeX !== -1) {
-            sx = lastStrikeX + (Math.floor(Math.random() * 40) - 20);
-            sx = Math.max(0, Math.min(cols - 1, sx));
-        }
-        
-        const sy = Math.floor(Math.random() * rows * 0.12);
-        const bolt = new Lightning(sx, sy, isConsecutive);
-        lightnings.push(bolt);
-        
-        lastStrikeX = sx;
-        flashIntensity = 0.8 + Math.random() * 0.2;
-        afterglow = 0.4 + Math.random() * 0.2;
-        thunderPulse = 1.0;
-    }
-}
-
-let animTime = 0;
-
-function render() {
-    const flash = Math.max(flashIntensity, afterglow * 0.4);
-    const bgR = PAL.skyDark[0] + PAL.flashTint[0] * flash;
-    const bgG = PAL.skyDark[1] + PAL.flashTint[1] * flash;
-    const bgB = PAL.skyDark[2] + PAL.flashTint[2] * flash;
-    ctx.fillStyle = `rgb(${Math.floor(bgR)},${Math.floor(bgG)},${Math.floor(bgB)})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    for (const cloud of clouds) {
-        cloud.x += cloud.speed * (1 + P_WIND * 0.3);
-        if (cloud.x > cols + cloud.w + 10) cloud.x = -cloud.w - 10;
-
-        for (let dy = 0; dy < cloud.h; dy++) {
-            for (let dx = 0; dx < cloud.w; dx++) {
-                const cx = Math.floor(cloud.x) + dx;
-                const cy = cloud.y + dy;
-                if (cx < 0 || cx >= cols || cy < 0 || cy >= rows) continue;
-
-                const nx = (dx - cloud.w / 2) / (cloud.w / 2);
-                const ny = (dy - cloud.h / 2) / (cloud.h / 2);
-                const dist = Math.sqrt(nx * nx + ny * ny);
-                const bumpMod = Math.sin(dx * 0.5 + cloud.bumpiness) * 0.15;
-                const adjustedDist = Math.sqrt(nx * nx + (ny + bumpMod) * (ny + bumpMod));
-                if (adjustedDist > 1) continue;
-
-                const ci = Math.min(CLOUD_CHARS.length - 1, Math.floor((1 - adjustedDist) * cloud.density * CLOUD_CHARS.length));
-                if (ci === 0) continue;
-
-                const flashAlpha = flash * 0.4;
-                const alpha = Math.min(1, (1 - adjustedDist) * cloud.density * 0.6 + flashAlpha);
-                ctx.globalAlpha = alpha;
-
-                const cFlash = PAL.skyCloud;
-                const r = Math.floor(cFlash[0] + (255 - cFlash[0]) * flash * 0.6);
-                const g = Math.floor(cFlash[1] + (255 - cFlash[1]) * flash * 0.6);
-                const b = Math.floor(cFlash[2] + (255 - cFlash[2]) * flash * 0.6);
-                ctx.fillStyle = `rgb(${r},${g},${b})`;
-                ctx.fillText(CLOUD_CHARS[ci], cx * CHAR_W, cy * CHAR_H);
-            }
-        }
-    }
-
-    for (const bolt of lightnings) {
-        const lifeFactor = Math.max(0, 1 - bolt.age / bolt.life);
-        const alpha = lifeFactor * bolt.brightness;
-        if (alpha <= 0) continue;
-
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = '#ffffff';
-        for (let i = 0; i < bolt.segments.length; i++) {
-            const seg = bolt.segments[i];
-            ctx.fillText('│', seg.x * CHAR_W, seg.y * CHAR_H);
-        }
-
-        ctx.globalAlpha = alpha * 0.6;
-        ctx.fillStyle = PAL.lightning;
-        for (let i = 0; i < bolt.segments.length; i++) {
-            const seg = bolt.segments[i];
-            ctx.fillText('│', seg.x * CHAR_W, seg.y * CHAR_H);
-            if (i > 0) {
-                const prev = bolt.segments[i - 1];
-                const dx = seg.x - prev.x;
-                if (dx > 0) ctx.fillText('╲', prev.x * CHAR_W + CHAR_W * 0.5, prev.y * CHAR_H);
-                else if (dx < 0) ctx.fillText('╱', prev.x * CHAR_W - CHAR_W * 0.5, prev.y * CHAR_H);
-            }
-        }
-
-        if (bolt.branches.length > 0) {
-            ctx.globalAlpha = alpha * 0.35;
-            ctx.fillStyle = PAL.lightning;
-            const branchChars = ['│', '╲', '╱', '┆', '⚡'];
-            for (const br of bolt.branches) {
-                // Add varied branch characters for a more erratic look
-                const bChar = branchChars[Math.floor(Math.random() * branchChars.length)];
-                ctx.fillText(bChar, br.x * CHAR_W, br.y * CHAR_H);
-            }
-        }
-
-        if (lifeFactor > 0.7) {
-            ctx.globalAlpha = (lifeFactor - 0.7) / 0.3 * 0.15;
-            ctx.fillStyle = '#e0e0ff';
-            for (const seg of bolt.segments) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    for (let dy = -1; dy <= 1; dy++) {
-                        if (dx === 0 && dy === 0) continue;
-                        const gx = seg.x + dx, gy = seg.y + dy;
-                        if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
-                            ctx.fillText('░', gx * CHAR_W, gy * CHAR_H);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    const dropCount = Math.min(drops.length, Math.floor(MAX_DROPS * P_INTENSITY * (0.5 + 0.5 * Math.sin(animTime * 0.015))));
-    const rainAlpha = 0.2 + flash * 0.4;
-    for (let i = 0; i < dropCount; i++) {
-        const drop = drops[i];
-        drop.y += drop.speed * P_INTENSITY;
-        drop.x += drop.wind;
-
-        if (drop.y > rows + 3 || drop.x < -8 || drop.x > cols + 8) {
-            drop.reset();
-            continue;
-        }
-
-        ctx.globalAlpha = rainAlpha;
-
-        if (drop.heavy) {
-            ctx.fillStyle = PAL.rainBright;
-            const hChars = ['█', '▓', '▒'];
-            ctx.fillText(hChars[Math.floor(Math.random() * 3)], Math.floor(drop.x) * CHAR_W, Math.floor(drop.y) * CHAR_H);
-            continue;
-        }
-
-        ctx.fillStyle = drop.bright ? PAL.rainBright : PAL.rain;
-
-        for (let seg = 0; seg < drop.length; seg++) {
-            const dy = drop.y - seg * 0.5;
-            if (dy < 0) continue;
-            const dx = drop.x + seg * drop.wind * 0.2;
-            const ch = seg < 2 && drop.bright ? '│' : drop.char;
-            ctx.fillText(ch, Math.floor(dx) * CHAR_W, Math.floor(dy) * CHAR_H);
-        }
-    }
-
-    const groundY = rows - 2;
-    if (groundY >= 0) {
-        ctx.globalAlpha = 0.08 + flash * 0.08;
-        ctx.fillStyle = PAL.ground;
-        ctx.fillRect(0, groundY * CHAR_H, canvas.width, FONT_SIZE);
-    }
-
-    if (groundY >= 0) {
-        for (let gx = 0; gx < cols; gx += 1 + Math.floor(Math.random() * 2)) {
-            const splash = Math.random() < 0.04 * P_INTENSITY;
-            if (splash) {
-                ctx.globalAlpha = 0.15 + afterglow * 0.1;
-                ctx.fillStyle = PAL.rain;
-                ctx.fillText('~', gx * CHAR_W, groundY * CHAR_H);
-                if (Math.random() < 0.3) ctx.fillText('°', (gx + (Math.random() < 0.5 ? 1 : -1)) * CHAR_W, (groundY - 1) * CHAR_H);
-            }
-        }
-    }
-
-    if (thunderPulse > 0.01) {
-        ctx.globalAlpha = thunderPulse * 0.06;
-        ctx.fillStyle = '#ffffff';
-        for (let i = 0; i < 5; i++) {
-            const rx = Math.floor(Math.random() * cols);
-            const ry = Math.floor(rows * 0.2 + Math.random() * rows * 0.6);
-            ctx.fillText('*', rx * CHAR_W, ry * CHAR_H);
-        }
-    }
-
-    ctx.globalAlpha = 1;
-}
-
-function update() {
-    animTime++;
-    maybeLightning();
-    for (const bolt of lightnings) bolt.age++;
-    lightnings = lightnings.filter(b => b.age < b.life);
-    flashIntensity *= 0.82;
-    if (flashIntensity < 0.01) flashIntensity = 0;
-    afterglow *= 0.94;
-    if (afterglow < 0.01) afterglow = 0;
-    thunderPulse *= 0.88;
-    if (thunderPulse < 0.01) thunderPulse = 0;
-}
-
-function loop() {
-    update();
-    render();
-    requestAnimationFrame(loop);
-}
-
-function startAnimation() {
-    canvas.style.opacity = '1';
-    document.fonts.ready.then(() => {
-        resize();
-        lightningTimer = Math.floor(80 + Math.random() * 160);
-        requestAnimationFrame(loop);
-    });
-}
-
-if (START_AT > 0) {
-    const delay = Math.max(100, START_AT - Date.now());
-    setTimeout(startAnimation, delay);
-} else if (DELAYED_START) {
-    setTimeout(startAnimation, 4000);
-} else {
-    setTimeout(startAnimation, 500);
-}
+if (START_AT > 0) setTimeout(start, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(start, 4000);
+else setTimeout(start, 500);
 </script>
 </body>
 </html>

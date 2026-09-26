@@ -1,9 +1,9 @@
 {
   "id": "aurora",
   "name": "Aurora",
-  "description": "Procedural aurora borealis ribbons dancing gracefully across a twinkling star field. The simulation uses noise functions to create organic, shifting curtains of light that mimic the natural phenomena of the northern lights in a purely text-based format.",
+  "description": "A northern night: curtains of aurora with running rays, green at their feet and crimson at their crowns, cycle from quiet arcs through a substorm \u2014 flaring, racing, a corona overhead \u2014 to slow pulsing, over snowy peaks and a frozen lake that mirrors them. A cabin glows and smokes; a lone watcher stands on the shore.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "preview": "preview.jpg",
   "params": [
     {
@@ -58,6 +58,16 @@
       "max": 400,
       "step": 10,
       "integer": true
+    },
+    {
+      "key": "activity",
+      "type": "range",
+      "label": "Activity",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
     }
   ]
 }

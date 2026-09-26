@@ -1,9 +1,9 @@
 {
   "id": "moon",
   "name": "Moon",
-  "description": "A tranquil orbital ASCII scene featuring a large, cratered moon. The simulation includes a customizable star count, floating space debris, atmospheric glow, and various color palettes to set the perfect nighttime mood.",
+  "description": "Our heavenly moon: tonight's real phase and its place among the zodiac constellations, then its month unfolding \u2014 the terminator sweeping the maria and craters, earthshine on the dark limb, a slow libration \u2014 over a still lake that holds its reflection. Owls and geese cross the disc, meteors fall, and a caption names the phase with a thought for it.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "preview": "preview.gif",
   "params": [
     {
@@ -58,6 +58,36 @@
       "max": 2,
       "step": 0.05,
       "integer": false
+    },
+    {
+      "key": "cycleTime",
+      "type": "range",
+      "label": "Cycle Time",
+      "defaultValue": 12,
+      "min": 0,
+      "max": 60,
+      "step": 1,
+      "integer": true
+    },
+    {
+      "key": "constellations",
+      "type": "select",
+      "label": "Constellations",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
+    },
+    {
+      "key": "captions",
+      "type": "select",
+      "label": "Captions",
+      "defaultValue": 1,
+      "options": [
+        0,
+        1
+      ]
     }
   ]
 }

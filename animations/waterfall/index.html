@@ -10,398 +10,553 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background: #0a0a12;
+            background: #05070a;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
         }
 
-        body.screensaver-mode { cursor: none; }
-
-        #waterfall-canvas {
+        #backdrop, #waterfall-canvas {
+            position: fixed;
+            inset: 0;
             display: block;
             opacity: 0;
-            transition: opacity 2s ease-in;
+            transition: opacity 2.5s ease-in;
         }
-
-        .credits-popup {
-            position: fixed;
-            bottom: 32px;
-            right: 32px;
-            background: rgba(8, 12, 16, 0.92);
-            border: 1px solid rgba(80, 160, 200, 0.35);
-            border-radius: 8px;
-            padding: 20px 24px;
-            font-family: 'JetBrains Mono', 'Courier New', monospace;
-            font-size: 12px;
-            color: #60a0b8;
-            max-width: 280px;
-            opacity: 0;
-            transition: opacity 2s ease-in-out;
-            z-index: 100;
-            line-height: 1.6;
-        }
-        .credits-popup.visible { opacity: 1; }
-        .credits-popup h2 {
-            font-size: 14px;
-            font-weight: 700;
-            color: #50b0d0;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .credits-popup .credits-label {
-            font-size: 10px;
-            color: #386878;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 10px;
-            margin-bottom: 4px;
-        }
-        .credits-popup hr {
-            border: none;
-            border-top: 1px solid rgba(80, 160, 200, 0.25);
-            margin: 12px 0;
-        }
-        .credits-popup a { color: #50a0c0; text-decoration: none; }
     </style>
 </head>
 <body>
+<canvas id="backdrop"></canvas>
 <canvas id="waterfall-canvas"></canvas>
 <script>
-// ─── Screensaver mode ──────────────────────────────────────────────────────────
-const _params = new URLSearchParams(window.location.search);
-const DELAYED_START    = _params.has('delayedStart');
-const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+// A waterfall, alive.
+//
+// A river pours over a cliff lip into a plunge pool in a green gorge. The
+// water is a particle simulation: it leaves the lip with its own speed,
+// falls under gravity, breaks into spray, and churns the pool into foam
+// that drifts off downstream. The flow swells and ebbs with the season's
+// rain. Mist rises from the base and, when the sun is in the right place,
+// holds a rainbow. Around it the gorge lives: ferns and moss on wet rock,
+// dippers bobbing on stones and diving in, swifts nesting behind the fall,
+// trout leaping at dusk, a kingfisher darting along the stream, a deer
+// coming down to drink, dragonflies, fireflies — under a day and night.
 
-const P_SPEED         = parseFloat(_params.get('speed')         || '1');
-const P_PALETTE       = _params.get('palette') || 'clear';
-const P_FLOW_DENSITY  = parseFloat(_params.get('flowDensity')   || '1');
-const P_MIST_INTENSITY= parseFloat(_params.get('mistIntensity') || '1');
-const P_RAINBOW       = (_params.get('rainbow') ?? '1') !== '0';
+// ─── Parameters ──────────────────────────────────────────────────────────────
+const _params       = new URLSearchParams(window.location.search);
+const DELAYED_START = _params.has('delayedStart');
+const START_AT      = parseInt(_params.get('startAt') || '0', 10);
 
-// ─── Canvas ────────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; }
+const P_SPEED   = clamp(parseFloat(_params.get('speed') || '1'), 0.2, 4);
+const P_PALETTE = _params.get('palette') || 'clear';
+const P_FLOW    = clamp(parseFloat(_params.get('flowDensity') || '1'), 0, 2);
+const P_MIST    = clamp(parseFloat(_params.get('mistIntensity') || '1'), 0, 2);
+const P_RAINBOW = (_params.get('rainbow') ?? '1') !== '0';
+const P_CYCLE   = clamp(parseFloat(_params.get('cycleTime') || '8'), 0, 30);   // minutes per day; 0 = fixed afternoon
+const P_LIFE    = clamp(parseFloat(_params.get('wildlife') || '1'), 0, 2);
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+function lerp(a, b, k) { return a + (b - a) * k; }
+function mix(a, b, k) { return [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)]; }
+function scale(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+
+// ─── Palettes: water, rock, greenery, sky by day ─────────────────────────────
+const PALETTES = {
+    clear:   { water: [150, 210, 245], deep: [30, 90, 140], foam: [240, 250, 255], rock: [72, 76, 82], moss: [60, 120, 60], leaf: [70, 150, 70], sky: [[90, 150, 210], [200, 225, 240]] },
+    glacier: { water: [180, 235, 250], deep: [40, 130, 170], foam: [245, 252, 255], rock: [110, 118, 130], moss: [110, 140, 130], leaf: [120, 160, 150], sky: [[110, 160, 210], [220, 235, 245]] },
+    jungle:  { water: [140, 210, 200], deep: [30, 100, 90], foam: [235, 250, 245], rock: [58, 60, 50], moss: [50, 130, 50], leaf: [40, 160, 60], sky: [[80, 150, 170], [200, 230, 210]] },
+    moonlit: { water: [150, 170, 230], deep: [30, 40, 90], foam: [210, 220, 250], rock: [40, 42, 56], moss: [40, 70, 60], leaf: [40, 80, 70], sky: [[20, 30, 70], [60, 70, 120]] },
+    mono:    { water: [200, 200, 200], deep: [70, 70, 70], foam: [245, 245, 245], rock: [70, 70, 70], moss: [100, 100, 100], leaf: [120, 120, 120], sky: [[110, 110, 110], [200, 200, 200]] },
+};
+const PAL = PALETTES[P_PALETTE] || PALETTES.clear;
+const NIGHT_ONLY = P_PALETTE === 'moonlit';
+
+// ─── Canvases and layout ─────────────────────────────────────────────────────
+const backdrop = document.getElementById('backdrop');
+const bctx = backdrop.getContext('2d');
 const canvas = document.getElementById('waterfall-canvas');
-const ctx    = canvas.getContext('2d');
+const ctx = canvas.getContext('2d');
 
-const FONT_SIZE = 15;
-let CHAR_W = 9.0, CHAR_H = 18.75;
-let cols = 0, rows = 0;
-let W = 0, H = 0;
-
-// Channel bounds (in grid columns) — set by layoutChannel().
-let CHANNEL_LEFT_COL  = 0;
-let CHANNEL_RIGHT_COL = 0;
+let W = 0, H = 0, FS = 12, CW = 7.2, CH = 12;
+let G = {};   // gorge geometry
 
 function resize() {
-    canvas.width  = W = window.innerWidth;
-    canvas.height = H = window.innerHeight;
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    CHAR_W = ctx.measureText('M').width;
-    CHAR_H = FONT_SIZE * 1.25;
-    cols = Math.floor(W / CHAR_W);
-    rows = Math.floor(H / CHAR_H);
-    layoutChannel();
-    generateRockFrame();
-    if (typeof initWaterColumns === 'function') initWaterColumns();
+    W = window.innerWidth; H = window.innerHeight;
+    for (const c of [backdrop, canvas]) {
+        c.width = Math.max(1, W); c.height = Math.max(1, H);
+        c.style.width = W + 'px'; c.style.height = H + 'px';
+    }
+    FS = clamp(Math.round(Math.min(W, H) / 60), 8, 18);
+    CW = FS * 0.6; CH = FS * 1.05;
+    const lipY = H * 0.24, poolY = H * 0.72;
+    G = {
+        lipY, poolY,
+        lipL: W * 0.43, lipR: W * 0.57,           // width of the fall
+        poolL: W * 0.24, poolR: W * 0.8,
+        streamY: H * 0.9,
+        stones: [{ x: W * 0.3, y: poolY + H * 0.05 }, { x: W * 0.7, y: poolY + H * 0.07 }, { x: W * 0.62, y: H * 0.86 }],
+        ledge: { x: W * 0.6, y: lipY + H * 0.2 },   // swifts' ledge behind the fall
+    };
+    glyphCache.clear();
+    backdropDirty = true;
 }
-window.addEventListener('resize', resize);
 
-// ─── Channel layout + static rock/moss frame ───────────────────────────────────
-function layoutChannel() {
-    const channelWidth = Math.max(8, Math.round(cols * 0.38));
-    CHANNEL_LEFT_COL  = Math.floor((cols - channelWidth) / 2);
-    CHANNEL_RIGHT_COL = CHANNEL_LEFT_COL + channelWidth;
+const glyphCache = new Map();
+if (document.fonts) document.fonts.ready.then(() => { glyphCache.clear(); backdropDirty = true; });
+function sprite(ch, col, size) {
+    size = size || FS;
+    const q = (v) => (clamp(v, 0, 255) >> 3) << 3;
+    const r = q(col[0]), g = q(col[1]), b = q(col[2]);
+    const key = ch + '|' + size + '|' + r + ',' + g + ',' + b;
+    let s = glyphCache.get(key);
+    if (!s) {
+        if (glyphCache.size > 6000) glyphCache.clear();
+        const w = Math.ceil(size * 0.62 * ch.length + size * 0.4) + 2, h = Math.ceil(size * 1.3) + 2;
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d');
+        x.font = `700 ${size}px "JetBrains Mono", monospace`;
+        x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillStyle = `rgb(${r},${g},${b})`;
+        x.fillText(ch, w / 2, h / 2);
+        s = { c, w, h };
+        glyphCache.set(key, s);
+    }
+    return s;
+}
+function stampOn(g, ch, x, y, col, alpha, size) {
+    if (alpha <= 0.01) return;
+    const s = sprite(ch, col, size);
+    g.globalAlpha = Math.min(1, alpha);
+    g.drawImage(s.c, x - s.w / 2, y - s.h / 2);
+}
+const stamp = (ch, x, y, col, alpha, size) => stampOn(ctx, ch, x, y, col, alpha, size);
+
+// ─── Day, weather and flow ───────────────────────────────────────────────────
+let phase = 0.45;   // 0 midnight, 0.5 noon
+let light = 1, twilight = 0;
+let flow = 1, flowTarget = 1, untilRain = rand(40, 80), rain = 0;
+function updateTime(dt) {
+    if (P_CYCLE > 0 && !NIGHT_ONLY) phase = (phase + dt / (P_CYCLE * 60)) % 1;
+    if (NIGHT_ONLY) phase = 0.02;
+    const alt = Math.sin((phase - 0.25) * Math.PI * 2);
+    light = smoothstep(-0.25, 0.25, alt);
+    twilight = Math.exp(-(((alt + 0.02) / 0.2) ** 2));
+    // Rain upstream swells the fall for a while, then it ebbs.
+    untilRain -= dt;
+    if (untilRain <= 0) { rain = rain > 0 ? 0 : 1; untilRain = rain ? rand(25, 45) : rand(60, 120); }
+    flowTarget = (0.75 + rain * 0.6) * P_FLOW;
+    flow += (flowTarget - flow) * Math.min(1, dt * 0.08);
+}
+function skyNow() {
+    const night = [[4, 6, 16], [16, 20, 36]];
+    let top = mix(night[0], PAL.sky[0], light), low = mix(night[1], PAL.sky[1], light);
+    top = mix(top, [70, 50, 110], twilight * 0.5);
+    low = mix(low, [250, 150, 90], twilight * 0.6);
+    return { top, low };
+}
+const lit = (c, floor = 0.25) => scale(c, floor + (1 - floor) * light);
+
+// ─── Water particles ─────────────────────────────────────────────────────────
+// Each drop leaves the lip with a little forward speed, falls, and on hitting
+// the pool becomes spray and foam. Stored in flat arrays for speed.
+const MAXD = 4200;
+const dx_ = new Float32Array(MAXD), dy_ = new Float32Array(MAXD), dvx = new Float32Array(MAXD), dvy = new Float32Array(MAXD);
+const dkind = new Uint8Array(MAXD), dlife = new Float32Array(MAXD), dalive = new Uint8Array(MAXD);
+let dring = 0;
+const FALL = 1, SPRAY = 2, FOAM = 3, MIST = 4;
+
+function spawn(kind, x, y, vx, vy) {
+    let i = dring;
+    for (let k = 0; k < 8 && dalive[i]; k++) i = (i + 1) % MAXD;
+    dring = (i + 1) % MAXD;
+    dalive[i] = 1; dkind[i] = kind; dx_[i] = x; dy_[i] = y; dvx[i] = vx; dvy[i] = vy; dlife[i] = 0;
 }
 
-const ROCK_CHARS_DARK  = ['#', '%', '@', '&'];
-const ROCK_CHARS_LIGHT = ['▒', '▓', '░'];
-const MOSS_CHARS       = ['*', '"', "'", '.', ','];
-
-let rockOps = [];
-function generateRockFrame() {
-    rockOps = [];
-    for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-            const inChannel = x >= CHANNEL_LEFT_COL && x < CHANNEL_RIGHT_COL;
-            if (inChannel) continue;
-            const distFromChannel = x < CHANNEL_LEFT_COL
-                ? CHANNEL_LEFT_COL - x
-                : x - CHANNEL_RIGHT_COL + 1;
-            if (distFromChannel > Math.floor(cols * 0.5)) continue;
-            if (Math.random() < 0.55) continue;
-
-            const edgeBand = distFromChannel <= 2;
-            let ch, color;
-            if (edgeBand && Math.random() < 0.35) {
-                ch = MOSS_CHARS[Math.floor(Math.random() * MOSS_CHARS.length)];
-                color = PAL.moss[Math.floor(Math.random() * PAL.moss.length)];
-            } else if (Math.random() < 0.4) {
-                ch = ROCK_CHARS_LIGHT[Math.floor(Math.random() * ROCK_CHARS_LIGHT.length)];
-                color = PAL.rockLight;
-            } else {
-                ch = ROCK_CHARS_DARK[Math.floor(Math.random() * ROCK_CHARS_DARK.length)];
-                color = PAL.rockDark;
+function updateWater(dt) {
+    const g = H * 0.9;   // gravity, px/s²
+    // Pour over the lip.
+    let n = 520 * flow * dt;
+    while (n > 0) {
+        if (Math.random() < n) {
+            const u = Math.random();
+            const x = lerp(G.lipL, G.lipR, u);
+            // The fall is thicker in the middle; some sheets leave faster.
+            spawn(FALL, x, G.lipY + rand(0, CH), rand(-3, 3) + (u - 0.5) * 20, rand(10, 40) + flow * 20);
+        }
+        n -= 1;
+    }
+    // Mist rising off the pool.
+    let m = 30 * P_MIST * flow * dt;
+    while (m > 0) {
+        if (Math.random() < m) spawn(MIST, lerp(G.lipL - W * 0.08, G.lipR + W * 0.08, Math.random()), G.poolY - rand(0, CH * 2), rand(-8, 8), -rand(10, 30));
+        m -= 1;
+    }
+    for (let i = 0; i < MAXD; i++) {
+        if (!dalive[i]) continue;
+        dlife[i] += dt;
+        const k = dkind[i];
+        if (k === FALL) {
+            dvy[i] += g * dt;
+            dvx[i] += Math.sin(dy_[i] * 0.03 + i) * 4 * dt;   // the sheet wavers
+            dx_[i] += dvx[i] * dt; dy_[i] += dvy[i] * dt;
+            if (dy_[i] >= G.poolY) {
+                // Impact: spray and foam.
+                if (Math.random() < 0.35) spawn(SPRAY, dx_[i], G.poolY, rand(-1, 1) * 90, -rand(40, 160));
+                if (Math.random() < 0.25) spawn(FOAM, dx_[i] + rand(-10, 10), G.poolY + rand(0, CH * 1.5), rand(-1, 1) * 30, 0);
+                dalive[i] = 0;
             }
-            rockOps.push({ x, y, ch, color });
+        } else if (k === SPRAY) {
+            dvy[i] += g * 0.6 * dt;
+            dx_[i] += dvx[i] * dt; dy_[i] += dvy[i] * dt;
+            if (dy_[i] > G.poolY + CH || dlife[i] > 1.5) dalive[i] = 0;
+        } else if (k === FOAM) {
+            // Foam churns in the pool, then drifts down the stream.
+            const toStream = dy_[i] > G.poolY + H * 0.06 ? 1 : 0;
+            dvx[i] += ((G.poolL + (G.poolR - G.poolL) * 0.55 - dx_[i]) * 0.02 + Math.sin(dlife[i] * 2 + i) * 20) * dt;
+            dvy[i] += (12 + toStream * 18) * dt;
+            dvx[i] *= Math.exp(-dt * 0.8); dvy[i] *= Math.exp(-dt * 0.4);
+            dx_[i] += dvx[i] * dt; dy_[i] += dvy[i] * dt;
+            if (dy_[i] > H + 10 || dlife[i] > 14) dalive[i] = 0;
+        } else {
+            dx_[i] += (dvx[i] + Math.sin(dlife[i] + i) * 6) * dt; dy_[i] += dvy[i] * dt;
+            if (dlife[i] > 6) dalive[i] = 0;
         }
     }
 }
 
-function drawRockFrame() {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-    ctx.globalAlpha = 1;
-    for (const op of rockOps) {
-        ctx.fillStyle = op.color;
-        ctx.fillText(op.ch, op.x * CHAR_W, op.y * CHAR_H);
-    }
-}
+// ─── Life in the gorge ───────────────────────────────────────────────────────
+const dippers = [{ stone: 0, bob: 0, state: 'perch', t: rand(3, 8), x: 0, y: 0 }];
+const swifts = Array.from({ length: 5 }, (_, i) => ({ a: rand(0, 6.3), r: rand(0.8, 1.3), home: i < 3, state: 'fly', t: rand(5, 20), x: 0, y: 0 }));
+const trout = [];
+let untilTrout = rand(10, 20);
+const kingfisher = { active: false, next: rand(20, 40), x: 0, dir: 1, dive: 0 };
+const deer = { state: 'away', next: rand(40, 80), x: 0, t: 0 };
+const flies = Array.from({ length: 24 }, () => ({ x: rand(0, 1), y: rand(0, 1), p: rand(0, 6.3), s: rand(0.5, 1.3) }));
+const dragonflies = Array.from({ length: 2 }, () => ({ x: rand(0.2, 0.8), y: rand(0.6, 0.8), tx: 0, ty: 0, t: 0 }));
 
-// ─── Palettes ──────────────────────────────────────────────────────────────────
-const PALETTES = {
-    clear: {
-        waterBase:  '#5090b0',
-        waterBright:'#a0d8f0',
-        mist:       '#d0eef8',
-        rockDark:   '#34343a',
-        rockLight:  '#5a5a5e',
-        moss:       ['#3a6b3a', '#2e5530'],
-    },
-    glacier: {
-        waterBase:  '#6098c8',
-        waterBright:'#c0eaff',
-        mist:       '#e8f8ff',
-        rockDark:   '#2a3038',
-        rockLight:  '#566878',
-        moss:       ['#3a6878', '#2c5060'],
-    },
-    jungle: {
-        waterBase:  '#308878',
-        waterBright:'#80d8b0',
-        mist:       '#d8f8e8',
-        rockDark:   '#2a3424',
-        rockLight:  '#4a5a3c',
-        moss:       ['#3a8a3a', '#2e6e2e'],
-    },
-    moonlit: {
-        waterBase:  '#5868a0',
-        waterBright:'#a8b8e8',
-        mist:       '#dde4ff',
-        rockDark:   '#222230',
-        rockLight:  '#444458',
-        moss:       ['#384858', '#283848'],
-    },
-    mono: {
-        waterBase:  '#888888',
-        waterBright:'#e0e0e0',
-        mist:       '#f0f0f0',
-        rockDark:   '#303030',
-        rockLight:  '#5c5c5c',
-        moss:       ['#606060', '#4c4c4c'],
-    },
-};
-
-const PAL = PALETTES[P_PALETTE] || PALETTES.clear;
-
-// ─── Dense per-column water streams ────────────────────────────────────────────
-const WATER_CHARS = ['|', '│', '╽', '╿', '┆', '┊', '¦'];
-
-class WaterColumn {
-    constructor(col) {
-        this.col = col;
-        this.reset(true);
-    }
-    reset(randomStart = false) {
-        this.y       = randomStart ? Math.random() * -rows : -2 - Math.random() * 4;
-        this.speed   = 1.6 + Math.random() * 1.8;
-        this.length  = 4 + Math.floor(Math.random() * 6);
-        this.char    = WATER_CHARS[Math.floor(Math.random() * WATER_CHARS.length)];
-        this.bright  = Math.random() < 0.3;
-        this.xJitter = (Math.random() - 0.5) * 0.4;
-    }
-}
-
-let waterColumns = [];
-
-function initWaterColumns() {
-    waterColumns = [];
-    const streamsPerCol = Math.max(1, Math.round(2.5 * Math.min(2, P_FLOW_DENSITY)));
-    for (let c = CHANNEL_LEFT_COL; c < CHANNEL_RIGHT_COL; c++) {
-        for (let s = 0; s < streamsPerCol; s++) {
-            waterColumns.push(new WaterColumn(c));
+function updateLife(dt, t) {
+    const L = P_LIFE;
+    // Dipper: bobs on its stone, dives in, walks out.
+    for (const d of dippers) {
+        const s = G.stones[d.stone];
+        d.t -= dt;
+        if (d.state === 'perch') {
+            d.bob = Math.abs(Math.sin(t * 6)) > 0.9 ? 1 : 0;
+            d.x = s.x; d.y = s.y - CH * 0.9;
+            if (d.t <= 0 && L > 0) { d.state = 'dive'; d.t = rand(1.5, 3); }
+        } else if (d.state === 'dive') {
+            if (d.t <= 0) { d.stone = Math.floor(rand(0, 2)); d.state = 'perch'; d.t = rand(4, 10); }
         }
     }
-}
-
-function updateAndDrawWater(dt) {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    const baseRow = rows - 3;
-    for (const wc of waterColumns) {
-        wc.y += wc.speed * dt;
-        if (wc.y > baseRow) { wc.reset(); continue; }
-
-        const x = (wc.col + wc.xJitter) * CHAR_W;
-        ctx.globalAlpha = wc.bright ? 0.9 : 0.55;
-        ctx.fillStyle   = wc.bright ? PAL.waterBright : PAL.waterBase;
-        for (let seg = 0; seg < wc.length; seg++) {
-            const segY = wc.y - seg * 0.6;
-            if (segY < 0 || segY > baseRow) continue;
-            ctx.fillText(wc.char, x, segY * CHAR_H);
+    // Swifts: loop in front of the fall; some fly through the curtain to nest.
+    for (const s of swifts) {
+        s.t -= dt;
+        if (s.state === 'fly') {
+            s.a += dt * 1.8 * s.r;
+            s.x = W * 0.5 + Math.cos(s.a) * W * 0.18 * s.r;
+            s.y = G.lipY + H * 0.12 + Math.sin(s.a * 1.7) * H * 0.1;
+            if (s.home && s.t <= 0 && light > 0.2) { s.state = 'nest'; s.t = rand(4, 9); }
+        } else {
+            s.x = G.ledge.x - CW * 2; s.y = G.ledge.y - CH * 0.6;
+            if (s.t <= 0) { s.state = 'fly'; s.t = rand(8, 20); }
         }
     }
-    ctx.globalAlpha = 1;
-}
-
-// ─── Base mist/spray burst (SOA particle pool) ────────────────────────────────
-const MAX_MIST = 2000;
-const mX      = new Float32Array(MAX_MIST);
-const mY      = new Float32Array(MAX_MIST);
-const mVX     = new Float32Array(MAX_MIST);
-const mVY     = new Float32Array(MAX_MIST);
-const mAge    = new Float32Array(MAX_MIST);
-const mMaxAge = new Float32Array(MAX_MIST);
-const mAlive  = new Uint8Array(MAX_MIST);
-
-const MIST_CHARS = ['.', "'", '`', ',', '°', '˙'];
-
-let mistRing = 0;
-let mistSpawnAccum = 0;
-
-function spawnMistParticle() {
-    let p = mistRing;
-    let skips = 0;
-    while (mAlive[p] && skips < 10) { p = (p + 1) % MAX_MIST; skips++; }
-    mistRing = (p + 1) % MAX_MIST;
-
-    const baseRow = rows - 3;
-    const spawnCol = CHANNEL_LEFT_COL + Math.random() * (CHANNEL_RIGHT_COL - CHANNEL_LEFT_COL);
-
-    mAlive[p]  = 1;
-    mX[p]      = spawnCol * CHAR_W;
-    mY[p]      = baseRow * CHAR_H;
-    mVX[p]     = (Math.random() - 0.5) * 1.4;
-    mVY[p]     = -(1.2 + Math.random() * 1.6);
-    mAge[p]    = 0;
-    mMaxAge[p] = 400 + Math.random() * 500;
-}
-
-const MIST_NUM_BUCKETS = 16;
-const mistBuckets = Array.from({ length: MIST_NUM_BUCKETS }, () => []);
-
-function updateAndDrawMist(dt) {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    for (let b = 0; b < MIST_NUM_BUCKETS; b++) mistBuckets[b].length = 0;
-
-    for (let i = 0; i < MAX_MIST; i++) {
-        if (!mAlive[i]) continue;
-
-        mAge[i] += dt;
-        const ageNorm = mAge[i] / mMaxAge[i];
-        if (ageNorm >= 1.0) { mAlive[i] = 0; continue; }
-
-        mVY[i] += 0.045 * dt;
-        mX[i]  += mVX[i] * dt * 0.5;
-        mY[i]  += mVY[i] * dt * 0.5;
-
-        if (mY[i] > H + CHAR_H) { mAlive[i] = 0; continue; }
-
-        const alpha = Math.pow(1.0 - ageNorm, 1.3) * 0.6;
-        if (alpha < 0.02) { mAlive[i] = 0; continue; }
-
-        mistBuckets[Math.min(MIST_NUM_BUCKETS - 1, (alpha * MIST_NUM_BUCKETS) | 0)].push(i);
+    // Trout leap — most often at dusk.
+    untilTrout -= dt * L * (1 + twilight * 3);
+    if (untilTrout <= 0) {
+        untilTrout = rand(8, 18);
+        trout.push({ x: rand(G.poolL + W * 0.05, G.lipL - W * 0.02) + (Math.random() < 0.5 ? 0 : W * 0.25), vy: -H * 0.5, y: G.poolY + CH * 2, t: 0, dir: Math.random() < 0.5 ? -1 : 1 });
     }
-
-    for (let b = MIST_NUM_BUCKETS - 1; b >= 0; b--) {
-        const bkt = mistBuckets[b];
-        if (!bkt.length) continue;
-        ctx.globalAlpha = (b + 0.5) / MIST_NUM_BUCKETS;
-        ctx.fillStyle = PAL.mist;
-        for (let k = 0; k < bkt.length; k++) {
-            const i = bkt[k];
-            const ch = MIST_CHARS[Math.floor(mAge[i] / 60) % MIST_CHARS.length];
-            ctx.fillText(ch, mX[i], mY[i]);
+    for (let i = trout.length - 1; i >= 0; i--) {
+        const f = trout[i];
+        f.t += dt; f.vy += H * 1.2 * dt; f.y += f.vy * dt; f.x += f.dir * W * 0.04 * dt;
+        if (f.y > G.poolY + CH * 2 && f.t > 0.2) {
+            for (let k = 0; k < 8; k++) spawn(SPRAY, f.x, G.poolY + CH, rand(-1, 1) * 50, -rand(30, 90));
+            trout.splice(i, 1);
         }
     }
-    ctx.globalAlpha = 1;
-
-    const baseRate = 6.0 * P_MIST_INTENSITY;
-    mistSpawnAccum += baseRate * dt;
-    while (mistSpawnAccum >= 1.0) {
-        mistSpawnAccum -= 1.0;
-        spawnMistParticle();
+    // Kingfisher: a streak of blue along the stream.
+    if (!kingfisher.active) {
+        kingfisher.next -= dt * L;
+        if (kingfisher.next <= 0 && light > 0.4) { kingfisher.active = true; kingfisher.dir = Math.random() < 0.5 ? 1 : -1; kingfisher.x = kingfisher.dir > 0 ? -20 : W + 20; kingfisher.dive = rand(0.3, 0.7); }
+    } else {
+        kingfisher.x += kingfisher.dir * W * 0.35 * dt;
+        if (kingfisher.x < -40 || kingfisher.x > W + 40) { kingfisher.active = false; kingfisher.next = rand(30, 70); }
+    }
+    // Deer comes down to drink.
+    if (deer.state === 'away') {
+        deer.next -= dt * L;
+        if (deer.next <= 0 && (light < 0.6 || twilight > 0.3)) { deer.state = 'in'; deer.x = W + 40; }
+    } else if (deer.state === 'in') {
+        deer.x -= W * 0.03 * dt;
+        if (deer.x < G.poolR + W * 0.04) { deer.state = 'drink'; deer.t = rand(10, 18); }
+    } else if (deer.state === 'drink') {
+        deer.t -= dt;
+        if (deer.t <= 0) deer.state = 'out';
+    } else {
+        deer.x += W * 0.04 * dt;
+        if (deer.x > W + 60) { deer.state = 'away'; deer.next = rand(60, 120); }
+    }
+    for (const d of dragonflies) {
+        d.t -= dt;
+        if (d.t <= 0) { d.tx = rand(0.15, 0.85); d.ty = rand(0.62, 0.82); d.t = rand(1, 3); }
+        d.x += (d.tx - d.x) * Math.min(1, dt * 3); d.y += (d.ty - d.y) * Math.min(1, dt * 3);
     }
 }
 
-// ─── Optional faint rainbow arc ────────────────────────────────────────────────
-const RAINBOW_BANDS = [
-    'rgba(255,80,80,ALPHA)',
-    'rgba(255,170,60,ALPHA)',
-    'rgba(255,235,80,ALPHA)',
-    'rgba(110,220,110,ALPHA)',
-    'rgba(90,170,255,ALPHA)',
-    'rgba(150,110,230,ALPHA)',
-];
+// ─── Backdrop: sky, cliffs, ferns, pool bed ──────────────────────────────────
+let backdropDirty = true, lastBackdrop = -1;
+function paintBackdrop() {
+    const g = bctx;
+    g.globalAlpha = 1;
+    const sky = skyNow();
+    const grad = g.createLinearGradient(0, 0, 0, G.lipY);
+    grad.addColorStop(0, css(sky.top)); grad.addColorStop(1, css(sky.low));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, H);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `700 ${FS}px "JetBrains Mono", monospace`;
 
-function drawRainbowArc() {
-    if (!P_RAINBOW) return;
-
-    const baseRow = rows - 3;
-    const channelMidX = ((CHANNEL_LEFT_COL + CHANNEL_RIGHT_COL) / 2) * CHAR_W;
-    const arcCenterY   = baseRow * CHAR_H;
-    const arcRadius    = (CHANNEL_RIGHT_COL - CHANNEL_LEFT_COL) * CHAR_W * 1.4;
-
-    const shimmer = 0.5 + 0.5 * Math.sin(animTime * 0.3);
-    const baseAlpha = 0.05 + shimmer * 0.04;
-
-    ctx.save();
-    ctx.lineWidth = CHAR_H * 0.7;
-    for (let b = 0; b < RAINBOW_BANDS.length; b++) {
-        const bandRadius = arcRadius - b * CHAR_H * 0.8;
-        if (bandRadius < CHAR_H * 2) continue;
-        ctx.beginPath();
-        ctx.arc(channelMidX, arcCenterY, bandRadius, Math.PI, 2 * Math.PI);
-        ctx.strokeStyle = RAINBOW_BANDS[b].replace('ALPHA', baseAlpha.toFixed(3));
-        ctx.stroke();
+    // Distant forested hills above the lip.
+    g.fillStyle = css(lit(mix(PAL.leaf, sky.low, 0.5)));
+    for (let x = 0; x < W; x += CW) {
+        const h = H * (0.05 + 0.03 * Math.sin(x * 0.006 + 1) + 0.015 * Math.sin(x * 0.03));
+        for (let y = G.lipY - h; y < G.lipY; y += CH) g.fillText(hash(x + y) < 0.5 ? '^' : 'A', x, y);
     }
-    ctx.restore();
+
+    // Rock everywhere below the rim: solid fill first, darker and wet behind
+    // the fall, then sparse strata and moss glyphs over it.
+    const rock = lit(PAL.rock), rockDark = scale(rock, 0.55), moss = lit(PAL.moss);
+    const face = g.createLinearGradient(0, G.lipY, 0, G.poolY);
+    face.addColorStop(0, css(scale(rock, 0.75)));
+    face.addColorStop(1, css(scale(rock, 0.4)));
+    g.fillStyle = face;
+    // A ragged rim: the rock rises and falls along the top edge.
+    g.beginPath();
+    g.moveTo(0, H);
+    for (let x = 0; x <= W; x += CW) {
+        const inLip = x > G.lipL - W * 0.02 && x < G.lipR + W * 0.02;
+        const rise = inLip ? 0 : CH * (0.6 + 1.6 * hash(Math.floor(x / (CW * 4))) + 0.5 * Math.sin(x * 0.013));
+        g.lineTo(x, G.lipY - CH * 0.5 - rise);
+    }
+    g.lineTo(W, H); g.closePath(); g.fill();
+    const behind = g.createLinearGradient(0, G.lipY, 0, G.poolY);
+    behind.addColorStop(0, css(scale(mix(rock, PAL.deep, 0.3), 0.5)));
+    behind.addColorStop(1, css(scale(mix(rock, PAL.deep, 0.3), 0.32)));
+    g.fillStyle = behind;
+    g.beginPath();
+    g.moveTo(G.lipL - W * 0.02, G.lipY); g.lineTo(G.lipR + W * 0.02, G.lipY);
+    g.lineTo(G.lipR + W * 0.08, G.poolY); g.lineTo(G.lipL - W * 0.08, G.poolY);
+    g.closePath(); g.fill();
+    for (let y = G.lipY; y < G.poolY + CH; y += CH) {
+        const k = (y - G.lipY) / (G.poolY - G.lipY);
+        const left = G.lipL - W * 0.02 - k * W * 0.06, right = G.lipR + W * 0.02 + k * W * 0.06;
+        for (let x = 0; x < W; x += CW) {
+            const n = hash(Math.floor(x / CW) * 7.1 + Math.floor(y / CH) * 3.3);
+            const inGap = x > left && x < right;
+            if (inGap) {   // wet rock behind the water: faint vertical streaks
+                if (n < 0.12) { g.fillStyle = css(scale(rock, 0.45)); g.fillText(':', x, y); }
+                continue;
+            }
+            const strata = Math.floor(y / (CH * 3) + hash(Math.floor(x / (CW * 9))) * 2);
+            const nearFall = Math.min(Math.abs(x - left), Math.abs(x - right)) / W;
+            // Moss thickest where the spray keeps the rock wet.
+            if (n < 0.5 - nearFall * 3) { g.fillStyle = css(scale(moss, 0.7 + n)); g.fillText(n < 0.15 ? '&' : n < 0.3 ? '%' : '"', x, y); continue; }
+            if (n > 0.55) continue;   // bare rock between marks
+            g.fillStyle = css(strata % 2 ? rock : rockDark);
+            g.fillText(n < 0.62 && strata % 3 === 0 ? '=' : strata % 2 ? '#' : '/', x, y);
+        }
+    }
+    // Ferns hanging off ledges (fixed places, so repaints don't move them).
+    g.fillStyle = css(lit(PAL.leaf));
+    for (let i = 0; i < 26; i++) {
+        const side = i % 2 ? 1 : -1;
+        const x = side < 0 ? hash(i * 3.1) * (G.lipL - W * 0.1) : G.lipR + W * 0.1 + hash(i * 3.1) * (W - G.lipR - W * 0.1);
+        const y = G.lipY + hash(i * 7.7) * (G.poolY - H * 0.05 - G.lipY);
+        for (let k = 0; k < 3; k++) g.fillText(side < 0 ? '/' : '\\', x + k * CW * side, y + k * CH * 0.7);
+        g.fillText(side < 0 ? '}' : '{', x - CW * side, y + CH * 1.5);
+    }
+    // Trees on the rim.
+    g.fillStyle = css(lit(scale(PAL.leaf, 0.8)));
+    for (let x = 0; x < W; x += CW * 1.3) {
+        if (x > G.lipL - W * 0.04 && x < G.lipR + W * 0.04) continue;
+        if (hash(x * 0.21) < 0.4) continue;
+        const h = 2 + Math.floor(hash(x) * 4);
+        for (let k = 0; k < h; k++) g.fillText(k === h - 1 ? '^' : '/\\', x, G.lipY - CH * (k + 1.2));
+    }
+
+    // The banks, then the pool and the stream bed cut into them.
+    g.fillStyle = css(lit(scale(PAL.moss, 0.45), 0.2));
+    g.fillRect(0, G.poolY - CH * 0.5, W, H - G.poolY + CH);
+    // The pool and the stream bed.
+    const deep = lit(PAL.deep, 0.3);
+    const pool = g.createLinearGradient(0, G.poolY, 0, H);
+    pool.addColorStop(0, css(deep)); pool.addColorStop(1, css(scale(deep, 0.6)));
+    g.fillStyle = pool;
+    g.beginPath();
+    g.moveTo(G.poolL, G.poolY);
+    g.quadraticCurveTo(W * 0.5, G.poolY - H * 0.02, G.poolR, G.poolY);
+    g.lineTo(W * 0.72, H * 0.84); g.lineTo(W * 0.62, H); g.lineTo(W * 0.46, H); g.lineTo(W * 0.38, H * 0.84);
+    g.closePath(); g.fill();
+    // Banks: pebbles and grass.
+    g.fillStyle = css(lit(scale(PAL.rock, 1.2)));
+    for (let y = G.poolY; y < H; y += CH) for (let x = 0; x < W; x += CW) {
+        const inWater = g.isPointInPath(x, y);
+        if (inWater) continue;
+        const n = hash(x * 0.37 + y * 0.91);
+        if (n < 0.3) { g.fillStyle = css(lit(n < 0.12 ? PAL.moss : scale(PAL.rock, 1.1))); g.fillText(n < 0.12 ? '"' : n < 0.2 ? 'o' : '.', x, y); }
+    }
+    // Stepping stones in the pool.
+    g.fillStyle = css(lit(scale(PAL.rock, 1.3)));
+    for (const s of G.stones) { g.fillText('(@@)', s.x, s.y); }
+    // The swifts' ledge behind the curtain.
+    g.fillStyle = css(scale(rock, 0.5));
+    g.fillText('____', G.ledge.x, G.ledge.y);
 }
 
-// ─── Render loop ──────────────────────────────────────────────────────────────
-let animTime      = 0;
-let lastTimestamp = 0;
+// ─── Drawing ─────────────────────────────────────────────────────────────────
+function draw(t) {
+    const g = ctx;
+    g.globalAlpha = 1;
+    g.clearRect(0, 0, W, H);
+    const water = lit(PAL.water, 0.35), foam = lit(PAL.foam, 0.4);
 
-function render(t) {
-    const dt       = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
-    lastTimestamp  = t;
-    const scaledDt = dt * P_SPEED;
-    animTime      += scaledDt * 0.001;
+    // Stars at night.
+    if (light < 0.6) for (let i = 0; i < 80; i++) stamp('.', hash(i) * W, hash(i + 0.5) * G.lipY * 0.8, [220, 228, 255], (1 - light) * (0.3 + 0.5 * Math.sin(t + i)));
 
-    ctx.clearRect(0, 0, W, H);
-    drawRockFrame();
-    drawRainbowArc();
-    updateAndDrawWater(scaledDt / 16.67);
-    updateAndDrawMist(scaledDt / 16.67);
+    // The river above the lip, sliding toward the edge.
+    for (let x = G.lipL - W * 0.03; x < G.lipR + W * 0.03; x += CW) {
+        for (let k = 0; k < 2; k++) {
+            const phase = (t * 3 + x * 0.05 + k) % 1;
+            stamp(phase < 0.5 ? '~' : '=', x, G.lipY - CH * (k + 0.2), water, 0.8);
+        }
+    }
 
-    requestAnimationFrame(render);
+    // The water sheet: a translucent curtain the drops run down, brightest
+    // at the lip, glowing where it meets the churn.
+    const sheet = g.createLinearGradient(0, G.lipY, 0, G.poolY);
+    sheet.addColorStop(0, css(water, 0.35 * flow));
+    sheet.addColorStop(0.7, css(water, 0.18 * flow));
+    sheet.addColorStop(1, css(foam, 0.4 * flow));
+    g.globalAlpha = 1;
+    g.fillStyle = sheet;
+    g.beginPath();
+    g.moveTo(G.lipL, G.lipY); g.lineTo(G.lipR, G.lipY);
+    g.lineTo(G.lipR + W * 0.015, G.poolY); g.lineTo(G.lipL - W * 0.015, G.poolY);
+    g.closePath(); g.fill();
+
+    // The falling water: glyph by speed — fast, near-vertical sheets as '|',
+    // slower edges as ':' and '.'.
+    for (let i = 0; i < MAXD; i++) {
+        if (!dalive[i]) continue;
+        const k = dkind[i];
+        if (k === FALL) {
+            const v = dvy[i];
+            const ch = v > H * 0.7 ? '|' : v > H * 0.35 ? '!' : v > H * 0.15 ? ':' : '.';
+            stamp(ch, dx_[i], dy_[i], mix(water, foam, 0.3 + clamp((dy_[i] - G.lipY) / (G.poolY - G.lipY), 0, 1) * 0.5), 0.9);
+        } else if (k === SPRAY) {
+            stamp(dlife[i] < 0.3 ? '*' : '.', dx_[i], dy_[i], foam, 0.8 * (1 - dlife[i] / 1.5));
+        } else if (k === FOAM) {
+            const a = 0.85 * (1 - dlife[i] / 14);
+            stamp(dlife[i] < 2 ? '@' : dlife[i] < 5 ? 'o' : dlife[i] < 9 ? '~' : '.', dx_[i], dy_[i], foam, a);
+        } else {
+            stamp(dlife[i] < 2 ? '~' : '.', dx_[i], dy_[i], mix(foam, [255, 255, 255], 0.3), 0.3 * P_MIST * (1 - dlife[i] / 6));
+        }
+    }
+
+    // Rainbow in the mist when the sun is behind the viewer.
+    if (P_RAINBOW && light > 0.6) {
+        const k = smoothstep(0.35, 0.55, phase) * (1 - smoothstep(0.62, 0.72, phase));
+        if (k > 0.02) {
+            const cx = W * 0.5, cy = G.poolY + H * 0.1, R = H * 0.3;
+            const bands = [[255, 80, 80], [255, 160, 60], [250, 230, 90], [90, 210, 110], [80, 150, 255], [150, 100, 230]];
+            bands.forEach((c, i) => {
+                const r = R - i * CH * 0.8;
+                for (let a = Math.PI * 1.15; a < Math.PI * 1.85; a += CW / r) stamp('~', cx + Math.cos(a) * r, cy + Math.sin(a) * r, c, 0.2 * k * P_MIST);
+            });
+        }
+    }
+
+    // Ripples on the pool.
+    const deep = lit(PAL.deep, 0.35);
+    for (let x = G.poolL + CW * 2; x < G.poolR - CW * 2; x += CW) {
+        for (let r = 0; r < 4; r++) {
+            const y = G.poolY + CH * (1 + r * 1.2);
+            const s = Math.sin(x * 0.05 - t * 2 + r) + Math.sin(x * 0.11 + t * 1.3);
+            if (s > 1) stamp('~', x, y, mix(deep, water, 0.5), 0.4);
+        }
+    }
+
+    // Life.
+    const ink = lit([40, 36, 34], 0.3);
+    for (const d of dippers) {
+        if (d.state === 'perch') stamp(d.bob ? 'o<' : 'o>', d.x, d.y + (d.bob ? CH * 0.15 : 0), ink, 1);
+    }
+    for (const s of swifts) {
+        if (s.state === 'fly') stamp(Math.sin(t * 14 + s.a) > 0 ? 'w' : 'v', s.x, s.y, ink, 0.9);
+        else stamp('v', s.x, s.y, ink, 0.6);
+    }
+    for (const f of trout) stamp(f.vy < 0 ? (f.dir > 0 ? '><>' : '<><') : '~', f.x, f.y, lit([170, 150, 120]), 1);
+    if (kingfisher.active) {
+        const y = G.poolY + H * 0.08 + Math.sin(kingfisher.x * 0.02) * CH;
+        stamp(kingfisher.dir > 0 ? '=>' : '<=', kingfisher.x, y, [60, 170, 230], 1);
+        stamp('.', kingfisher.x - kingfisher.dir * CW, y, [240, 130, 50], 1);
+    }
+    if (deer.state !== 'away') {
+        const dy = G.poolY + H * 0.02, dcol = lit([110, 80, 55], 0.25);
+        const drink = deer.state === 'drink';
+        stamp(drink ? '    ' : ' Y  ', deer.x, dy - CH * 3, dcol, 1);
+        stamp(drink ? 'o\\__' : 'o\\__', deer.x, dy - CH * (drink ? 1.6 : 2), dcol, 1);
+        stamp('|  |', deer.x + CW, dy - CH, dcol, 1);
+        if (drink && Math.sin(t * 2) > 0.9) spawn(FOAM, deer.x - CW * 2, dy, 0, 0);
+    }
+    for (const d of dragonflies) if (light > 0.5) stamp('-+-', d.x * W, d.y * H, [80, 200, 220], 0.9);
+    if (light < 0.5) for (const f of flies) {
+        const gl = Math.max(0, Math.sin(t * f.s + f.p)) ** 6;
+        if (gl < 0.05) continue;
+        stamp(gl > 0.6 ? '*' : '.', f.x * W, G.poolY - H * 0.3 * f.y, [200, 255, 120], gl * (1 - light));
+    }
+    g.globalAlpha = 1;
 }
 
-function startAnimation() {
-    canvas.style.opacity = '1';
-    document.fonts.ready.then(() => {
-        resize();
-        initWaterColumns();
-        requestAnimationFrame(render);
-    });
+// ─── Main loop ───────────────────────────────────────────────────────────────
+let clock = 0, lastTs = 0;
+function frame(ts) {
+    requestAnimationFrame(frame);
+    if (window.innerWidth !== W || window.innerHeight !== H) resize();
+    if (W === 0 || H === 0) return;
+    if (lastTs && ts - lastTs < 33) return;   // ~30 fps
+    const dt = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 1 / 30) * P_SPEED;
+    lastTs = ts;
+    clock += dt;
+    updateTime(dt);
+    updateWater(dt);
+    updateLife(dt, clock);
+    if (backdropDirty || clock - lastBackdrop > 2) { paintBackdrop(); backdropDirty = false; lastBackdrop = clock; }
+    draw(clock);
 }
 
-if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
-else if (DELAYED_START) setTimeout(startAnimation, 4000);
-else setTimeout(startAnimation, 500);
+function start() {
+    backdrop.style.opacity = 1;
+    canvas.style.opacity = 1;
+    requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', resize);
+resize();
+if (_params.has('startPhase')) phase = clamp(parseFloat(_params.get('startPhase')), 0, 1);   // testing hook
+updateTime(0);
+for (let i = 0; i < 120; i++) updateWater(1 / 30);   // let the water reach the pool first
+
+if (START_AT > 0) setTimeout(start, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(start, 4000);
+else setTimeout(start, 500);
 </script>
 </body>
 </html>

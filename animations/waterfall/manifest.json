@@ -1,9 +1,9 @@
 {
   "id": "waterfall",
   "name": "Waterfall",
-  "description": "A peaceful cascading waterfall flowing through a mossy rock channel. The simulation includes a turbulent base mist and spray burst, crowned by an optional, faint rainbow arc that appears in the ambient light.",
+  "description": "A living gorge: a river pours over the lip as a particle simulation, breaking into spray and churning foam that drifts downstream; the flow swells with rain; mist holds a rainbow. Dippers bob on stones, swifts nest behind the fall, trout leap at dusk, a kingfisher darts past and a deer comes down to drink, under a day and night.",
   "author": "Luci Evol - www.evoldigitalproductions.com",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "preview": "preview.jpg",
   "params": [
     {
@@ -58,6 +58,26 @@
         0,
         1
       ]
+    },
+    {
+      "key": "cycleTime",
+      "type": "range",
+      "label": "Cycle Time",
+      "defaultValue": 8,
+      "min": 0,
+      "max": 30,
+      "step": 0.5,
+      "integer": false
+    },
+    {
+      "key": "wildlife",
+      "type": "range",
+      "label": "Wildlife",
+      "defaultValue": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "integer": false
     }
   ]
 }

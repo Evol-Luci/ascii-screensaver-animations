@@ -10,481 +10,473 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background: #0a0a12;
+            background: #030305;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
         }
 
-        body.screensaver-mode { cursor: none; }
-
-        #campfire-canvas {
+        #backdrop, #campfire-canvas {
+            position: fixed;
+            inset: 0;
             display: block;
             opacity: 0;
-            transition: opacity 2s ease-in;
+            transition: opacity 3s ease-in;
         }
-
-        .credits-popup {
-            position: fixed;
-            bottom: 32px;
-            right: 32px;
-            background: rgba(18, 10, 5, 0.92);
-            border: 1px solid rgba(230, 120, 40, 0.35);
-            border-radius: 8px;
-            padding: 20px 24px;
-            font-family: 'JetBrains Mono', 'Courier New', monospace;
-            font-size: 12px;
-            color: #c08850;
-            max-width: 280px;
-            opacity: 0;
-            transition: opacity 2s ease-in-out;
-            z-index: 100;
-            line-height: 1.6;
-        }
-        .credits-popup.visible { opacity: 1; }
-        .credits-popup h2 {
-            font-size: 14px;
-            font-weight: 700;
-            color: #f08830;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .credits-popup .credits-label {
-            font-size: 10px;
-            color: #704818;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 10px;
-            margin-bottom: 4px;
-        }
-        .credits-popup hr {
-            border: none;
-            border-top: 1px solid rgba(230, 120, 40, 0.25);
-            margin: 12px 0;
-        }
-        .credits-popup a { color: #f08830; text-decoration: none; }
     </style>
 </head>
 <body>
+<canvas id="backdrop"></canvas>
 <canvas id="campfire-canvas"></canvas>
 <script>
-// ─── Screensaver mode ──────────────────────────────────────────────────────────
-const _params = new URLSearchParams(window.location.search);
-const DELAYED_START    = _params.has('delayedStart');
-const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+// A fire in a clearing in the woods.
+//
+// The flames are a small heat simulation — heat rises through a grid, cools
+// and flickers — over crossed logs in a ring of stones. Crackles throw
+// sparks; embers drift up on the smoke toward the stars glimpsed through the
+// canopy. The firelight breathes: it warms the ground, the logs, and the
+// sides of the nearest trunks. Someone sits by the fire in stillness. The
+// forest keeps its own company: an owl on a branch, a deer stepping to the
+// edge of the light, moths circling, fireflies, the wind moving through.
 
-const P_SPEED              = parseFloat(_params.get('speed')             || '1');
-const P_PALETTE            = _params.get('palette')                      || 'warm';
-const P_FLAME_HEIGHT       = parseFloat(_params.get('flameHeight')       || '1.0');
-const P_EMBER_RATE         = parseFloat(_params.get('emberRate')         || '1.0');
-const P_CRACKLE_INTENSITY  = parseFloat(_params.get('crackleIntensity')  || '1.0');
-const P_FOREST_SILHOUETTE  = parseInt(_params.get('forestSilhouette')    || '1', 10);
+// ─── Parameters ──────────────────────────────────────────────────────────────
+const _params       = new URLSearchParams(window.location.search);
+const DELAYED_START = _params.has('delayedStart');
+const START_AT      = parseInt(_params.get('startAt') || '0', 10);
 
-// ─── Canvas ────────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; }
+const P_SPEED    = clamp(parseFloat(_params.get('speed') || '1'), 0.2, 4);
+const P_PALETTE  = _params.get('palette') || 'warm';
+const P_HEIGHT   = clamp(parseFloat(_params.get('flameHeight') || '1'), 0.5, 2);
+const P_EMBERS   = clamp(parseFloat(_params.get('emberRate') || '1'), 0, 2);
+const P_CRACKLE  = clamp(parseFloat(_params.get('crackleIntensity') || '1'), 0, 2);
+const P_FOREST   = (_params.get('forestSilhouette') ?? '1') !== '0';
+const P_WILDLIFE = clamp(parseFloat(_params.get('wildlife') || '1'), 0, 2);
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+function lerp(a, b, k) { return a + (b - a) * k; }
+function mix(a, b, k) { return [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)]; }
+function scale(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+
+// ─── Palettes: the fire's colour from coolest to hottest, and its light ──────
+const PALETTES = {
+    warm:        { heat: [[60, 10, 4], [170, 40, 8], [240, 110, 20], [255, 190, 60], [255, 245, 190]], light: [255, 140, 60] },
+    blueFlame:   { heat: [[10, 16, 60], [20, 60, 170], [60, 140, 240], [150, 210, 255], [235, 250, 255]], light: [90, 150, 255] },
+    greenFlame:  { heat: [[6, 40, 10], [20, 120, 30], [80, 210, 60], [170, 255, 120], [240, 255, 220]], light: [110, 230, 90] },
+    violetFlame: { heat: [[40, 6, 60], [110, 20, 170], [180, 70, 240], [230, 150, 255], [250, 230, 255]], light: [180, 100, 255] },
+    mono:        { heat: [[30, 30, 30], [90, 90, 90], [160, 160, 160], [215, 215, 215], [250, 250, 250]], light: [200, 200, 200] },
+};
+const PAL = PALETTES[P_PALETTE] || PALETTES.warm;
+function heatColour(h) {
+    const stops = PAL.heat;
+    const x = clamp(h, 0, 1) * (stops.length - 1);
+    const i = Math.min(stops.length - 2, Math.floor(x));
+    return mix(stops[i], stops[i + 1], x - i);
+}
+
+// ─── Canvases ────────────────────────────────────────────────────────────────
+const backdrop = document.getElementById('backdrop');
+const bctx = backdrop.getContext('2d');
 const canvas = document.getElementById('campfire-canvas');
-const ctx    = canvas.getContext('2d');
+const ctx = canvas.getContext('2d');
 
-const FONT_SIZE = 15;
-let CHAR_W = 9.0, CHAR_H = 18.75;
-let cols = 0, rows = 0;
-let W = 0, H = 0;
+let W = 0, H = 0, FS = 12, CW = 7.2, CH = 12;
+let groundY = 0, fireX = 0, fireY = 0;
+let trunks = [], stars = [];
 
 function resize() {
-    canvas.width  = W = window.innerWidth;
-    canvas.height = H = window.innerHeight;
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    CHAR_W = ctx.measureText('M').width;
-    CHAR_H = FONT_SIZE * 1.25;
-    cols = Math.floor(W / CHAR_W);
-    rows = Math.floor(H / CHAR_H);
-    computeFireGeometry();
-    generateTreeLine();
+    W = window.innerWidth; H = window.innerHeight;
+    for (const c of [backdrop, canvas]) {
+        c.width = Math.max(1, W); c.height = Math.max(1, H);
+        c.style.width = W + 'px'; c.style.height = H + 'px';
+    }
+    FS = clamp(Math.round(Math.min(W, H) / 55), 8, 20);
+    CW = FS * 0.6; CH = FS * 1.0;
+    groundY = H * 0.72;
+    fireX = W * 0.5; fireY = H * 0.8;
+    glyphCache.clear();
+    initFire();
+
+    // Trunks at three depths; the nearest catch the firelight.
+    trunks = [];
+    for (let i = 0; i < 26; i++) {
+        const depth = i < 12 ? 0 : i < 20 ? 1 : 2;   // far, mid, near
+        let x = hash(i * 3.7) * W;
+        if (depth === 2 && Math.abs(x - fireX) < W * 0.22) x += (x < fireX ? -1 : 1) * W * 0.22;
+        if (depth === 1 && Math.abs(x - fireX) < W * 0.12) x += (x < fireX ? -1 : 1) * W * 0.12;
+        trunks.push({ x, depth, w: [1, 2, 4][depth] + Math.floor(hash(i) * [1, 2, 2][depth]), base: groundY + [-H * 0.02, H * 0.02, H * 0.12][depth] });
+    }
+    trunks.sort((a, b) => a.depth - b.depth);
+    stars = [];
+    for (let i = 0; i < 90; i++) stars.push({ x: W * (0.3 + hash(i * 1.9) * 0.4), y: hash(i * 5.3) * H * 0.3, b: hash(i * 2.1), p: hash(i) * 6 });
+    backdropDirty = true;
 }
+
+const glyphCache = new Map();
+if (document.fonts) document.fonts.ready.then(() => { glyphCache.clear(); backdropDirty = true; });
+function sprite(ch, col, size) {
+    size = size || FS;
+    const q = (v) => (clamp(v, 0, 255) >> 3) << 3;
+    const r = q(col[0]), g = q(col[1]), b = q(col[2]);
+    const key = ch + '|' + size + '|' + r + ',' + g + ',' + b;
+    let s = glyphCache.get(key);
+    if (!s) {
+        if (glyphCache.size > 6000) glyphCache.clear();
+        const w = Math.ceil(size * 0.62 * ch.length + size * 0.4) + 2, h = Math.ceil(size * 1.3) + 2;
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d');
+        x.font = `700 ${size}px "JetBrains Mono", monospace`;
+        x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillStyle = `rgb(${r},${g},${b})`;
+        x.fillText(ch, w / 2, h / 2);
+        s = { c, w, h };
+        glyphCache.set(key, s);
+    }
+    return s;
+}
+function stampOn(g, ch, x, y, col, alpha, size) {
+    if (alpha <= 0.01) return;
+    const s = sprite(ch, col, size);
+    g.globalAlpha = Math.min(1, alpha);
+    g.drawImage(s.c, x - s.w / 2, y - s.h / 2);
+}
+const stamp = (ch, x, y, col, alpha, size) => stampOn(ctx, ch, x, y, col, alpha, size);
+
+// ─── The fire: a heat field ──────────────────────────────────────────────────
+// Each cell's heat is the average of the cells below it, minus cooling, with
+// a sideways drift for the wind. The bottom row is fed by the burning logs.
+let FW = 0, FH = 0, heat = null, next = null;
+function initFire() {
+    FW = Math.max(12, Math.round(W * 0.14 / CW));
+    FH = Math.max(14, Math.round(H * 0.3 * P_HEIGHT / CH));
+    heat = new Float32Array(FW * FH);
+    next = new Float32Array(FW * FH);
+}
+let fuel = 1, fuelTarget = 1, lean = 0, clockFire = 0;
+
+function stepFire(dt) {
+    // The logs' glow shifts slowly; a crackle flares one spot.
+    if (Math.random() < dt * 0.5) fuelTarget = rand(0.75, 1.05);
+    fuel += (fuelTarget - fuel) * Math.min(1, dt);
+    for (let x = 0; x < FW; x++) {
+        const u = (x / (FW - 1)) * 2 - 1;
+        const bed = Math.max(0, 1 - u * u * 2.2);   // hottest in the middle of the bed
+        heat[(FH - 1) * FW + x] = bed * fuel * (0.75 + Math.random() * 0.45);
+    }
+    const cool = 0.9 / FH / P_HEIGHT;
+    // Tongues: the flame cools faster toward its sides, and in flickering
+    // columns, so it tapers into points instead of rising as a block.
+    const tongue = [];
+    for (let x = 0; x < FW; x++) {
+        const u = (x / (FW - 1)) * 2 - 1;
+        tongue.push(1 + 3.2 * u * u + 1.2 * (0.5 + 0.5 * Math.sin(x * 1.3 + clockFire * 5)) * Math.random());
+    }
+    clockFire += dt;
+    const shift = Math.round(lean * 1.2);
+    for (let y = 0; y < FH - 1; y++) {
+        for (let x = 0; x < FW; x++) {
+            const sx = clamp(x - shift + (Math.random() < 0.5 ? -1 : Math.random() < 0.5 ? 1 : 0), 0, FW - 1);
+            const below = heat[(y + 1) * FW + sx];
+            const below2 = heat[Math.min(FH - 1, y + 2) * FW + x];
+            const v = (below * 0.7 + below2 * 0.3) - cool * tongue[x] * (0.5 + Math.random());
+            next[y * FW + x] = v > 0 ? v : 0;
+        }
+    }
+    for (let x = 0; x < FW; x++) next[(FH - 1) * FW + x] = heat[(FH - 1) * FW + x];
+    [heat, next] = [next, heat];
+}
+
+// ─── Embers, sparks, smoke ───────────────────────────────────────────────────
+const embers = [], smoke = [];
+let untilCrackle = 1;
+function updateParticles(dt, t, wind) {
+    const top = fireY - FH * CH * 0.6;
+    if (Math.random() < dt * 5 * P_EMBERS) embers.push({ x: fireX + rand(-1, 1) * FW * CW * 0.3, y: top + rand(0, FH * CH * 0.4), vx: rand(-10, 10), vy: -rand(30, 70), life: 0, max: rand(2, 5), hot: rand(0.6, 1) });
+    untilCrackle -= dt;
+    if (untilCrackle <= 0 && P_CRACKLE > 0) {
+        untilCrackle = rand(0.6, 4) / P_CRACKLE;
+        const x = fireX + rand(-1, 1) * FW * CW * 0.3, n = Math.floor(rand(4, 12) * P_CRACKLE);
+        for (let i = 0; i < n; i++) embers.push({ x, y: fireY - CH * 2, vx: rand(-80, 80), vy: -rand(60, 160), life: 0, max: rand(0.5, 1.4), hot: 1, spark: true });
+        fuelTarget = Math.min(1.25, fuel + 0.25);
+    }
+    for (let i = embers.length - 1; i >= 0; i--) {
+        const e = embers[i];
+        e.life += dt;
+        e.vx += (wind * 40 + Math.sin(t * 2 + i) * 8) * dt;
+        e.vy += (e.spark ? 120 : -4) * dt;
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        if (e.life > e.max || e.y < -10) embers.splice(i, 1);
+    }
+    if (Math.random() < dt * 6) smoke.push({ x: fireX + rand(-1, 1) * CW * 2, y: top, life: 0, seed: rand(0, 6) });
+    for (let i = smoke.length - 1; i >= 0; i--) {
+        const s = smoke[i];
+        s.life += dt;
+        s.y -= CH * 1.8 * dt;
+        s.x += (Math.sin(s.life * 0.9 + s.seed) * 6 + wind * 30) * dt;
+        if (s.life > 12 || s.y < -20) smoke.splice(i, 1);
+    }
+}
+
+// ─── The forest's company ────────────────────────────────────────────────────
+const owl = { x: 0, y: 0, look: 0, lookT: 0, blink: 0 };
+const deer = { state: 'away', next: rand(20, 40), x: 0, t: 0, dir: 1 };
+const moths = Array.from({ length: 4 }, () => ({ a: rand(0, 6.3), r: rand(0.6, 1.2), s: rand(1, 2), y: rand(-1, 1) }));
+const flies = Array.from({ length: 22 }, () => ({ x: rand(0, 1), y: rand(0, 1), p: rand(0, 6.3), s: rand(0.5, 1.4) }));
+let wind = 0, windTarget = 0, untilGust = rand(5, 12);
+
+function updateLife(dt, t) {
+    untilGust -= dt;
+    if (untilGust <= 0) { windTarget = rand(-1, 1); untilGust = rand(6, 15); }
+    windTarget *= Math.exp(-dt * 0.3);
+    wind += (windTarget - wind) * Math.min(1, dt * 1.2);
+    lean += (wind - lean) * Math.min(1, dt * 2);
+    // The owl turns its head now and then, and blinks.
+    owl.lookT -= dt;
+    if (owl.lookT <= 0) { owl.look = pick([-1, 0, 0, 1]); owl.lookT = rand(2, 7); }
+    owl.blink = Math.max(0, owl.blink - dt);
+    if (Math.random() < dt * 0.25) owl.blink = 0.15;
+    // A deer steps out to the edge of the firelight, pauses, and goes.
+    if (P_WILDLIFE > 0) {
+        if (deer.state === 'away') {
+            deer.next -= dt * P_WILDLIFE;
+            if (deer.next <= 0) { deer.state = 'in'; deer.dir = Math.random() < 0.5 ? 1 : -1; deer.x = deer.dir > 0 ? -40 : W + 40; deer.t = 0; deer.stop = W * (deer.dir > 0 ? rand(0.12, 0.25) : rand(0.75, 0.88)); }
+        } else if (deer.state === 'in') {
+            deer.x += deer.dir * W * 0.03 * dt;
+            deer.t += dt;
+            if ((deer.dir > 0 && deer.x >= deer.stop) || (deer.dir < 0 && deer.x <= deer.stop)) { deer.state = 'pause'; deer.t = rand(6, 12); }
+        } else if (deer.state === 'pause') {
+            deer.t -= dt;
+            if (deer.t <= 0) { deer.state = 'out'; deer.dir *= -1; }
+        } else {
+            deer.x += deer.dir * W * 0.05 * dt;
+            if (deer.x < -60 || deer.x > W + 60) { deer.state = 'away'; deer.next = rand(35, 80); }
+        }
+    }
+}
+
+// ─── Backdrop: sky through the canopy, far forest, clearing ─────────────────
+let backdropDirty = true;
+function paintBackdrop() {
+    const g = bctx;
+    g.globalAlpha = 1;
+    g.fillStyle = '#030305';
+    g.fillRect(0, 0, W, H);
+    // A gap in the canopy: deep blue sky, a moon.
+    const sky = g.createRadialGradient(W * 0.5, 0, 0, W * 0.5, 0, W * 0.35);
+    sky.addColorStop(0, 'rgba(24, 30, 60, 1)');
+    sky.addColorStop(1, 'rgba(6, 6, 12, 0)');
+    g.fillStyle = sky;
+    g.fillRect(0, 0, W, H * 0.5);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `700 ${FS}px "JetBrains Mono", monospace`;
+    const mx = W * 0.6, my = H * 0.1, mr = Math.min(W, H) * 0.05;
+    const halo = g.createRadialGradient(mx, my, 0, mx, my, mr * 4);
+    halo.addColorStop(0, 'rgba(200, 210, 240, 0.18)');
+    halo.addColorStop(1, 'rgba(200, 210, 240, 0)');
+    g.fillStyle = halo;
+    g.fillRect(mx - mr * 4, my - mr * 4, mr * 8, mr * 8);
+    g.fillStyle = 'rgba(220, 225, 240, 0.85)';
+    for (let y = -mr; y <= mr; y += CH * 0.9) {
+        const half = Math.sqrt(Math.max(0, mr * mr - y * y));
+        for (let x = -half; x <= half; x += CW) g.fillText(x > half * 0.45 ? ':' : '@', mx + x, my + y);
+    }
+    // Far forest: a wall of dark pines.
+    if (P_FOREST) {
+        g.fillStyle = 'rgb(10, 14, 12)';
+        for (let x = 0; x < W; x += CW * 1.1) {
+            const h = H * (0.18 + 0.1 * hash(x * 0.07)) ;
+            for (let k = 0; k < h / CH; k++) {
+                const w = Math.floor(k / 2) + 1;
+                if (hash(x + k) < 0.3) continue;
+                g.fillText(k === 0 ? '^' : w % 2 ? '/\\' : 'A', x, groundY - h + k * CH);
+            }
+        }
+    }
+    // The clearing's floor.
+    const floor = g.createLinearGradient(0, groundY, 0, H);
+    floor.addColorStop(0, 'rgb(10, 10, 9)');
+    floor.addColorStop(1, 'rgb(4, 4, 4)');
+    g.fillStyle = floor;
+    g.fillRect(0, groundY, W, H - groundY);
+    g.fillStyle = 'rgba(60, 60, 50, 0.35)';
+    for (let y = groundY + CH; y < H; y += CH) for (let x = 0; x < W; x += CW * 1.5) if (hash(x * 0.3 + y) < 0.25) g.fillText(pick2(x + y, [',', '.', '\'', '`', '"']), x, y);
+    const light = PAL.light;
+    // Trunks: dark, with the side facing the fire lit and flickering.
+    for (const tr of trunks) {
+        const dist = Math.abs(tr.x - fireX) / W;
+        const lit = clamp(1 - dist * (tr.depth === 2 ? 1.6 : 2.4), 0, 1) * 0.9 * [0.2, 0.55, 1][tr.depth];
+        const base = [[12, 14, 12], [18, 16, 14], [26, 20, 16]][tr.depth];
+        const top = -CH;
+        for (let y = tr.base; y > top; y -= CH) {
+            const k = (tr.base - y) / (tr.base - top);
+            const dx = 0;
+            for (let i = 0; i < tr.w; i++) {
+                const facing = tr.x < fireX ? i === tr.w - 1 : i === 0;
+                const col = facing ? mix(base, light, lit * 0.7) : mix(base, light, lit * 0.15);
+                stampOn(g, tr.w > 1 && (i === 0 || i === tr.w - 1) ? (i === 0 ? '(' : ')') : (hash(i + y * 0.1) < 0.2 ? ':' : '|'), tr.x + (i - tr.w / 2) * CW + dx, y, col, 1, FS);
+            }
+        }
+    }
+}
+
+// The canopy sways, so it gets its own layer, refreshed a few times a second.
+const canopyLayer = document.createElement('canvas');
+function paintCanopy(t) {
+    canopyLayer.width = Math.max(1, W); canopyLayer.height = Math.max(1, H);
+    const g = canopyLayer.getContext('2d');
+    const light = PAL.light, pulse = 0.9;
+    // The canopy overhead, swaying.
+    for (let x = 0; x < W; x += CW * 1.2) {
+        const gap = Math.abs(x - W * 0.5) < W * 0.2;
+        const depthRows = gap ? 2 : 6;
+        for (let r = 0; r < depthRows; r++) {
+            if (hash(x * 0.9 + r * 3) < 0.25) continue;
+            const y = r * CH + Math.sin(t * 0.8 + x * 0.01) * CH * 0.3 * (1 + Math.abs(wind));
+            stampOn(g, pick2(x + r, ['&', '%', '@', '*']), x + wind * CW * 0.8, y, mix([8, 14, 10], light, 0.06 * pulse), 1);
+        }
+    }
+
+}
+function pick2(i, list) { return list[Math.floor(hash(i) * list.length)]; }
+
+// ─── Drawing ─────────────────────────────────────────────────────────────────
+const FLAME = ' .:-=+*#%@';
+
+function draw(t) {
+    const g = ctx;
+    g.globalAlpha = 1;
+    g.clearRect(0, 0, W, H);
+    // The firelight breathes with the flames.
+    const pulse = 0.82 + 0.12 * fuel + 0.06 * Math.sin(t * 9) * Math.sin(t * 4.3);
+    const light = PAL.light;
+
+    // Stars through the canopy gap.
+    for (const s of stars) stamp(s.b > 0.8 ? '*' : '.', s.x, s.y, [210, 220, 255], s.b * (0.5 + 0.5 * Math.sin(t * (0.5 + s.b) + s.p)) * 0.6);
+
+    // Firelight on the clearing.
+    const R = Math.min(W, H) * 0.75 * pulse;
+    const glow = g.createRadialGradient(fireX, fireY - CH * 4, 0, fireX, fireY - CH * 4, R);
+    glow.addColorStop(0, css(light, 0.32));
+    glow.addColorStop(0.35, css(light, 0.12));
+    glow.addColorStop(1, css(light, 0));
+    g.fillStyle = glow;
+    g.fillRect(0, 0, W, H);
+
+    // Trunks (static, in the backdrop) and the swaying canopy (its own layer).
+    g.globalAlpha = 1;
+    g.drawImage(canopyLayer, 0, 0);
+
+    // The owl on a near trunk's branch.
+    const perch = trunks.find(tr => tr.depth === 2 && tr.x < fireX) || trunks[trunks.length - 1];
+    if (perch) {
+        const ox = perch.x + CW * 3, oy = H * 0.3;
+        stamp('-----', perch.x + CW * 2, oy + CH, [26, 20, 16], 1);
+        const eye = owl.blink > 0 ? '-' : 'o';
+        const lookX = owl.look * CW * 0.3;
+        stamp('{' + eye + ',' + eye + '}', ox + lookX, oy - CH * 0.1, mix([40, 32, 26], light, 0.25 * pulse), 1);
+        stamp('/)_)', ox, oy + CH * 0.1 + CH * 0.3, [34, 28, 22], 1);
+        if (owl.blink <= 0) stamp('. .', ox + lookX, oy - CH * 0.1, mix(light, [255, 255, 200], 0.5), 0.5 * pulse);
+    }
+
+    // A deer at the edge of the light: head up, eyes catching the fire.
+    if (deer.state !== 'away') {
+        const dy = groundY + H * 0.02, dx = deer.x, face = deer.state === 'out' ? deer.dir : -Math.sign(deer.x - fireX);
+        const dcol = mix([20, 16, 12], light, 0.18 * pulse);
+        stamp(face > 0 ? '  Y' : 'Y  ', dx, dy - CH * 3, dcol, 1);
+        stamp(face > 0 ? '__/o' : 'o\\__', dx, dy - CH * 2, dcol, 1);
+        stamp('|  |', dx, dy - CH, dcol, 1);
+        if (deer.state === 'pause') stamp('.', dx + face * CW * 1.5, dy - CH * 2.1, mix(light, [255, 255, 255], 0.5), 0.8 * pulse);
+    }
+
+    // The figure sitting by the fire, lit on one side.
+    const fx = fireX - W * 0.13, fy = fireY + CH * 0.3;
+    const fc = mix([14, 12, 12], light, 0.4 * pulse);
+    stamp('o', fx, fy - CH * 3.2, fc, 1, Math.round(FS * 1.3));
+    stamp('/|\\', fx, fy - CH * 2.1, fc, 1, Math.round(FS * 1.3));
+    stamp('_/ \\_', fx, fy - CH * 0.9, fc, 1, Math.round(FS * 1.3));
+    stamp('[======]', fx, fy + CH * 0.2, mix([30, 22, 16], light, 0.3 * pulse), 1);   // the log they sit on
+
+    // Stones and logs.
+    const stone = mix([40, 38, 36], light, 0.35 * pulse);
+    for (let i = -6; i <= 6; i++) stamp(Math.abs(i) === 6 ? '(' : 'o', fireX + i * CW * 1.4, fireY + CH * (0.2 + Math.abs(i) * 0.02), stone, 1);
+    const logc = mix([50, 32, 20], light, 0.4 * pulse);
+    stamp('\\\\\\', fireX - CW * 3, fireY - CH * 0.6, logc, 1);
+    stamp('///', fireX + CW * 3, fireY - CH * 0.6, logc, 1);
+    stamp('===XX===', fireX, fireY - CH * 0.2, logc, 1);
+
+    // The flames.
+    const fx0 = fireX - FW * CW / 2, fy0 = fireY - CH * 0.6 - FH * CH;
+    for (let y = 0; y < FH; y++) {
+        for (let x = 0; x < FW; x++) {
+            const h = heat[y * FW + x];
+            if (h < 0.06) continue;
+            const ch = FLAME[Math.min(FLAME.length - 1, Math.floor(h * FLAME.length * 1.1))];
+            if (ch === ' ') continue;
+            stamp(ch, fx0 + x * CW, fy0 + y * CH, heatColour(h * 1.05), Math.min(1, 0.4 + h));
+        }
+    }
+
+    // Smoke, embers, sparks.
+    for (const s of smoke) {
+        const a = 0.28 * Math.min(1, s.life) * (1 - s.life / 12);
+        stamp(s.life < 3 ? '(' : s.life < 7 ? '~' : '.', s.x, s.y, mix([70, 66, 64], light, 0.2), a);
+    }
+    for (const e of embers) {
+        const k = 1 - e.life / e.max;
+        stamp(e.spark ? '*' : k > 0.5 ? '+' : '.', e.x, e.y, heatColour(e.hot * k + 0.2), k);
+    }
+
+    // Moths circling the flames; fireflies among the trunks.
+    for (const m of moths) {
+        m.a += 0.05 * m.s;
+        const x = fireX + Math.cos(m.a) * W * 0.05 * m.r, y = fireY - FH * CH * 0.8 + Math.sin(m.a * 1.7) * CH * 3 + m.y * CH * 2;
+        stamp(Math.sin(t * 20 + m.a) > 0 ? 'v' : '^', x, y, mix([80, 70, 60], light, 0.6), 0.7);
+    }
+    for (const f of flies) {
+        const gl = Math.max(0, Math.sin(t * f.s + f.p)) ** 6;
+        if (gl < 0.05) continue;
+        stamp(gl > 0.6 ? '*' : '.', f.x * W, groundY - H * 0.25 * f.y + Math.sin(t * 0.4 + f.p) * CH, [200, 255, 120], gl * 0.8);
+    }
+    g.globalAlpha = 1;
+}
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+let clock = 0, lastTs = 0, lastCanopy = -1;
+function frame(ts) {
+    requestAnimationFrame(frame);
+    if (window.innerWidth !== W || window.innerHeight !== H) resize();
+    if (W === 0 || H === 0) return;
+    if (lastTs && ts - lastTs < 40) return;   // ~24 fps
+    const dt = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 1 / 24) * P_SPEED;
+    lastTs = ts;
+    clock += dt;
+    updateLife(dt, clock);
+    stepFire(dt);
+    updateParticles(dt, clock, wind);
+    if (backdropDirty) { paintBackdrop(); backdropDirty = false; }
+    if (clock - lastCanopy > 0.25) { paintCanopy(clock); lastCanopy = clock; }
+    draw(clock);
+}
+
+function start() {
+    backdrop.style.opacity = 1;
+    canvas.style.opacity = 1;
+    requestAnimationFrame(frame);
+}
+
 window.addEventListener('resize', resize);
+resize();
+for (let i = 0; i < 60; i++) stepFire(1 / 24);   // light the fire before we arrive
 
-// ─── Fire base geometry ─────────────────────────────────────────────────────────
-// All positions below are in pixel space, derived from cols/rows so the scene
-// re-centers correctly on resize.
-let fireBaseRow = 0;   // row index where the logs sit
-let fireCenterX = 0;   // pixel x of the fire's horizontal center
-
-function computeFireGeometry() {
-    fireBaseRow = rows - 5;
-    fireCenterX = Math.floor(cols / 2) * CHAR_W;
-}
-
-// ─── 2D Perlin Noise (ported from incense) ─────────────────────────────────────
-const PERLIN_SIZE = 256;
-const perm  = new Uint8Array(512);
-const grad2 = [[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
-
-(function initPerlin() {
-    const p = new Uint8Array(PERLIN_SIZE);
-    for (let i = 0; i < PERLIN_SIZE; i++) p[i] = i;
-    for (let i = PERLIN_SIZE - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [p[i], p[j]] = [p[j], p[i]];
-    }
-    for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
-})();
-
-function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
-function lerp(a, b, t) { return a + t * (b - a); }
-function dot2(gi, x, y) { const g = grad2[gi & 7]; return g[0]*x + g[1]*y; }
-
-function perlin2(x, y) {
-    const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255;
-    const xf = x - Math.floor(x),   yf = y - Math.floor(y);
-    const u  = fade(xf), v = fade(yf);
-    const aa = perm[perm[xi  ] + yi  ], ab = perm[perm[xi  ] + yi+1];
-    const ba = perm[perm[xi+1] + yi  ], bb = perm[perm[xi+1] + yi+1];
-    return lerp(
-        lerp(dot2(aa, xf,   yf  ), dot2(ba, xf-1, yf  ), u),
-        lerp(dot2(ab, xf,   yf-1), dot2(bb, xf-1, yf-1), u), v);
-}
-
-function fbm2(x, y, octaves) {
-    let value = 0, amp = 1, freq = 1, total = 0;
-    for (let i = 0; i < octaves; i++) {
-        value += amp * perlin2(x * freq, y * freq);
-        total += amp; amp *= 0.5; freq *= 2.0;
-    }
-    return value / total;
-}
-
-// ─── Noise texture (baked once at init) ────────────────────────────────────────
-const NOISE_SIZE = 256;
-const NOISE_TEX  = new Float32Array(NOISE_SIZE * NOISE_SIZE);
-
-function bakeNoiseTex() {
-    const inv = 4 / NOISE_SIZE;
-    for (let y = 0; y < NOISE_SIZE; y++) {
-        for (let x = 0; x < NOISE_SIZE; x++) {
-            const nx = x * inv, ny = y * inv;
-            NOISE_TEX[y * NOISE_SIZE + x] = fbm2(nx, ny, 3);
-        }
-    }
-}
-
-// O(1) per sample. t = animTime (seconds-ish), scrolled vertically for flicker.
-function sampleNoise(worldX, worldY, t) {
-    const u = ((worldX * 0.05 * 64) | 0) & 255;
-    const v = ((worldY * 0.05 * 64 + t * 40) | 0) & 255;
-    return NOISE_TEX[(v << 8) | u];
-}
-
-// ─── Flame color palettes + LUT ────────────────────────────────────────────────
-// Each palette is a stop list (t, r, g, b) from core (t=0, hottest/brightest)
-// to tip (t=1, coolest/dimmest), matching incense's paletteLerp/buildColorLUT shape.
-const FLAME_PALETTES = {
-    warm:       [{t:0.0,r:0xff,g:0xf4,b:0xc0},{t:0.3,r:0xff,g:0xc0,b:0x30},{t:0.6,r:0xff,g:0x80,b:0x10},{t:1.0,r:0xa0,g:0x18,b:0x08}],
-    blueFlame:  [{t:0.0,r:0xe0,g:0xf8,b:0xff},{t:0.3,r:0x80,g:0xd0,b:0xff},{t:0.6,r:0x30,g:0x90,b:0xff},{t:1.0,r:0x10,g:0x30,b:0xa0}],
-    greenFlame: [{t:0.0,r:0xf0,g:0xff,b:0xc0},{t:0.3,r:0xa0,g:0xff,b:0x60},{t:0.6,r:0x40,g:0xd0,b:0x30},{t:1.0,r:0x10,g:0x70,b:0x18}],
-    violetFlame:[{t:0.0,r:0xfa,g:0xe0,b:0xff},{t:0.3,r:0xd0,g:0x90,b:0xff},{t:0.6,r:0x90,g:0x30,b:0xe0},{t:1.0,r:0x40,g:0x10,b:0x80}],
-    mono:       [{t:0.0,r:0xf8,g:0xf8,b:0xf8},{t:0.3,r:0xc0,g:0xc0,b:0xc0},{t:0.6,r:0x88,g:0x88,b:0x88},{t:1.0,r:0x40,g:0x40,b:0x40}],
-};
-const ACTIVE_FLAME_PALETTE = FLAME_PALETTES[P_PALETTE] || FLAME_PALETTES.warm;
-
-function paletteLerp(palette, t) {
-    t = Math.max(0, Math.min(1, t));
-    for (let i = 0; i < palette.length - 1; i++) {
-        if (t <= palette[i+1].t) {
-            const m = (t - palette[i].t) / (palette[i+1].t - palette[i].t);
-            return [
-                Math.round(palette[i].r + m * (palette[i+1].r - palette[i].r)),
-                Math.round(palette[i].g + m * (palette[i+1].g - palette[i].g)),
-                Math.round(palette[i].b + m * (palette[i+1].b - palette[i].b)),
-            ];
-        }
-    }
-    const last = palette[palette.length - 1];
-    return [last.r, last.g, last.b];
-}
-
-function buildColorLUT(palette) {
-    const lut = new Array(256);
-    for (let i = 0; i < 256; i++) {
-        const [r, g, b] = paletteLerp(palette, i / 255);
-        lut[i] = `rgb(${r},${g},${b})`;
-    }
-    return lut;
-}
-
-const FLAME_LUT = buildColorLUT(ACTIVE_FLAME_PALETTE);
-
-// ─── Forest silhouette ─────────────────────────────────────────────────────────
-// Fixed-seed jagged tree-line silhouette across the full width, regenerated on
-// resize so it always spans the current screen. Drawn once per frame (cheap —
-// it's just a filled path, not per-character).
-let treeLine = []; // array of pixel heights, one per column-ish sample point
-
-function generateTreeLine() {
-    treeLine = [];
-    const sampleEvery = 3; // px granularity for jaggedness
-    let h = 40 + Math.random() * 30;
-    for (let x = 0; x <= W + sampleEvery; x += sampleEvery) {
-        h += (Math.random() - 0.5) * 18;
-        h = Math.max(25, Math.min(120, h));
-        // Occasional taller "tree" spike
-        if (Math.random() < 0.04) h += 40 + Math.random() * 30;
-        treeLine.push(h);
-    }
-}
-
-function drawForestSilhouette() {
-    if (!P_FOREST_SILHOUETTE) return;
-    if (treeLine.length === 0) return;
-    const baseY = (fireBaseRow + 2) * CHAR_H;
-    ctx.fillStyle = '#08060a';
-    ctx.globalAlpha = 0.85;
-    ctx.beginPath();
-    ctx.moveTo(0, baseY);
-    const sampleEvery = 3;
-    for (let i = 0; i < treeLine.length; i++) {
-        ctx.lineTo(i * sampleEvery, baseY - treeLine[i]);
-    }
-    ctx.lineTo(W, baseY);
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalAlpha = 1;
-}
-
-// ─── Firefly ────────────────────────────────────────────────────────────────────
-// A single firefly that drifts in from offscreen, wanders for a while with a
-// soft pulsing glow, then drifts back out and respawns after a random pause.
-class Firefly {
-    constructor() { this.scheduleSpawn(true); }
-
-    scheduleSpawn(immediate = false) {
-        this.active = false;
-        this.delay  = immediate ? 1000 + Math.random() * 4000 : 6000 + Math.random() * 12000;
-        this.timer  = 0;
-    }
-
-    spawn() {
-        this.active = true;
-        this.x      = Math.random() < 0.5 ? -10 : W + 10;
-        this.y      = (fireBaseRow - 6 - Math.random() * 8) * CHAR_H;
-        this.vx     = (this.x < 0 ? 1 : -1) * (0.15 + Math.random() * 0.15);
-        this.vy     = (Math.random() - 0.5) * 0.08;
-        this.life   = 0;
-        this.maxLife = 8000 + Math.random() * 6000;
-        this.phase  = Math.random() * Math.PI * 2;
-    }
-
-    update(dt) {
-        if (!this.active) {
-            this.timer += dt;
-            if (this.timer >= this.delay) this.spawn();
-            return;
-        }
-        this.life += dt;
-        this.phase += dt * 0.006;
-        this.x += this.vx * dt * 0.06;
-        this.y += this.vy * dt * 0.06 + Math.sin(this.phase) * 0.15;
-        if (this.life >= this.maxLife || this.x < -20 || this.x > W + 20) {
-            this.scheduleSpawn(false);
-        }
-    }
-
-    draw() {
-        if (!this.active) return;
-        const glow = 0.5 + 0.5 * Math.sin(this.phase * 2.3);
-        ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-        ctx.textBaseline = 'top';
-        ctx.globalAlpha = 0.4 + 0.5 * glow;
-        ctx.fillStyle = `rgb(${220 + Math.round(20*glow)},${230},${80 + Math.round(40*glow)})`;
-        ctx.fillText('.', this.x, this.y);
-        ctx.globalAlpha = 1;
-    }
-}
-
-const firefly = new Firefly();
-
-// ─── Flame tongues ──────────────────────────────────────────────────────────────
-// 3 overlapping tongues, each a column of glyphs whose height/x-offset/glyph is
-// perturbed by sampleNoise(). flameHeight scales max tongue height; crackleIntensity
-// scales the per-frame jitter magnitude.
-const FLAME_GLYPHS = ['^', '|', '/', '\\'];
-const TONGUE_DEFS = [
-    { xOffsetChars: -3, baseHeightRows: 9,  speedMul: 1.00 },
-    { xOffsetChars:  0, baseHeightRows: 12, speedMul: 0.85 },
-    { xOffsetChars:  3, baseHeightRows: 9,  speedMul: 1.15 },
-];
-
-function drawFlames(animTime) {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    for (let ti = 0; ti < TONGUE_DEFS.length; ti++) {
-        const def = TONGUE_DEFS[ti];
-        const heightRows = Math.max(3, Math.round(def.baseHeightRows * P_FLAME_HEIGHT));
-        const baseCol = Math.floor(fireCenterX / CHAR_W) + def.xOffsetChars;
-
-        for (let row = 0; row < heightRows; row++) {
-            const rowNorm = row / heightRows; // 0 at base, 1 at tip
-            const worldY  = row + ti * 17;     // decorrelate tongues in noise space
-            const nFlicker = sampleNoise(baseCol, worldY, animTime * def.speedMul);
-            const jitter   = nFlicker * P_CRACKLE_INTENSITY;
-
-            // Tongue narrows and sways more near the tip
-            const swayChars = jitter * (0.5 + rowNorm * 1.5);
-            const col = baseCol + Math.round(swayChars);
-
-            // Skip rows probabilistically near the tip so the flame frays out
-            // rather than ending in a hard flat line.
-            const surviveChance = 1.0 - rowNorm * rowNorm * 0.6;
-            if (Math.random() > surviveChance + 0.4) continue;
-
-            const glyphIdx = Math.abs(Math.round(jitter * 3)) % FLAME_GLYPHS.length;
-            const glyph = FLAME_GLYPHS[glyphIdx];
-
-            // Color: t=0 (LUT warm end) at the base, t=1 (LUT cool end) at the tip
-            const lutT = Math.min(1, rowNorm + Math.abs(jitter) * 0.15);
-            ctx.globalAlpha = Math.max(0.15, 1.0 - rowNorm * 0.5);
-            ctx.fillStyle = FLAME_LUT[(lutT * 255) | 0];
-
-            const y = (fireBaseRow - 1 - row) * CHAR_H;
-            ctx.fillText(glyph, col * CHAR_W, y);
-        }
-    }
-    ctx.globalAlpha = 1;
-}
-
-// ─── Ember/spark particle pool (incense SOA pattern) ───────────────────────────
-const MAX_EMBERS = 400;
-const pX      = new Float32Array(MAX_EMBERS);
-const pY      = new Float32Array(MAX_EMBERS);
-const pVX     = new Float32Array(MAX_EMBERS);
-const pVY     = new Float32Array(MAX_EMBERS);
-const pAge    = new Float32Array(MAX_EMBERS);
-const pMaxAge = new Float32Array(MAX_EMBERS);
-const pAlive  = new Uint8Array(MAX_EMBERS);
-
-let emberRing = 0;
-let emberSpawnAccum = 0;
-
-// Embers are always warm orange regardless of flame palette (spec: "ember
-// particles reuse the incense spark pool pattern" — a fixed warm-glow effect).
-const EMBER_PALETTE = [
-    { t: 0.0, r: 0xff, g: 0xf0, b: 0xc0 },
-    { t: 0.3, r: 0xff, g: 0xb0, b: 0x30 },
-    { t: 0.7, r: 0xe0, g: 0x50, b: 0x10 },
-    { t: 1.0, r: 0x50, g: 0x20, b: 0x10 },
-];
-const EMBER_LUT = buildColorLUT(EMBER_PALETTE);
-
-function spawnEmber() {
-    let p = emberRing;
-    let skips = 0;
-    while (pAlive[p] && skips < 10) { p = (p + 1) % MAX_EMBERS; skips++; }
-    emberRing = (p + 1) % MAX_EMBERS;
-    pAlive[p]  = 1;
-    pX[p]      = fireCenterX + (Math.random() - 0.5) * CHAR_W * 10;
-    pY[p]      = (fireBaseRow - 1) * CHAR_H - Math.random() * CHAR_H * 4;
-    pVX[p]     = (Math.random() - 0.5) * 0.4;
-    pVY[p]     = -(0.5 + Math.random() * 0.6);
-    pAge[p]    = 0;
-    pMaxAge[p] = 36 + Math.random() * 54;
-}
-
-const EMBER_CHARS = ['*', '.', "'", '`'];
-
-function updateAndDrawEmbers(animTime, dt) {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    for (let i = 0; i < MAX_EMBERS; i++) {
-        if (!pAlive[i]) continue;
-        pAge[i] += dt;
-        const ageNorm = pAge[i] / pMaxAge[i];
-        if (ageNorm >= 1.0 || pY[i] < -CHAR_H * 2) { pAlive[i] = 0; continue; }
-
-        const n = sampleNoise(pX[i], pY[i], animTime);
-        pVX[i] += n * 0.01;
-        pVX[i] *= 0.97;
-        pX[i]  += pVX[i] * dt * 0.5;
-        pY[i]  += pVY[i] * (1.0 - ageNorm * 0.3) * dt * 0.5;
-
-        const alpha = Math.pow(1.0 - ageNorm, 1.3);
-        if (alpha < 0.02) { pAlive[i] = 0; continue; }
-
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = EMBER_LUT[(ageNorm * 255) | 0];
-        const charIdx = ageNorm < 0.4 ? 0 : 1 + Math.floor(Math.random() * 3);
-        ctx.fillText(EMBER_CHARS[charIdx], pX[i], pY[i]);
-    }
-    ctx.globalAlpha = 1;
-}
-
-function spawnEmbers(scaledDt) {
-    const baseRate = 0.025 * P_EMBER_RATE;
-    emberSpawnAccum += baseRate * scaledDt;
-    while (emberSpawnAccum >= 1.0) {
-        emberSpawnAccum -= 1.0;
-        spawnEmber();
-    }
-}
-
-// ─── Logs ───────────────────────────────────────────────────────────────────────
-// Two crossed logs drawn as a fixed ASCII glyph pattern, centered on fireCenterX.
-const LOG_COLOR_TOP = '#3a2410';
-const LOG_COLOR_MID = '#2a1808';
-const LOG_ROWS = [
-    { dy: 0, chars: ['=', '=', '=', '=', '=', '=', '=', '=', '=', '=', '=', '='], color: LOG_COLOR_TOP },
-    { dy: 1, chars: ['\\', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '/'], color: LOG_COLOR_MID },
-];
-
-function drawLogs() {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-    ctx.globalAlpha = 1;
-    const startCol = Math.floor(fireCenterX / CHAR_W) - 6;
-    for (const row of LOG_ROWS) {
-        ctx.fillStyle = row.color;
-        const y = (fireBaseRow + row.dy) * CHAR_H;
-        for (let i = 0; i < row.chars.length; i++) {
-            ctx.fillText(row.chars[i], (startCol + i) * CHAR_W, y);
-        }
-    }
-}
-
-// ─── Render loop ────────────────────────────────────────────────────────────────
-let lastTimestamp = 0;
-let animTime = 0;
-
-function render(t) {
-    const dt = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
-    lastTimestamp = t;
-    const scaledDt = dt * P_SPEED;
-    animTime += scaledDt * 0.001;
-
-    ctx.clearRect(0, 0, W, H);
-    drawForestSilhouette();
-    firefly.update(scaledDt);
-    firefly.draw();
-    drawLogs();
-    drawFlames(animTime);
-    updateAndDrawEmbers(animTime, scaledDt / 16.67);
-    spawnEmbers(scaledDt);
-    requestAnimationFrame(render);
-}
-
-// ─── Entry point ───────────────────────────────────────────────────────────────
-function startAnimation() {
-    canvas.style.opacity = '1';
-    document.fonts.ready.then(() => {
-        resize();
-        generateTreeLine();
-        bakeNoiseTex();
-        requestAnimationFrame(render);
-    });
-}
-
-if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
-else if (DELAYED_START) setTimeout(startAnimation, 4000);
-else setTimeout(startAnimation, 500);
+if (START_AT > 0) setTimeout(start, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(start, 4000);
+else setTimeout(start, 500);
 </script>
 </body>
 </html>

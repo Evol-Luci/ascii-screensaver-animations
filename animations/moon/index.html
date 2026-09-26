@@ -10,410 +10,576 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background: #0a0a12;
+            background: #03040a;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
         }
 
-        body.screensaver-mode { cursor: none; }
-
-        #moon-canvas {
+        #backdrop, #moon-canvas {
+            position: fixed;
+            inset: 0;
             display: block;
             opacity: 0;
-            transition: opacity 2s ease-in;
+            transition: opacity 3s ease-in;
         }
-
-        .credits-popup {
-            position: fixed;
-            bottom: 32px;
-            right: 32px;
-            background: rgba(10, 10, 18, 0.92);
-            border: 1px solid rgba(80, 100, 130, 0.4);
-            border-radius: 8px;
-            padding: 20px 24px;
-            font-family: 'JetBrains Mono', 'Courier New', monospace;
-            font-size: 12px;
-            color: #8899b0;
-            max-width: 280px;
-            opacity: 0;
-            transition: opacity 2s ease-in-out;
-            z-index: 100;
-            line-height: 1.6;
-        }
-        .credits-popup.visible { opacity: 1; }
-        .credits-popup h2 {
-            font-size: 14px;
-            font-weight: 700;
-            color: #aabbcc;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .credits-popup .credits-label {
-            font-size: 10px;
-            color: #506070;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 10px;
-            margin-bottom: 4px;
-        }
-        .credits-popup hr {
-            border: none;
-            border-top: 1px solid rgba(80, 100, 130, 0.3);
-            margin: 12px 0;
-        }
-        .credits-popup a { color: #6688aa; text-decoration: none; }
     </style>
 </head>
 <body>
+<canvas id="backdrop"></canvas>
 <canvas id="moon-canvas"></canvas>
 <script>
-// ─── Screensaver mode ──────────────────────────────────────────────────────────
-const _params = new URLSearchParams(window.location.search);
-const DELAYED_START    = _params.has('delayedStart');
-const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+// Our heavenly moon.
+//
+// The moon as it is tonight — its real phase and its place among the zodiac
+// constellations, computed from the date — and then its month unfolding over
+// a few minutes: the terminator sweeping across the maria and craters of the
+// near side, earthshine on the dark limb, a slow libration. The zodiac drifts
+// behind it along the ecliptic; below, a still lake holds its reflection.
+// Clouds pass, a meteor falls, an owl crosses the disc. A quiet caption names
+// the phase, the sign the moon is in, and a thought for the phase.
 
-const P_SPEED          = parseFloat(_params.get('speed')         || '1');
-const P_PALETTE        = _params.get('palette') || 'silver';
-const P_STARS          = parseInt(_params.get('stars')           || '120', 10);
-const P_FLOATER_FREQ   = parseFloat(_params.get('floaterFreq')   || '1');
-const P_GLOW_INTENSITY = parseFloat(_params.get('glowIntensity') || '1');
+// ─── Parameters ──────────────────────────────────────────────────────────────
+const _params       = new URLSearchParams(window.location.search);
+const DELAYED_START = _params.has('delayedStart');
+const START_AT      = parseInt(_params.get('startAt') || '0', 10);
 
-// ─── Canvas ────────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; }
+const P_SPEED   = clamp(parseFloat(_params.get('speed') || '1'), 0.2, 4);
+const P_PALETTE = _params.get('palette') || 'silver';
+const P_STARS   = Math.round(clamp(parseFloat(_params.get('stars') || '120'), 0, 300));
+const P_FLOATER = clamp(parseFloat(_params.get('floaterFreq') || '1'), 0, 3);
+const P_GLOW    = clamp(parseFloat(_params.get('glowIntensity') || '1'), 0, 2);
+const P_CYCLE   = clamp(parseFloat(_params.get('cycleTime') || '12'), 0, 60);   // minutes per lunar month; 0 = tonight's moon
+const P_ZODIAC  = (_params.get('constellations') ?? '1') !== '0';
+const P_CAPTION = (_params.get('captions') ?? '1') !== '0';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+function lerp(a, b, k) { return a + (b - a) * k; }
+function mix(a, b, k) { return [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)]; }
+function scale(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const DEG = Math.PI / 180;
+
+// ─── Palettes ────────────────────────────────────────────────────────────────
+const PALETTES = {
+    silver: { moon: [236, 236, 244], shadow: [70, 80, 110],  sky: [[3, 4, 12], [12, 16, 34]],  star: [220, 228, 255], line: [110, 130, 190], text: [170, 180, 210] },
+    gold:   { moon: [255, 226, 160], shadow: [110, 80, 50],  sky: [[6, 4, 8], [26, 18, 20]],   star: [255, 236, 200], line: [180, 140, 90],  text: [220, 190, 140] },
+    blood:  { moon: [255, 140, 110], shadow: [110, 40, 36],  sky: [[8, 3, 5], [30, 10, 14]],   star: [255, 210, 200], line: [170, 80, 80],   text: [220, 150, 140] },
+    blue:   { moon: [190, 220, 255], shadow: [50, 70, 120],  sky: [[2, 5, 14], [8, 20, 44]],   star: [200, 225, 255], line: [90, 140, 220],  text: [160, 190, 230] },
+    green:  { moon: [200, 255, 210], shadow: [50, 100, 70],  sky: [[2, 8, 6], [8, 28, 22]],    star: [210, 255, 220], line: [90, 180, 130],  text: [160, 210, 180] },
+};
+const PAL = PALETTES[P_PALETTE] || PALETTES.silver;
+
+// ─── The real moon, tonight ──────────────────────────────────────────────────
+// Mean elements are plenty for a screensaver: phase from a known new moon and
+// the synodic month; ecliptic longitude from the mean longitude.
+const SYNODIC = 29.530588853;
+function moonNow(date) {
+    const days = (date.getTime() - Date.UTC(2000, 0, 6, 18, 14)) / 86400000;
+    const age = ((days % SYNODIC) + SYNODIC) % SYNODIC;           // days since new moon
+    const d2000 = (date.getTime() - Date.UTC(2000, 0, 1, 12)) / 86400000;
+    const lon = ((218.316 + 13.176396 * d2000) % 360 + 360) % 360;  // ecliptic longitude, degrees
+    return { age, lon };
+}
+const START = moonNow(new Date());
+let moonAge = START.age;
+let moonLon = START.lon;
+
+const PHASES = [
+    { name: 'New Moon',        thought: 'Darkness holds every beginning.' },
+    { name: 'Waxing Crescent', thought: 'An intention takes its first breath.' },
+    { name: 'First Quarter',   thought: 'Half in light, the path is chosen.' },
+    { name: 'Waxing Gibbous',  thought: 'Be patient; the light is gathering.' },
+    { name: 'Full Moon',       thought: 'All that was hidden is illuminated.' },
+    { name: 'Waning Gibbous',  thought: 'Give thanks for what was given.' },
+    { name: 'Last Quarter',    thought: 'Release what is no longer needed.' },
+    { name: 'Waning Crescent', thought: 'Rest, and return to stillness.' },
+];
+function phaseInfo(age) {
+    const f = age / SYNODIC;
+    const idx = Math.floor(((f * 8) + 0.5)) % 8;
+    const illum = (1 - Math.cos(f * Math.PI * 2)) / 2;
+    return { f, idx, illum, ...PHASES[idx] };
+}
+// Traditional names for the full moon of each month.
+const FULL_NAMES = ['Wolf Moon', 'Snow Moon', 'Worm Moon', 'Pink Moon', 'Flower Moon', 'Strawberry Moon',
+                    'Buck Moon', 'Sturgeon Moon', 'Harvest Moon', "Hunter's Moon", 'Beaver Moon', 'Cold Moon'];
+
+// ─── The zodiac ──────────────────────────────────────────────────────────────
+// Simplified but recognizable asterisms, in degrees relative to each sign's
+// centre along the ecliptic (x: longitude, y: latitude, north up). Bigger
+// numbers in the third slot mark the bright stars.
+const ZODIAC = [
+    { name: 'Aries',       sym: 'ARI', lon: 30,  stars: [[-6, 2, 2], [-2, 3, 2], [3, 1, 3], [6, -1, 1]], lines: [[0, 1], [1, 2], [2, 3]] },
+    { name: 'Taurus',      sym: 'TAU', lon: 60,  stars: [[-8, 4, 2], [-3, 1, 1], [-1, -1, 1], [1, -3, 3], [-2, -4, 1], [6, 6, 2], [7, -6, 2], [-12, 6, 1], [-11, 7, 1], [-12, 7.5, 1]], lines: [[1, 2], [2, 3], [2, 4], [1, 5], [3, 6]] },
+    { name: 'Gemini',      sym: 'GEM', lon: 90,  stars: [[-4, 9, 3], [0, 8, 3], [-6, 3, 1], [-2, 2, 1], [-8, -3, 1], [-3, -4, 2], [-10, -7, 1]], lines: [[0, 2], [2, 4], [4, 6], [1, 3], [3, 5]] },
+    { name: 'Cancer',      sym: 'CNC', lon: 120, stars: [[0, 0, 1], [-1, 4, 1], [3, -3, 1], [-3, -3, 1], [1, 8, 1]], lines: [[0, 1], [1, 4], [0, 2], [0, 3]] },
+    { name: 'Leo',         sym: 'LEO', lon: 150, stars: [[-9, 0, 3], [-9, 4, 1], [-7, 7, 2], [-4, 8, 1], [-5, 4, 1], [2, 4, 1], [9, 2, 2], [3, 0, 1]], lines: [[0, 1], [1, 2], [2, 3], [1, 4], [4, 5], [5, 6], [6, 7], [7, 0]] },
+    { name: 'Virgo',       sym: 'VIR', lon: 180, stars: [[-10, 4, 1], [-4, 2, 1], [0, 3, 2], [4, 6, 1], [2, -2, 1], [6, -6, 3], [9, 1, 1]], lines: [[0, 1], [1, 2], [2, 3], [2, 4], [4, 5], [4, 6]] },
+    { name: 'Libra',       sym: 'LIB', lon: 210, stars: [[-5, 0, 2], [2, 6, 2], [6, 0, 1], [0, -6, 1]], lines: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]] },
+    { name: 'Scorpius',    sym: 'SCO', lon: 240, stars: [[-9, 5, 1], [-8, 2, 1], [-8, -1, 1], [-3, -3, 3], [1, -6, 1], [4, -10, 1], [7, -12, 1], [10, -10, 1], [11, -7, 2]], lines: [[0, 1], [1, 2], [1, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8]] },
+    { name: 'Sagittarius', sym: 'SGR', lon: 270, stars: [[-6, 0, 2], [-2, 2, 2], [2, 2, 1], [4, -2, 2], [0, -3, 1], [-4, -4, 1], [7, 1, 1]], lines: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0], [1, 4], [2, 6]] },
+    { name: 'Capricornus', sym: 'CAP', lon: 300, stars: [[-8, 3, 2], [-2, -4, 1], [4, -5, 1], [8, 0, 2], [2, 1, 1]], lines: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 0]] },
+    { name: 'Aquarius',    sym: 'AQR', lon: 330, stars: [[-8, 6, 2], [-3, 4, 2], [0, 1, 1], [3, -2, 1], [0, -5, 1], [4, -8, 1], [7, -6, 1]], lines: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [3, 6]] },
+    { name: 'Pisces',      sym: 'PSC', lon: 0,   stars: [[-10, 6, 1], [-7, 8, 1], [-5, 5, 1], [-3, 1, 1], [0, -2, 2], [4, -1, 1], [7, 1, 1], [9, -2, 1], [6, -4, 1]], lines: [[0, 1], [1, 2], [2, 0], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 5]] },
+];
+function signOf(lon) { return ZODIAC[Math.floor((((lon % 360) + 360) % 360) / 30)]; }
+// Tropical signs by longitude: 0–30° is Aries, etc.
+const SIGN_NAMES = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'];
+
+// ─── Canvases ────────────────────────────────────────────────────────────────
+const backdrop = document.getElementById('backdrop');
+const bctx = backdrop.getContext('2d');
 const canvas = document.getElementById('moon-canvas');
-const ctx    = canvas.getContext('2d');
+const ctx = canvas.getContext('2d');
+const moonLayer = document.createElement('canvas');
+const mctx = moonLayer.getContext('2d');
 
-const FONT_SIZE = 16;
-let CHAR_W = 9.6;
-let CHAR_H = 20;
-let cols = 0, rows = 0;
-let moonCX = 0, moonCY = 0, moonR = 0; // center in pixels, radius in pixels
+let W = 0, H = 0, FS = 12, CW = 7.2, CH = 12;
+let moon = { x: 0, y: 0, r: 100 };
+let horizon = 0;
+let fieldStars = [];
+let treeline = [];
 
 function resize() {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    CHAR_W = ctx.measureText('M').width;
-    CHAR_H = FONT_SIZE * 1.25;
-    cols = Math.floor(canvas.width  / CHAR_W);
-    rows = Math.floor(canvas.height / CHAR_H);
-    moonCX = canvas.width  * 0.5;
-    moonCY = canvas.height * 0.47;
-    moonR  = Math.min(canvas.width, canvas.height) * 0.36;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    for (const c of [backdrop, canvas]) {
+        c.width = Math.max(1, W); c.height = Math.max(1, H);
+        c.style.width = W + 'px'; c.style.height = H + 'px';
+    }
+    FS = clamp(Math.round(Math.min(W, H) / 80), 7, 16);
+    CW = FS * 0.6;
+    CH = FS * 1.0;
+    horizon = H * 0.8;
+    moon = { x: W * 0.5, y: H * 0.4, r: Math.min(W, H) * 0.27 };
+    moonLayer.width = Math.ceil(moon.r * 2.2);
+    moonLayer.height = Math.ceil(moon.r * 2.2);
+    glyphCache.clear();
+    fieldStars = [];
+    for (let i = 0; i < P_STARS; i++) {
+        fieldStars.push({ x: hash(i * 3.1) * W, y: hash(i * 7.7) * horizon * 0.97, b: 0.25 + hash(i * 1.3) * 0.75, p: hash(i) * 6.3 });
+    }
+    treeline = [];
+    for (let x = 0; x <= W; x += CW) {
+        const u = x / W;
+        treeline.push(H * (0.035 + 0.02 * Math.sin(u * 9 + 1) + 0.012 * Math.sin(u * 31)) + (hash(x * 0.3) < 0.18 ? H * 0.025 * hash(x) : 0));
+    }
+    moonDirty = true;
+    backdropDirty = true;
+}
+
+// ─── Sprite cache ────────────────────────────────────────────────────────────
+const glyphCache = new Map();
+if (document.fonts) document.fonts.ready.then(() => { glyphCache.clear(); moonDirty = true; backdropDirty = true; });
+function sprite(ch, col, size) {
+    size = size || FS;
+    const q = (v) => (clamp(v, 0, 255) >> 3) << 3;
+    const r = q(col[0]), g = q(col[1]), b = q(col[2]);
+    const key = ch + '|' + size + '|' + r + ',' + g + ',' + b;
+    let s = glyphCache.get(key);
+    if (!s) {
+        if (glyphCache.size > 5000) glyphCache.clear();
+        const w = Math.ceil(size * 0.62 * ch.length + size * 0.4) + 2, h = Math.ceil(size * 1.3) + 2;
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d');
+        x.font = `700 ${size}px "JetBrains Mono", monospace`;
+        x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillStyle = `rgb(${r},${g},${b})`;
+        x.fillText(ch, w / 2, h / 2);
+        s = { c, w, h };
+        glyphCache.set(key, s);
+    }
+    return s;
+}
+function stampOn(g, ch, x, y, col, alpha, size) {
+    if (alpha <= 0.01) return;
+    const s = sprite(ch, col, size);
+    g.globalAlpha = Math.min(1, alpha);
+    g.drawImage(s.c, x - s.w / 2, y - s.h / 2);
+}
+const stamp = (ch, x, y, col, alpha, size) => stampOn(ctx, ch, x, y, col, alpha, size);
+
+// ─── The lunar surface ───────────────────────────────────────────────────────
+// Near-side features in selenographic degrees (longitude east +, latitude
+// north +): the dark maria, and craters with their brightness.
+const MARIA = [
+    [-57, 12, 36, 0.3],  // Oceanus Procellarum
+    [-18, 34, 21, 0.28], // Mare Imbrium
+    [18, 27, 12, 0.3],   // Serenitatis
+    [30, 7, 15, 0.3],    // Tranquillitatis
+    [59, 16, 9, 0.26],   // Crisium
+    [52, -6, 12, 0.34],  // Fecunditatis
+    [34, -15, 7, 0.34],  // Nectaris
+    [-16, -20, 13, 0.36],// Nubium
+    [-38, -23, 7, 0.32], // Humorum
+    [-24, -10, 8, 0.36], // Cognitum
+    [4, 13, 6, 0.36],    // Vaporum
+    [-6, 55, 9, 0.38],   // Frigoris (west)
+    [18, 56, 9, 0.4],    // Frigoris (east)
+    [-30, 5, 10, 0.34],  // Insularum
+    [3, 2, 5, 0.4],      // Sinus Medii
+    [-50, -18, 8, 0.36], // Procellarum south
+];
+const CRATERS = [
+    [-11, -43, 4, 1.35, 'Tycho'], [-20, 10, 4, 1.25, 'Copernicus'], [-38, 8, 2.2, 1.25, 'Kepler'],
+    [-47, 24, 2, 1.45, 'Aristarchus'], [-9, 51, 4, 0.55, 'Plato'], [-3, -13, 4, 1.05, 'Ptolemaeus'],
+    [29, -30, 4, 1.1, 'Theophilus'], [-1, -58, 5, 1.05, 'Clavius'], [38, 43, 3, 1.1, 'Posidonius'],
+    [60, -45, 3, 1.1, 'Petavius'], [-33, -40, 5, 1.05, 'Schickard'], [9, 39, 2.5, 1.15, 'Aristoteles'],
+];
+// Background pocking: many small craters at fixed places.
+const SMALL = Array.from({ length: 160 }, (_, i) => [
+    (hash(i * 5.3) - 0.5) * 170, (hash(i * 9.1) - 0.5) * 160, 0.6 + hash(i * 2.2) * 2.2, hash(i * 4.4) < 0.5 ? 0.88 : 1.12,
+]);
+
+function angDist(lon1, lat1, lon2, lat2) {
+    const c = Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos(lon1 - lon2);
+    return Math.acos(clamp(c, -1, 1));
+}
+
+// Albedo of the surface at a point, precomputed onto a lat/lon grid.
+const ALB_W = 180, ALB_H = 90;
+const albedo = new Float32Array(ALB_W * ALB_H);
+(function buildAlbedo() {
+    for (let j = 0; j < ALB_H; j++) {
+        for (let i = 0; i < ALB_W; i++) {
+            const lon = (i / ALB_W * 180 - 90) * DEG, lat = (90 - j / ALB_H * 180) * DEG;
+            let a = 0.82 + (hash(i * 0.7 + j * 1.9) - 0.5) * 0.06;
+            for (const [mlon, mlat, r, dark] of MARIA) {
+                const d = angDist(lon, lat, mlon * DEG, mlat * DEG) / DEG;
+                const edge = r * (0.85 + 0.25 * Math.sin(lon * 7 + lat * 5));
+                if (d < edge) a = Math.min(a, lerp(dark, a, smoothstep(edge * 0.7, edge, d)));
+            }
+            for (const [clon, clat, r, bright] of SMALL) {
+                const d = angDist(lon, lat, clon * DEG, clat * DEG) / DEG;
+                if (d < r) a *= d > r * 0.75 ? 1.12 : bright;
+            }
+            for (const [clon, clat, r, bright, name] of CRATERS) {
+                const d = angDist(lon, lat, clon * DEG, clat * DEG) / DEG;
+                if (d < r) a = d > r * 0.7 ? Math.max(a, 1.05) : a * bright;
+                // Bright ray systems from the young craters.
+                if ((name === 'Tycho' || name === 'Copernicus' || name === 'Kepler') && d < 45) {
+                    const bear = Math.atan2(lat - clat * DEG, lon - clon * DEG);
+                    const ray = Math.pow(Math.max(0, Math.cos(bear * 9 + (name === 'Tycho' ? 0 : 1.7))), 24);
+                    a += ray * (1 - d / 45) * (name === 'Tycho' ? 0.35 : 0.18);
+                }
+            }
+            albedo[j * ALB_W + i] = clamp(a, 0.2, 1.4);
+        }
+    }
+})();
+function albedoAt(lon, lat) {
+    const i = clamp(Math.round((lon / DEG + 90) / 180 * ALB_W), 0, ALB_W - 1);
+    const j = clamp(Math.round((90 - lat / DEG) / 180 * ALB_H), 0, ALB_H - 1);
+    return albedo[j * ALB_W + i];
+}
+
+const RAMP = " .,:;icoO08@";
+let moonDirty = true;
+
+// Render the disc into its own layer: a lit sphere with the albedo map,
+// earthshine on the night side, and libration rocking the face.
+function paintMoon(t) {
+    const g = mctx;
+    const R = moon.r, size = moonLayer.width, c0 = size / 2;
+    g.clearRect(0, 0, size, size);
+    const f = moonAge / SYNODIC;
+    const ang = f * Math.PI * 2;
+    const sun = [Math.sin(ang), 0, -Math.cos(ang)];            // lit from the right while waxing
+    const libLon = Math.sin(t * 0.05) * 7 * DEG, libLat = Math.sin(t * 0.037 + 1) * 6 * DEG;
+    const lit = (1 - Math.cos(ang)) / 2;
+    const earthshine = 0.07 * (1 - lit) + 0.015;
+    const moonCol = PAL.moon;
+    for (let py = -R; py <= R; py += CH) {
+        for (let px = -R; px <= R; px += CW) {
+            const x = px / R, y = py / R;
+            const rr = x * x + y * y;
+            if (rr > 1) continue;
+            const z = Math.sqrt(1 - rr);
+            const lon = Math.atan2(x, z) + libLon, lat = Math.asin(clamp(-y, -1, 1)) + libLat;
+            const a = albedoAt(lon, lat);
+            const ndotl = x * sun[0] + z * sun[2];
+            // Softened Lambert so the terminator has a little depth to it.
+            const day = ndotl > 0 ? Math.pow(ndotl, 0.6) : 0;
+            const edge = smoothstep(1, 0.93, rr) ;
+            let v = (day * a + earthshine * a) * (0.55 + 0.45 * edge);
+            v = clamp(v, 0, 1.3);
+            if (v < 0.035) continue;
+            const ci = Math.min(RAMP.length - 1, Math.round((v / 1.15) * (RAMP.length - 1)));
+            const ch = RAMP[ci];
+            if (ch === ' ') continue;
+            const col = mix(PAL.shadow, moonCol, clamp(v, 0, 1));
+            stampOn(g, ch, c0 + px, c0 + py, col, clamp(0.35 + v * 0.8, 0, 1));
+        }
+    }
+}
+
+// ─── Backdrop: sky, lake, treeline ───────────────────────────────────────────
+let backdropDirty = true;
+function paintBackdrop() {
+    const g = bctx;
+    g.globalAlpha = 1;
+    const grad = g.createLinearGradient(0, 0, 0, horizon);
+    grad.addColorStop(0, css(PAL.sky[0]));
+    grad.addColorStop(1, css(PAL.sky[1]));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, horizon + 1);
+    // The lake: the sky, darker, mirrored.
+    const lake = g.createLinearGradient(0, horizon, 0, H);
+    lake.addColorStop(0, css(scale(PAL.sky[1], 0.8)));
+    lake.addColorStop(1, css(scale(PAL.sky[0], 0.6)));
+    g.fillStyle = lake;
+    g.fillRect(0, horizon, W, H - horizon);
+    // Treeline on the far shore: pines against the sky.
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `700 ${FS}px "JetBrains Mono", monospace`;
+    const tree = scale(PAL.sky[0], 0.5);
+    g.fillStyle = css(tree);
+    g.beginPath(); g.moveTo(0, horizon);
+    treeline.forEach((h, i) => g.lineTo(i * CW, horizon - h));
+    g.lineTo(W, horizon); g.closePath(); g.fill();
+    g.fillStyle = css(mix(tree, PAL.line, 0.25));
+    treeline.forEach((h, i) => { if (i % 2 === 0) g.fillText(h > H * 0.05 ? 'A' : '^', i * CW, horizon - h + FS * 0.4); });
+}
+
+// ─── Weather, visitors, meteors ──────────────────────────────────────────────
+const clouds = [];
+function newCloud(anywhere) {
+    const len = Math.floor(rand(14, 34)), rows = Math.floor(rand(2, 4));
+    const cells = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < len; c++) {
+        const u = (c / (len - 1)) * 2 - 1, v = (r / Math.max(1, rows - 1)) * 2 - 1;
+        const d = 1 - u * u - v * v * 0.5 + rand(-0.2, 0.2);
+        if (d > 0.1) cells.push({ c, r, ch: d > 0.65 ? '~' : d > 0.35 ? '-' : '.', d });
+    }
+    return { x: anywhere ? rand(-0.2, 1) * W : -len * CW, y: rand(0.08, 0.55) * horizon, cells, v: rand(6, 16) };
+}
+for (let i = 0; i < 4; i++) clouds.push(newCloud(true));
+
+const meteors = [];
+let untilMeteor = rand(6, 14);
+let floater = null, untilFloater = rand(12, 25) / Math.max(0.1, P_FLOATER);
+let halo = 0, haloTarget = 0, untilHalo = rand(40, 90);
+
+function updateSky(dt, t) {
+    for (let i = 0; i < clouds.length; i++) {
+        clouds[i].x += clouds[i].v * dt;
+        if (clouds[i].x > W + 40) clouds[i] = newCloud(false);
+    }
+    untilMeteor -= dt;
+    if (untilMeteor <= 0) {
+        untilMeteor = rand(7, 20);
+        const x = rand(0.1, 0.9) * W, y = rand(0.02, 0.3) * horizon;
+        const a = rand(0.35, 0.9) * (Math.random() < 0.5 ? 1 : -1);
+        meteors.push({ x, y, vx: Math.sin(a) * W * 0.6, vy: Math.cos(a) * H * 0.35, life: 0, max: rand(0.6, 1.1) });
+    }
+    for (let i = meteors.length - 1; i >= 0; i--) {
+        const m = meteors[i];
+        m.life += dt; m.x += m.vx * dt; m.y += m.vy * dt;
+        if (m.life > m.max) meteors.splice(i, 1);
+    }
+    // An owl or a bat crosses in front of the moon now and then.
+    if (P_FLOATER > 0) {
+        if (!floater) {
+            untilFloater -= dt;
+            if (untilFloater <= 0) {
+                const dir = Math.random() < 0.5 ? 1 : -1;
+                const kind = pick(['owl', 'owl', 'bat', 'geese']);
+                floater = { kind, dir, x: dir > 0 ? -40 : W + 40, y: moon.y + rand(-0.6, 0.6) * moon.r,
+                            v: kind === 'owl' ? W * 0.07 : kind === 'bat' ? W * 0.12 : W * 0.09, t: 0 };
+            }
+        } else {
+            floater.t += dt;
+            floater.x += floater.dir * floater.v * dt;
+            floater.y += Math.sin(floater.t * (floater.kind === 'bat' ? 9 : 2)) * (floater.kind === 'bat' ? 1.6 : 0.4);
+            if (floater.x < -60 || floater.x > W + 60) { floater = null; untilFloater = rand(15, 40) / P_FLOATER; }
+        }
+    }
+    // Occasionally, ice in the high air rings the moon with a 22° halo.
+    untilHalo -= dt;
+    if (untilHalo <= 0) { haloTarget = haloTarget > 0 ? 0 : 1; untilHalo = haloTarget ? rand(20, 40) : rand(60, 150); }
+    halo += (haloTarget - halo) * Math.min(1, dt * 0.3);
+}
+
+// ─── Frame ───────────────────────────────────────────────────────────────────
+let clock = 0, lastTs = 0, lastMoon = -1;
+let caption = { text: '', sub: '', thought: '', alpha: 0, idx: -1 };
+
+function draw(t) {
+    const g = ctx;
+    g.globalAlpha = 1;
+    g.clearRect(0, 0, W, H);
+    const info = phaseInfo(moonAge);
+    const breath = 0.85 + 0.15 * Math.sin(t * 0.25);   // the glow breathes, slowly
+
+    // Stars, twinkling.
+    for (const s of fieldStars) {
+        const a = s.b * (0.55 + 0.45 * Math.sin(t * (0.6 + s.b) + s.p));
+        stamp(a > 0.8 ? '*' : a > 0.5 ? '+' : '.', s.x, s.y, PAL.star, a * 0.8);
+    }
+
+    // The zodiac along the ecliptic, scrolling so the moon moves through it.
+    if (P_ZODIAC) {
+        const pxPerDeg = W / 110;
+        for (const z of ZODIAC) {
+            let dl = ((z.lon + 15 - moonLon + 540) % 360) - 180;   // sign centre relative to the moon
+            const cxz = moon.x + dl * pxPerDeg;
+            if (cxz < -W * 0.3 || cxz > W * 1.3) continue;
+            const cyz = moon.y + Math.sin((z.lon + 15) * DEG) * H * 0.08;
+            const pts = z.stars.map(([dx, dy]) => [cxz + dx * pxPerDeg * 1.4, cyz - dy * pxPerDeg * 1.4]);
+            // Faint figure lines, dotted.
+            for (const [a, b] of z.lines) {
+                const [x0, y0] = pts[a], [x1, y1] = pts[b];
+                const n = Math.max(2, Math.floor(Math.hypot(x1 - x0, y1 - y0) / (CW * 1.4)));
+                for (let k = 1; k < n; k++) {
+                    const x = lerp(x0, x1, k / n), y = lerp(y0, y1, k / n);
+                    if (Math.hypot(x - moon.x, y - moon.y) < moon.r * 1.08) continue;   // hidden behind the moon
+                    stamp('.', x, y, PAL.line, 0.5);
+                }
+            }
+            z.stars.forEach(([dx, dy, mag], i) => {
+                const [x, y] = pts[i];
+                if (Math.hypot(x - moon.x, y - moon.y) < moon.r * 1.05) return;
+                const tw = 0.75 + 0.25 * Math.sin(t * 1.3 + i * 2 + z.lon);
+                stamp(mag >= 3 ? '@' : mag === 2 ? '*' : '+', x, y, PAL.star, (0.5 + mag * 0.17) * tw);
+            });
+            const label = pts.reduce((m, p) => p[1] > m ? p[1] : m, -1e9) + CH * 2.2;
+            stamp(z.name.toUpperCase(), cxz, label, PAL.line, 0.55, Math.max(9, Math.round(FS * 1.2)));
+        }
+    }
+
+    // Glow and the 22° halo.
+    const glowR = moon.r * (1.7 + 0.5 * P_GLOW);
+    const glow = g.createRadialGradient(moon.x, moon.y, moon.r * 0.9, moon.x, moon.y, glowR);
+    const lit = info.illum;
+    glow.addColorStop(0, css(PAL.moon, (0.05 + 0.18 * lit) * P_GLOW * breath));
+    glow.addColorStop(1, css(PAL.moon, 0));
+    g.globalAlpha = 1;
+    g.fillStyle = glow;
+    g.fillRect(moon.x - glowR, moon.y - glowR, glowR * 2, glowR * 2);
+    if (halo > 0.02) {
+        const hr = moon.r * 2.2;
+        for (let a = 0; a < Math.PI * 2; a += (CW * 1.3) / hr) {
+            const x = moon.x + Math.cos(a) * hr, y = moon.y + Math.sin(a) * hr * 0.98;
+            if (y > horizon) continue;
+            stamp(a % 0.5 < 0.25 ? '.' : ':', x, y, mix(PAL.moon, [255, 220, 200], 0.2), halo * 0.35 * lit);
+        }
+    }
+
+    // The moon itself.
+    g.globalAlpha = 1;
+    g.drawImage(moonLayer, moon.x - moonLayer.width / 2, moon.y - moonLayer.height / 2);
+
+    // Clouds, lit from behind by the moon.
+    for (const c of clouds) {
+        for (const cell of c.cells) {
+            const x = c.x + cell.c * CW, y = c.y + cell.r * CH;
+            const near = 1 - smoothstep(moon.r * 0.8, moon.r * 2.5, Math.hypot(x - moon.x, y - moon.y));
+            stamp(cell.ch, x, y, mix(scale(PAL.sky[1], 2.2), PAL.moon, near * lit), 0.25 + cell.d * 0.35 + near * 0.3);
+        }
+    }
+
+    // Meteors.
+    for (const m of meteors) {
+        const k = 1 - m.life / m.max;
+        for (let i = 0; i < 10; i++) {
+            stamp(i === 0 ? '*' : '.', m.x - m.vx * i * 0.012, m.y - m.vy * i * 0.012, PAL.star, k * (1 - i / 10));
+        }
+    }
+
+    // A silhouette crossing the moon.
+    if (floater) {
+        const f = floater, sil = scale(PAL.sky[0], 0.6);
+        const up = Math.sin(f.t * (f.kind === 'bat' ? 18 : 5)) > 0;
+        if (f.kind === 'owl') stamp(up ? '\\o/' : '-o-', f.x, f.y, sil, 1, FS * 1.6);
+        else if (f.kind === 'bat') stamp(up ? 'w' : 'm', f.x, f.y, sil, 1, FS * 1.3);
+        else for (let i = 0; i < 5; i++) stamp(up ? 'v' : '-', f.x - f.dir * i * CW * 2.2, f.y + Math.abs(i - 2) * CH * 0.9 - CH * 2, sil, 1, FS * 1.1);
+    }
+
+    // The lake: moonlight laid across the water as a glitter path.
+    const rows = Math.floor((H - horizon) / CH);
+    for (let r = 1; r <= rows; r++) {
+        const y = horizon + r * CH;
+        const spread = moon.r * (0.35 + r * 0.08);
+        for (let x = moon.x - spread * 2; x < moon.x + spread * 2; x += CW) {
+            const k = Math.exp(-(((x - moon.x) / spread) ** 2));
+            const shimmer = 0.5 + 0.5 * Math.sin(x * 0.07 + t * 2.3 + r * 1.7);
+            const a = k * shimmer * lit * 0.8;
+            if (a < 0.05) continue;
+            stamp(a > 0.5 ? '=' : a > 0.25 ? '-' : '.', x, y, PAL.moon, a);
+        }
+        // Stars and treeline reflected, broken by ripples.
+        if (r < 3) for (let i = r; i < treeline.length; i += 7) stamp('~', i * CW, y, mix(PAL.sky[1], PAL.line, 0.3), 0.25);
+    }
+
+    // Caption: the phase, the sign, and a thought for the phase.
+    if (P_CAPTION) {
+        if (info.idx !== caption.idx) {
+            caption.idx = info.idx;
+            caption.alpha = 0;
+        }
+        caption.alpha = Math.min(1, caption.alpha + 1 / 120);
+        const sign = SIGN_NAMES[Math.floor(((moonLon % 360) + 360) % 360 / 30)];
+        const month = new Date().getMonth();
+        const title = info.idx === 4 ? `${info.name} · the ${FULL_NAMES[month]}` : info.name;
+        const sub = `${Math.round(info.illum * 100)}% illuminated  ·  moon in ${sign}`;
+        const y0 = horizon - CH * 0.4 - H * 0.06;
+        const a = caption.alpha * 0.8;
+        const big = Math.max(11, Math.round(FS * 1.7)), mid = Math.max(9, Math.round(FS * 1.25));
+        const base = H - (H - horizon) * 0.5;
+        // A soft shadow behind the words so the glitter doesn't swallow them.
+        const shade = g.createRadialGradient(W / 2, base, 0, W / 2, base, W * 0.3);
+        shade.addColorStop(0, css(PAL.sky[0], 0.85 * caption.alpha));
+        shade.addColorStop(1, css(PAL.sky[0], 0));
+        g.globalAlpha = 1;
+        g.fillStyle = shade;
+        g.fillRect(W * 0.2, base - big * 3, W * 0.6, big * 6);
+        stamp(title.toUpperCase(), W / 2, base - big * 1.5, PAL.text, a, big);
+        stamp(sub, W / 2, base, PAL.text, a * 0.75, mid);
+        stamp(info.thought, W / 2, base + mid * 1.6, PAL.text, a * 0.65 * (0.8 + 0.2 * Math.sin(t * 0.3)), mid);
+    }
+    g.globalAlpha = 1;
+}
+
+function frame(ts) {
+    requestAnimationFrame(frame);
+    if (window.innerWidth !== W || window.innerHeight !== H) resize();
+    if (W === 0 || H === 0) return;
+    if (lastTs && ts - lastTs < 40) return;   // ~24 fps: the sky moves slowly
+    const dt = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 1 / 24) * P_SPEED;
+    lastTs = ts;
+    clock += dt;
+
+    // The month unfolds over cycleTime minutes (0 keeps tonight's moon).
+    if (P_CYCLE > 0) {
+        const daysPerSec = SYNODIC / (P_CYCLE * 60);
+        moonAge = (moonAge + daysPerSec * dt) % SYNODIC;
+        moonLon = (moonLon + 13.176396 * daysPerSec * dt) % 360;
+    }
+    updateSky(dt, clock);
+    if (backdropDirty) { paintBackdrop(); backdropDirty = false; }
+    if (moonDirty || clock - lastMoon > (P_CYCLE > 0 && P_CYCLE < 3 ? 0.25 : 1)) { paintMoon(clock); moonDirty = false; lastMoon = clock; }
+    draw(clock);
+}
+
+function start() {
+    backdrop.style.opacity = 1;
+    canvas.style.opacity = 1;
+    requestAnimationFrame(frame);
 }
 
 window.addEventListener('resize', resize);
+resize();
 
-// ─── Moon palettes ─────────────────────────────────────────────────────────────
-const MOON_PALETTES = {
-    silver: {
-        glow:       '#b0c4d8',
-        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(220+w*0.14)},${Math.round(210+w*0.13)},${Math.round(185+w*0.08)})`; },
-        earthshine: '#203848',
-        stars:      '#6a7a8a',
-    },
-    gold: {
-        glow:       '#d4b060',
-        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(230+w*0.10)},${Math.round(175+w*0.20)},${Math.round(55+w*0.05)})`; },
-        earthshine: '#382810',
-        stars:      '#8a7a5a',
-    },
-    blood: {
-        glow:       '#c04030',
-        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(195+w*0.24)},${Math.round(38+w*0.08)},${Math.round(18+w*0.04)})`; },
-        earthshine: '#300808',
-        stars:      '#8a5a5a',
-    },
-    blue: {
-        glow:       '#4080d0',
-        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(75+w*0.10)},${Math.round(135+w*0.12)},${Math.round(205+w*0.18)})`; },
-        earthshine: '#081828',
-        stars:      '#5a708a',
-    },
-    green: {
-        glow:       '#40c060',
-        surface:    (bright) => { const w = bright * 255; return `rgb(${Math.round(55+w*0.08)},${Math.round(178+w*0.22)},${Math.round(75+w*0.08)})`; },
-        earthshine: '#081808',
-        stars:      '#5a8a5a',
-    },
-};
-const MP = MOON_PALETTES[P_PALETTE] || MOON_PALETTES.silver;
-
-// ─── Phase logic ───────────────────────────────────────────────────────────────
-// phase 0 = new moon, 0.25 = first quarter, 0.5 = full, 0.75 = last quarter
-let phase = Math.random(); // start at a random point in the cycle
-const PHASE_SPEED = P_SPEED / 7200; // full cycle in ~2 minutes at 60 fps
-
-function isIlluminated(nx, ny) {
-    if (nx * nx + ny * ny > 1) return false;
-    const f    = (1 - Math.cos(phase * 2 * Math.PI)) / 2; // 0=new, 1=full
-    const limb = Math.sqrt(Math.max(0, 1 - ny * ny));
-    if (phase <= 0.5) {
-        return nx >= (1 - 2 * f) * limb;   // waxing: lit on right
-    } else {
-        return nx <= -(1 - 2 * f) * limb;  // waning: lit on left
-    }
-}
-
-// ─── Texture noise ─────────────────────────────────────────────────────────────
-function noise(x, y) {
-    return (Math.sin(x * 6.7 + y * 12.3) + Math.sin(x * 2.9 - y * 5.1) +
-            Math.sin(x * 11.1 + y * 3.7)) / 3;
-}
-
-// ─── Stars ─────────────────────────────────────────────────────────────────────
-let stars = [];
-function initStars() {
-    stars = [];
-    for (let i = 0; i < P_STARS; i++) {
-        stars.push({
-            gx:       Math.floor(Math.random() * cols),
-            gy:       Math.floor(Math.random() * rows),
-            char:     Math.random() < 0.25 ? '*' : '.',
-            base:     0.25 + Math.random() * 0.55,
-            twinkle:  Math.random() * Math.PI * 2,
-            speed:    0.5 + Math.random() * 1.5,
-        });
-    }
-}
-
-// ─── Space floaters ────────────────────────────────────────────────────────────
-const FLOATER_TYPES = [
-    { art: ['*-----~'],                                       color: '#f8f0c0', speed: [6, 10], diagonal: true  },
-    { art: ['*---~'],                                         color: '#fff0a0', speed: [7, 12], diagonal: true  },
-    { art: ['  /\\', ' /  \\', '|    |', ' \\  /', ' /\\/\\'], color: '#a0b0c0', speed: [0.2, 0.5] },
-    { art: [' .---.', '(o o o)', " `---'"],                  color: '#50d0c0', speed: [0.3, 0.6] },
-    { art: ['  .--.', ' (    )', "  '--'"],                   color: '#b070e0', speed: [0.12, 0.3] },
-    { art: ['   .--.', '--(    )--', "   '--'"],              color: '#e0a040', speed: [0.12, 0.3] },
-    { art: ['\\(o_o)/', '  /|\\', ' / | \\'],                color: '#50d050', speed: [0.3, 0.6] },
-    { art: ['--[|]--'],                                       color: '#7090b0', speed: [0.4, 0.9] },
-    { art: [' (O) ', '<[=]>', '  |  ', ' / \\ '],            color: '#d0dce8', speed: [0.2, 0.5] },
-    { art: ['===|===', '  [O] ', '===|==='],                  color: '#90a8c0', speed: [0.15, 0.35] },
-    { art: [' /\\ ', '(  )', ' \\/ ', '/--\\'],              color: '#808890', speed: [0.2, 0.45] },
-    { art: ['>(·_·)>'],                                       color: '#60c880', speed: [0.25, 0.55] },
-];
-
-function rndF(min, max) { return min + Math.random() * (max - min); }
-
-class Floater {
-    constructor() {
-        const type  = FLOATER_TYPES[Math.floor(Math.random() * FLOATER_TYPES.length)];
-        this.art    = type.art;
-        this.color  = type.color;
-        this.baseAlpha = 0.50 + Math.random() * 0.30;
-
-        const artCols = Math.max(...type.art.map(r => r.length));
-        const artRows = type.art.length;
-        this.wPx = artCols * CHAR_W;
-        this.hPx = artRows * CHAR_H;
-
-        const speed = rndF(type.speed[0], type.speed[1]);
-
-        if (type.diagonal) {
-            // Shooting star — spawn top area, travel diagonally downward
-            const angleDeg = 140 + (Math.random() - 0.5) * 50; // ~115–165°
-            this.vx = Math.cos(angleDeg * Math.PI / 180) * speed;
-            this.vy = Math.sin(angleDeg * Math.PI / 180) * speed;
-            this.x  = canvas.width  * (0.3 + Math.random() * 0.7);
-            this.y  = -this.hPx - canvas.height * Math.random() * 0.3;
-        } else {
-            // Drift horizontally with tiny vertical wobble
-            const goRight = Math.random() < 0.5;
-            this.vx = (goRight ? 1 : -1) * speed;
-            this.vy = (Math.random() - 0.5) * speed * 0.25;
-            this.y  = canvas.height * (0.05 + Math.random() * 0.85);
-            this.x  = goRight ? -this.wPx - 20 : canvas.width + 20;
-        }
-    }
-
-    update() { this.x += this.vx; this.y += this.vy; }
-
-    offScreen() {
-        return this.x > canvas.width  + this.wPx + 80 ||
-               this.x < -this.wPx    - 80 ||
-               this.y > canvas.height + this.hPx + 80 ||
-               this.y < -this.hPx    - 80;
-    }
-
-    draw() {
-        // Fade in/out at screen edges
-        const pad  = 120;
-        const fadeX = Math.min(1, Math.min(this.x + this.wPx, canvas.width  - this.x) / pad);
-        const fadeY = Math.min(1, Math.min(this.y + this.hPx, canvas.height - this.y) / pad);
-        const alpha = this.baseAlpha * Math.max(0, Math.min(fadeX, fadeY));
-        if (alpha < 0.01) return;
-
-        ctx.globalAlpha  = alpha;
-        ctx.fillStyle    = this.color;
-        ctx.font         = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-        ctx.textBaseline = 'top';
-
-        for (let row = 0; row < this.art.length; row++) {
-            const line = this.art[row];
-            for (let col = 0; col < line.length; col++) {
-                if (line[col] === ' ') continue;
-                ctx.fillText(line[col], this.x + col * CHAR_W, this.y + row * CHAR_H);
-            }
-        }
-    }
-}
-
-let floaters    = [];
-let frameCount  = 0;
-let nextSpawn   = 300 + Math.floor(Math.random() * 300); // first spawn 5-10s in
-
-// ─── Phase name ────────────────────────────────────────────────────────────────
-const PHASES = [
-    [0.00, 0.04, 'New Moon'],
-    [0.04, 0.23, 'Waxing Crescent'],
-    [0.23, 0.27, 'First Quarter'],
-    [0.27, 0.46, 'Waxing Gibbous'],
-    [0.46, 0.54, 'Full Moon'],
-    [0.54, 0.73, 'Waning Gibbous'],
-    [0.73, 0.77, 'Last Quarter'],
-    [0.77, 0.96, 'Waning Crescent'],
-    [0.96, 1.00, 'New Moon'],
-];
-
-function phaseName() {
-    for (const [lo, hi, name] of PHASES) {
-        if (phase >= lo && phase < hi) return name;
-    }
-    return 'New Moon';
-}
-
-// ─── Render ────────────────────────────────────────────────────────────────────
-// Character density table: index 0 = brightest
-const BRIGHT_CHARS = ['@', '0', 'O', 'o', '+', '*', ':', '.', '`', ' '];
-const GLOW_CHARS   = ['.', ',', '`', ' '];
-
-function render(t) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.font         = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    // Stars — skip cells inside or near the moon
-    for (const s of stars) {
-        const px = s.gx * CHAR_W + CHAR_W * 0.5;
-        const py = s.gy * CHAR_H + CHAR_H * 0.5;
-        const dx = px - moonCX, dy = py - moonCY;
-        if (dx * dx + dy * dy < moonR * moonR * 1.5) continue;
-        const alpha = s.base * (0.6 + 0.4 * Math.sin(t * s.speed * 0.001 + s.twinkle));
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle   = MP.stars;
-        ctx.fillText(s.char, s.gx * CHAR_W, s.gy * CHAR_H);
-    }
-
-    // Floaters — drawn above stars, below moon
-    for (const f of floaters) f.draw();
-
-    // Moon — only iterate over bounding box including glow halo
-    const HALO = 1.0 + 0.35 * P_GLOW_INTENSITY;
-    const gxMin = Math.max(0, Math.floor((moonCX - moonR * HALO) / CHAR_W));
-    const gxMax = Math.min(cols, Math.ceil((moonCX  + moonR * HALO) / CHAR_W));
-    const gyMin = Math.max(0, Math.floor((moonCY - moonR * HALO) / CHAR_H));
-    const gyMax = Math.min(rows, Math.ceil((moonCY  + moonR * HALO) / CHAR_H));
-
-    for (let gy = gyMin; gy < gyMax; gy++) {
-        for (let gx = gxMin; gx < gxMax; gx++) {
-            const px = gx * CHAR_W + CHAR_W * 0.5;
-            const py = gy * CHAR_H + CHAR_H * 0.5;
-            const dx = px - moonCX;
-            const dy = py - moonCY;
-            const r2 = (dx * dx + dy * dy) / (moonR * moonR);
-
-            if (r2 > HALO * HALO) continue;
-
-            const nx = dx / moonR;
-            const ny = dy / moonR;
-
-            if (r2 > 1) {
-                // Glow halo — fades outward
-                const t2 = (Math.sqrt(r2) - 1) / (HALO - 1);
-                const alpha = (1 - t2) * (1 - t2) * 0.18;
-                if (alpha < 0.01) continue;
-                ctx.globalAlpha = alpha;
-                ctx.fillStyle   = MP.glow;
-                ctx.fillText(GLOW_CHARS[Math.floor(t2 * GLOW_CHARS.length)], gx * CHAR_W, gy * CHAR_H);
-                continue;
-            }
-
-            const illum = isIlluminated(nx, ny);
-            const r     = Math.sqrt(r2);
-            const n     = noise(gx, gy) * 0.18; // surface texture
-
-            if (illum) {
-                // Limb darkening: edges are slightly dimmer
-                const limbDark = 1 - r * 0.28;
-                const bright   = Math.max(0, Math.min(1, limbDark + n));
-                const idx      = Math.floor((1 - bright) * (BRIGHT_CHARS.length - 1));
-                const char     = BRIGHT_CHARS[Math.max(0, Math.min(idx, BRIGHT_CHARS.length - 1))];
-
-                ctx.globalAlpha = 1;
-                ctx.fillStyle   = MP.surface(bright);
-                ctx.fillText(char, gx * CHAR_W, gy * CHAR_H);
-
-            } else {
-                // Dark side — faint earthshine, barely visible
-                ctx.globalAlpha = 0.06;
-                ctx.fillStyle   = MP.earthshine;
-                ctx.fillText('.', gx * CHAR_W, gy * CHAR_H);
-            }
-        }
-    }
-
-    // Phase label — centred below moon
-    const label     = phaseName();
-    const labelFont = `13px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.font         = labelFont;
-    ctx.globalAlpha  = 0.38;
-    ctx.fillStyle    = '#7a8fa0';
-    const labelW     = ctx.measureText(label).width;
-    ctx.fillText(label, moonCX - labelW * 0.5, moonCY + moonR + CHAR_H * 1.5);
-
-    ctx.globalAlpha = 1;
-}
-
-// ─── Loop ──────────────────────────────────────────────────────────────────────
-let raf;
-
-function loop(t) {
-    phase = (phase + PHASE_SPEED) % 1;
-
-    // Floater lifecycle
-    frameCount++;
-    floaters.forEach(f => f.update());
-    floaters = floaters.filter(f => !f.offScreen());
-    if (frameCount >= nextSpawn && floaters.length < 3) {
-        floaters.push(new Floater());
-        const baseInterval = Math.round(720 / Math.max(0.1, P_FLOATER_FREQ));
-        const jitter       = Math.round(780 / Math.max(0.1, P_FLOATER_FREQ));
-        nextSpawn = frameCount + baseInterval + Math.floor(Math.random() * jitter);
-    }
-
-    render(t);
-    raf = requestAnimationFrame(loop);
-}
-
-// ─── Entry point ───────────────────────────────────────────────────────────────
-function startAnimation() {
-    canvas.style.opacity = '1';
-    document.fonts.ready.then(() => {
-        resize();
-        initStars();
-        raf = requestAnimationFrame(loop);
-    });
-}
-
-if (START_AT > 0) {
-    const delay = Math.max(100, START_AT - Date.now());
-    setTimeout(startAnimation, delay);
-} else if (DELAYED_START) {
-    setTimeout(startAnimation, 4000);
-} else {
-    setTimeout(startAnimation, 500);
-}
+if (START_AT > 0) setTimeout(start, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(start, 4000);
+else setTimeout(start, 500);
 </script>
 </body>
 </html>

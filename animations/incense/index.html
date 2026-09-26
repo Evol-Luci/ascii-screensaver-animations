@@ -10,730 +10,543 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background: #0a0a12;
+            background: #050407;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
         }
 
-        body.screensaver-mode { cursor: none; }
-
-        #incense-canvas {
+        #backdrop, #incense-canvas {
+            position: fixed;
+            inset: 0;
             display: block;
             opacity: 0;
-            transition: opacity 2s ease-in;
+            transition: opacity 3s ease-in;
         }
-
-        .credits-popup {
-            position: fixed;
-            bottom: 32px;
-            right: 32px;
-            background: rgba(10, 8, 5, 0.92);
-            border: 1px solid rgba(212, 160, 64, 0.35);
-            border-radius: 8px;
-            padding: 20px 24px;
-            font-family: 'JetBrains Mono', 'Courier New', monospace;
-            font-size: 12px;
-            color: #8a6020;
-            max-width: 280px;
-            opacity: 0;
-            transition: opacity 2s ease-in-out;
-            z-index: 100;
-            line-height: 1.6;
-        }
-        .credits-popup.visible { opacity: 1; }
-        .credits-popup h2 {
-            font-size: 14px;
-            font-weight: 700;
-            color: #d4a040;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .credits-popup .credits-label {
-            font-size: 10px;
-            color: #604010;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 10px;
-            margin-bottom: 4px;
-        }
-        .credits-popup hr {
-            border: none;
-            border-top: 1px solid rgba(212, 160, 64, 0.25);
-            margin: 12px 0;
-        }
-        .credits-popup a { color: #d4a040; text-decoration: none; }
     </style>
 </head>
 <body>
+<canvas id="backdrop"></canvas>
 <canvas id="incense-canvas"></canvas>
 <script>
-// ─── Screensaver mode ──────────────────────────────────────────────────────────
-const _params = new URLSearchParams(window.location.search);
-const DELAYED_START    = _params.has('delayedStart');
-const START_AT         = parseInt(_params.get('startAt') || '0', 10);
+// An altar, at night.
+//
+// Incense burns in a bowl of sand on a clothed altar; its smoke rises and
+// blooms on slow air (the same turbulent smoke as before, now lit by the
+// candles either side). Behind, in a niche, a figure sits in stillness before
+// a lotus mandala whose glow slowly swells and settles — an invitation to
+// breathe with it. Sticks burn down and drop their ash, and when one is spent
+// a match flares and another is lit. Now and then the singing bowl is struck
+// and its sound spreads through the room in rings. A moonbeam slants through
+// a high window, dust turning in it; a petal falls from the offering.
 
-const P_SPEED         = parseFloat(_params.get('speed')         || '1');
-const P_SMOKE_DENSITY = parseFloat(_params.get('smokeDensity')  || '1');
+// ─── Parameters ──────────────────────────────────────────────────────────────
+const _params       = new URLSearchParams(window.location.search);
+const DELAYED_START = _params.has('delayedStart');
+const START_AT      = parseInt(_params.get('startAt') || '0', 10);
+
+function clamp(v, lo, hi) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; }
+const P_SPEED         = clamp(parseFloat(_params.get('speed') || '1'), 0.2, 4);
+const P_SMOKE_DENSITY = clamp(parseFloat(_params.get('smokeDensity') || '1'), 0.2, 3);
 const P_SMOKE_COLOR   = _params.get('smokeColor') || 'warm';
-const P_WIND_DIR      = parseFloat(_params.get('windDirection') || '0');
-const P_WIND_SPEED    = parseFloat(_params.get('windSpeed')     || '0.3');
-const P_RANDOMIZATION = parseFloat(_params.get('randomization') || '0.8');
-const P_SMOKE_LIFESPAN= parseFloat(_params.get('smokeLifespan') || '1.0');
+const P_WIND_DIR      = clamp(parseFloat(_params.get('windDirection') || '0'), -1, 1);
+const P_WIND_SPEED    = clamp(parseFloat(_params.get('windSpeed') || '0.3'), 0, 2);
+const P_RANDOMIZATION = clamp(parseFloat(_params.get('randomization') || '0.8'), 0, 2);
+const P_SMOKE_LIFESPAN= clamp(parseFloat(_params.get('smokeLifespan') || '1'), 0.5, 4);
+const P_STICK_COUNT   = Math.round(clamp(parseFloat(_params.get('stickCount') || '3'), 1, 3));
+const P_GLOW          = clamp(parseFloat(_params.get('glowIntensity') || '1'), 0, 2);
+const P_BREATH        = (_params.get('breath') ?? '1') !== '0';
 
-// ─── Extended URL params ────────────────────────────────────────────────────────
-const P_QUALITY     = _params.get('quality')       || 'high';
-const P_STICK_COUNT = Math.max(1, Math.min(3, parseInt(_params.get('stickCount') || '3', 10)));
-const P_GLOW        = parseFloat(_params.get('glowIntensity') || '1.0');
-const P_SPARK_RATE  = parseFloat(_params.get('sparkRate')     || '1.0');
+const MAX_P = 9000;
 
-const QUALITY_MAP = { low: 6000, medium: 12000, high: 20000 };
-const OCTAVE_MAP  = { low: 1,    medium: 2,      high: 3     };
-const MAX_P     = QUALITY_MAP[P_QUALITY] ?? 20000;
-const NOISE_OCT = OCTAVE_MAP[P_QUALITY]  ?? 3;
-const SPARKS_ON = P_QUALITY !== 'low';
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function rand(a, b) { return a + Math.random() * (b - a); }
+function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+function lerp(a, b, k) { return a + (b - a) * k; }
+function mix(a, b, k) { return [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)]; }
+function scale(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+const css = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 
-// ─── Canvas ────────────────────────────────────────────────────────────────────
+// ─── Canvases ────────────────────────────────────────────────────────────────
+const backdrop = document.getElementById('backdrop');
+const bctx = backdrop.getContext('2d');
 const canvas = document.getElementById('incense-canvas');
-const ctx    = canvas.getContext('2d');
+const ctx = canvas.getContext('2d');
 
-const FONT_SIZE = 15;
-let CHAR_W = 9.0, CHAR_H = 18.75;
-let cols = 0, rows = 0;
-let W = 0, H = 0;
+let W = 0, H = 0, FS = 14, CW = 8.4, CH = 14;
+let L = {};   // layout
 
 function resize() {
-    canvas.width  = W = window.innerWidth;
-    canvas.height = H = window.innerHeight;
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    CHAR_W = ctx.measureText('M').width;
-    CHAR_H = FONT_SIZE * 1.25;
-    cols = Math.floor(W / CHAR_W);
-    rows = Math.floor(H / CHAR_H);
-    computeAllStickGeometry(0);
-    regenerateSandPattern();
-}
-window.addEventListener('resize', resize);
-
-// ─── 2D Perlin Noise ───────────────────────────────────────────────────────────
-const PERLIN_SIZE = 256;
-const perm  = new Uint8Array(512);
-const grad2 = [[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
-
-(function initPerlin() {
-    const p = new Uint8Array(PERLIN_SIZE);
-    for (let i = 0; i < PERLIN_SIZE; i++) p[i] = i;
-    for (let i = PERLIN_SIZE - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [p[i], p[j]] = [p[j], p[i]];
+    W = window.innerWidth; H = window.innerHeight;
+    for (const c of [backdrop, canvas]) {
+        c.width = Math.max(1, W); c.height = Math.max(1, H);
+        c.style.width = W + 'px'; c.style.height = H + 'px';
     }
+    FS = clamp(Math.round(Math.min(W, H) / 55), 9, 20);
+    CW = FS * 0.6; CH = FS * 1.05;
+    const altarY = H * 0.74;
+    L = {
+        altarY, cx: W / 2,
+        bowlY: altarY - CH * 0.6,
+        candleL: W / 2 - W * 0.2, candleR: W / 2 + W * 0.2,
+        nicheY: H * 0.12, nicheH: altarY - H * 0.12 - CH * 5, nicheW: Math.min(W * 0.3, H * 0.45),
+        mandalaY: H * 0.3, mandalaR: Math.min(W, H) * 0.19,
+        singingX: W / 2 + W * 0.3, offeringX: W / 2 - W * 0.3,
+        window: { x: W * 0.82, y: H * 0.08 },
+    };
+    glyphCache.clear();
+    layoutSticks();
+    backdropDirty = true;
+}
+
+const glyphCache = new Map();
+if (document.fonts) document.fonts.ready.then(() => { glyphCache.clear(); backdropDirty = true; });
+function sprite(ch, col, size) {
+    size = size || FS;
+    const q = (v) => (clamp(v, 0, 255) >> 3) << 3;
+    const r = q(col[0]), g = q(col[1]), b = q(col[2]);
+    const key = ch + '|' + size + '|' + r + ',' + g + ',' + b;
+    let s = glyphCache.get(key);
+    if (!s) {
+        if (glyphCache.size > 6000) glyphCache.clear();
+        const w = Math.ceil(size * 0.62 * ch.length + size * 0.4) + 2, h = Math.ceil(size * 1.3) + 2;
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d');
+        x.font = `700 ${size}px "JetBrains Mono", monospace`;
+        x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillStyle = `rgb(${r},${g},${b})`;
+        x.fillText(ch, w / 2, h / 2);
+        s = { c, w, h };
+        glyphCache.set(key, s);
+    }
+    return s;
+}
+function stampOn(g, ch, x, y, col, alpha, size) {
+    if (alpha <= 0.01) return;
+    const s = sprite(ch, col, size);
+    g.globalAlpha = Math.min(1, alpha);
+    g.drawImage(s.c, x - s.w / 2, y - s.h / 2);
+}
+const stamp = (ch, x, y, col, alpha, size) => stampOn(ctx, ch, x, y, col, alpha, size);
+
+// ─── The smoke (kept from the original: noise-driven, blooming with age) ────
+const perm = new Uint8Array(512);
+const grad2 = [[1, 1], [-1, 1], [1, -1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]];
+(function initPerlin() {
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    for (let i = 255; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
     for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
 })();
-
-function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
-function lerp(a, b, t) { return a + t * (b - a); }
-function dot2(gi, x, y) { const g = grad2[gi & 7]; return g[0]*x + g[1]*y; }
-
+function fadeC(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+function dot2(gi, x, y) { const g = grad2[gi & 7]; return g[0] * x + g[1] * y; }
 function perlin2(x, y) {
-    const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255;
-    const xf = x - Math.floor(x),   yf = y - Math.floor(y);
-    const u  = fade(xf), v = fade(yf);
-    const aa = perm[perm[xi  ] + yi  ], ab = perm[perm[xi  ] + yi+1];
-    const ba = perm[perm[xi+1] + yi  ], bb = perm[perm[xi+1] + yi+1];
-    return lerp(
-        lerp(dot2(aa, xf,   yf  ), dot2(ba, xf-1, yf  ), u),
-        lerp(dot2(ab, xf,   yf-1), dot2(bb, xf-1, yf-1), u), v);
+    const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255, xf = x - Math.floor(x), yf = y - Math.floor(y);
+    const u = fadeC(xf), v = fadeC(yf);
+    const aa = perm[perm[xi] + yi], ab = perm[perm[xi] + yi + 1], ba = perm[perm[xi + 1] + yi], bb = perm[perm[xi + 1] + yi + 1];
+    return lerp(lerp(dot2(aa, xf, yf), dot2(ba, xf - 1, yf), u), lerp(dot2(ab, xf, yf - 1), dot2(bb, xf - 1, yf - 1), u), v);
 }
-
-function fbm2(x, y, octaves) {
-    let value = 0, amp = 1, freq = 1, total = 0;
-    for (let i = 0; i < octaves; i++) {
-        value += amp * perlin2(x * freq, y * freq);
-        total += amp; amp *= 0.5; freq *= 2.0;
+function fbm2(x, y, o) { let v = 0, a = 1, f = 1, t = 0; for (let i = 0; i < o; i++) { v += a * perlin2(x * f, y * f); t += a; a *= 0.5; f *= 2; } return v / t; }
+const NOISE_TEX = new Float32Array(256 * 256), NOISE_TEX2 = new Float32Array(256 * 256);
+(function bake() {
+    for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+        NOISE_TEX[y * 256 + x] = fbm2(x / 64, y / 64, 3);
+        NOISE_TEX2[y * 256 + x] = fbm2(x / 64 + 100, y / 64 + 100, 3);
     }
-    return value / total;
-}
+})();
+function sampleNoise(tex, x, y, t) { return tex[((((y * 0.018 * 64 + t * 5) | 0) & 255) << 8) | (((x * 0.018 * 64) | 0) & 255)]; }
 
-// ─── Noise Texture (baked once at init) ────────────────────────────────────────
-// Covers [0,4)×[0,4) in noise space. World→tex: u = (worldX * 0.018 * 64 | 0) & 255
-// (64 = 256 pixels / 4 noise units). Scrolled by time offset in sampleNoise.
-const NOISE_SIZE = 256;
-const NOISE_TEX  = new Float32Array(NOISE_SIZE * NOISE_SIZE);
-const NOISE_TEX2 = new Float32Array(NOISE_SIZE * NOISE_SIZE);
-
-function bakeNoiseTex() {
-    const inv = 4 / NOISE_SIZE;
-    for (let y = 0; y < NOISE_SIZE; y++) {
-        for (let x = 0; x < NOISE_SIZE; x++) {
-            const nx = x * inv, ny = y * inv;
-            const idx = y * NOISE_SIZE + x;
-            NOISE_TEX[idx]  = fbm2(nx,       ny,       NOISE_OCT);
-            NOISE_TEX2[idx] = fbm2(nx + 100, ny + 100, NOISE_OCT);
-        }
-    }
-}
-
-// O(1) per particle. t = animTime (seconds-ish).
-function sampleNoise(tex, worldX, worldY, t) {
-    const u = ((worldX * 0.018 * 64) | 0) & 255;
-    const v = ((worldY * 0.018 * 64 + t * 5) | 0) & 255;
-    return tex[(v << 8) | u];
-}
-
-// ─── Smoke Color Palettes + LUT ────────────────────────────────────────────────
 const SMOKE_PALETTES = {
-    warm:     [{t:0.0,r:0xe8,g:0xa0,b:0x50},{t:0.33,r:0xa0,g:0x80,b:0x60},{t:0.66,r:0x70,g:0x68,b:0x58},{t:1.0,r:0x48,g:0x48,b:0x48}],
-    cool:     [{t:0.0,r:0x90,g:0xb0,b:0xc0},{t:0.33,r:0x70,g:0x80,b:0x90},{t:0.66,r:0x50,g:0x60,b:0x70},{t:1.0,r:0x40,g:0x48,b:0x50}],
-    incense:  [{t:0.0,r:0xd4,g:0xa0,b:0x40},{t:0.33,r:0xb0,g:0x88,b:0x48},{t:0.66,r:0x88,g:0x70,b:0x50},{t:1.0,r:0x58,g:0x50,b:0x40}],
-    sage:     [{t:0.0,r:0x90,g:0xa8,b:0x70},{t:0.33,r:0x78,g:0x88,b:0x68},{t:0.66,r:0x60,g:0x70,b:0x58},{t:1.0,r:0x48,g:0x50,b:0x40}],
-    lavender: [{t:0.0,r:0xa8,g:0x90,b:0xb8},{t:0.33,r:0x90,g:0x78,b:0x98},{t:0.66,r:0x70,g:0x60,b:0x78},{t:1.0,r:0x50,g:0x48,b:0x58}],
-    mono:     [{t:0.0,r:0xb0,g:0xb0,b:0xb0},{t:0.33,r:0x88,g:0x88,b:0x88},{t:0.66,r:0x60,g:0x60,b:0x60},{t:1.0,r:0x40,g:0x40,b:0x40}],
+    warm:     [[232, 160, 80], [160, 128, 96], [112, 104, 88], [72, 72, 72]],
+    cool:     [[144, 176, 192], [112, 128, 144], [80, 96, 112], [64, 72, 80]],
+    incense:  [[212, 160, 64], [176, 136, 72], [136, 112, 80], [88, 80, 64]],
+    sage:     [[144, 168, 112], [120, 136, 104], [96, 112, 88], [72, 80, 64]],
+    lavender: [[168, 144, 184], [144, 120, 152], [112, 96, 120], [80, 72, 88]],
+    mono:     [[176, 176, 176], [136, 136, 136], [96, 96, 96], [64, 64, 64]],
 };
-const ACTIVE_PALETTE = SMOKE_PALETTES[P_SMOKE_COLOR] || SMOKE_PALETTES.warm;
+const SMOKE = SMOKE_PALETTES[P_SMOKE_COLOR] || SMOKE_PALETTES.warm;
+function smokeColour(k) {
+    const x = clamp(k, 0, 1) * (SMOKE.length - 1), i = Math.min(SMOKE.length - 2, Math.floor(x));
+    return mix(SMOKE[i], SMOKE[i + 1], x - i);
+}
+const CHAR_TABLE = ['@', '#', '8', '&', '*', '+', '=', 'o', 'x', '.', ',', ':', ';', "'", '`', '~'];
+function charIdxForAge(a) {
+    if (a < 0.2) return Math.floor(Math.random() * 4);
+    if (a < 0.55) return 4 + Math.floor(Math.random() * 5);
+    return 9 + Math.floor(Math.random() * 7);
+}
+const pX = new Float32Array(MAX_P), pY = new Float32Array(MAX_P), pVX = new Float32Array(MAX_P), pVY = new Float32Array(MAX_P);
+const pAge = new Float32Array(MAX_P), pMax = new Float32Array(MAX_P), pAlive = new Uint8Array(MAX_P), pChar = new Uint8Array(MAX_P), pLast = new Float32Array(MAX_P);
+let ring = 0, spawnAcc = 0;
 
-function paletteLerp(palette, t) {
-    t = Math.max(0, Math.min(1, t));
-    for (let i = 0; i < palette.length - 1; i++) {
-        if (t <= palette[i+1].t) {
-            const m = (t - palette[i].t) / (palette[i+1].t - palette[i].t);
-            return [
-                Math.round(palette[i].r + m * (palette[i+1].r - palette[i].r)),
-                Math.round(palette[i].g + m * (palette[i+1].g - palette[i].g)),
-                Math.round(palette[i].b + m * (palette[i+1].b - palette[i].b)),
-            ];
-        }
-    }
-    const last = palette[palette.length - 1];
-    return [last.r, last.g, last.b];
+function spawnParticle(x, y, lean) {
+    let p = ring, skips = 0;
+    while (pAlive[p] && skips < 10) { p = (p + 1) % MAX_P; skips++; }
+    ring = (p + 1) % MAX_P;
+    pAlive[p] = 1;
+    pX[p] = x + (Math.random() - 0.5) * CW * 0.6;
+    pY[p] = y;
+    pVX[p] = (Math.random() - 0.5) * 0.15 - lean * 0.08;
+    pVY[p] = -(0.35 + Math.random() * 0.25);
+    pAge[p] = 0; pLast[p] = 0;
+    pMax[p] = (700 + Math.random() * 700) * P_SMOKE_LIFESPAN;
+    pChar[p] = 0;
 }
 
-function buildColorLUT(palette) {
-    const lut = new Array(256);
-    for (let i = 0; i < 256; i++) {
-        const [r, g, b] = paletteLerp(palette, i / 255);
-        lut[i] = `rgb(${r},${g},${b})`;
-    }
-    return lut;
-}
-
-const COLOR_LUT = buildColorLUT(ACTIVE_PALETTE);
-
-// ─── Character sets ────────────────────────────────────────────────────────────
-const CHARS_DENSE = ['@', '#', '8', '&'];
-const CHARS_MED   = ['*', '+', '=', 'o', 'x'];
-const CHARS_WISPY = ['.', ',', ':', ';', "'", '`', '~'];
-const CHAR_TABLE  = [...CHARS_DENSE, ...CHARS_MED, ...CHARS_WISPY]; // 16 chars, indices 0-15
-
-function charIdxForAge(ageNorm) {
-    if (ageNorm < 0.2)  return Math.floor(Math.random() * 4);
-    if (ageNorm < 0.55) return 4 + Math.floor(Math.random() * 5);
-    return 9 + Math.floor(Math.random() * (CHAR_TABLE.length - 9));
-}
-
-// ─── SOA particle buffers ──────────────────────────────────────────────────────
-const pX        = new Float32Array(MAX_P);
-const pY        = new Float32Array(MAX_P);
-const pVX       = new Float32Array(MAX_P);
-const pVY       = new Float32Array(MAX_P);
-const pAge      = new Float32Array(MAX_P);
-const pMaxAge   = new Float32Array(MAX_P);
-const pAlive    = new Uint8Array(MAX_P);
-const pStick    = new Uint8Array(MAX_P);
-const pCharN    = new Uint8Array(MAX_P);
-const pLastChar = new Float32Array(MAX_P); // age at last char update
-
-// ─── Spark pool ─────────────────────────────────────────────────────────────────
-const MAX_SPARKS  = 30;
-const sparks      = [];
-const sparkTimers = new Float32Array(3);
-for (let i = 0; i < 3; i++) sparkTimers[i] = 2000 + Math.random() * 4000;
-
-let liveCount    = 0;
-let spawnAccum   = 0;
-let particleRing = 0;
-
-function spawnParticle(ex, ey, stickIdx) {
-    let p = particleRing;
-    let skips = 0;
-    while (pAlive[p] && Math.random() < 0.6 && skips < 10) {
-        p = (p + 1) % MAX_P; skips++;
-    }
-    particleRing = (p + 1) % MAX_P;
-    if (!pAlive[p]) liveCount++;
-    pAlive[p]    = 1;
-    pX[p]        = ex + (Math.random() - 0.5) * CHAR_W * 0.8;
-    pY[p]        = ey + (Math.random() - 0.5) * CHAR_H * 0.3;
-    // Inward bias: left stick (negative lean) gets positive vx push toward centre
-    const stickLean = sticks[stickIdx]?.lean ?? 0;
-    pVX[p] = (Math.random() - 0.5) * 0.15 - stickLean * 0.08;
-    pVY[p]       = -(0.35 + Math.random() * 0.25);
-    pAge[p]      = 0;
-    pMaxAge[p]   = (600 + Math.random() * 600) * P_SMOKE_LIFESPAN;
-    pCharN[p]    = 0;
-    pLastChar[p] = 0;
-    pStick[p]    = stickIdx;
-}
-
-// ─── Alpha bucket renderer ─────────────────────────────────────────────────────
-const NUM_BUCKETS = 16;
-const buckets = Array.from({ length: NUM_BUCKETS }, () => []);
-
-function updateAndDrawSmoke(animTime, dt) {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    for (let b = 0; b < NUM_BUCKETS; b++) buckets[b].length = 0;
-    liveCount = 0;
-
+// Update and draw the smoke. `dt` is in the original's units: 1 = one 60 Hz frame.
+function smoke(t, dt, candleGlow, drawIt = true) {
     for (let i = 0; i < MAX_P; i++) {
         if (!pAlive[i]) continue;
-
         pAge[i] += dt;
-        const ageNorm = pAge[i] / pMaxAge[i];
-
-        if (ageNorm >= 1.0 || pY[i] < -CHAR_H*2 || pX[i] < -CHAR_W*4 || pX[i] > W + CHAR_W*4) {
-            pAlive[i] = 0; continue;
-        }
-
-        liveCount++;
-
-        // Physics
-        const vertDecel    = 1.0 - ageNorm * 0.8;
-        const vyEff        = pVY[i] * vertDecel;
-        const nv1          = sampleNoise(NOISE_TEX,  pX[i], pY[i], animTime);
-        const nv2          = sampleNoise(NOISE_TEX2, pX[i], pY[i], animTime);
-        const windForce    = P_WIND_DIR * P_WIND_SPEED * 0.04;
-        const spreadFactor = 2.5 * P_RANDOMIZATION;
-        const diffusion    = ageNorm * ageNorm * spreadFactor; // mushroom bloom
-        const turbX        = nv1 * P_RANDOMIZATION * 0.08;
-        const turbY        = nv2 * P_RANDOMIZATION * 0.3;
-
-        pVX[i] += windForce + turbX + (Math.random() - 0.5) * diffusion * 0.05;
+        const a = pAge[i] / pMax[i];
+        if (a >= 1 || pY[i] < -CH * 2 || pX[i] < -CW * 4 || pX[i] > W + CW * 4) { pAlive[i] = 0; continue; }
+        const vy = pVY[i] * (1 - a * 0.8);
+        const n1 = sampleNoise(NOISE_TEX, pX[i], pY[i], t), n2 = sampleNoise(NOISE_TEX2, pX[i], pY[i], t);
+        const wind = P_WIND_DIR * P_WIND_SPEED * 0.04 + breeze * 0.02;
+        const diffusion = a * a * 2.5 * P_RANDOMIZATION;
+        pVX[i] += wind + n1 * P_RANDOMIZATION * 0.08 + (Math.random() - 0.5) * diffusion * 0.05;
         pVX[i] *= 0.96;
-        pX[i]  += pVX[i] * dt * 0.5;
-        pY[i]  += (vyEff + turbY * 0.1) * dt * 0.5;
+        pX[i] += pVX[i] * dt * 0.5;
+        pY[i] += (vy + n2 * P_RANDOMIZATION * 0.03) * dt * 0.5 * (H / 760);   // scaled to the screen
+        const alpha = Math.pow(1 - a, 1.5);
+        if (alpha < 0.01) { pAlive[i] = 0; continue; }
+        if (pAge[i] - pLast[i] > 15) { pChar[i] = charIdxForAge(a); pLast[i] = pAge[i]; }
+        if (!drawIt || alpha < 0.06) continue;
+        // Candlelight warms the smoke that drifts near a flame.
+        const near = Math.max(0, 1 - Math.min(Math.abs(pX[i] - L.candleL), Math.abs(pX[i] - L.candleR)) / (W * 0.18));
+        const col = mix(smokeColour(a), [255, 190, 120], near * 0.35 * candleGlow);
+        stamp(CHAR_TABLE[pChar[i]], pX[i], pY[i], col, alpha * 0.85);
+    }
+}
 
-        const alpha = Math.pow(1.0 - ageNorm, 1.5);
-        if (alpha < 0.01) { pAlive[i] = 0; liveCount--; continue; }
+// ─── Incense sticks: burn down, drop ash, get relit ──────────────────────────
+let sticks = [];
+function layoutSticks() {
+    const leans = P_STICK_COUNT === 1 ? [0] : P_STICK_COUNT === 2 ? [-0.12, 0.12] : [-0.18, 0, 0.18];
+    const len = H * 0.2;
+    sticks = leans.map((lean, i) => ({
+        lean, len, left: len * rand(0.55, 1), base: [L.cx + lean * CW * 10, L.bowlY - CH * 0.3],
+        burnRate: len / rand(160, 240), relight: 0, i,
+    }));
+}
+function stickTip(s) { return [s.base[0] + Math.sin(s.lean) * s.left, s.base[1] - Math.cos(s.lean) * s.left]; }
+const ashes = [];
+const sparks = [];
+let match = null;
 
-        if (pX[i] < -CHAR_W || pX[i] > W+CHAR_W || pY[i] < -CHAR_H || pY[i] > H+CHAR_H) continue;
-
-        // Update char every ~15 age-ticks
-        if (pAge[i] - pLastChar[i] > 15) {
-            pCharN[i]    = charIdxForAge(ageNorm);
-            pLastChar[i] = pAge[i];
+function updateSticks(dt) {
+    for (const s of sticks) {
+        if (s.relight > 0) {
+            s.relight -= dt;
+            if (s.relight <= 0) { s.left = s.len; match = { x: stickTip(s)[0] + CW * 3, y: stickTip(s)[1], t: 0, stick: s }; }
+            continue;
         }
-
-        buckets[Math.min(NUM_BUCKETS - 1, (alpha * NUM_BUCKETS) | 0)].push(i);
-    }
-
-    // Render high→low alpha
-    for (let b = NUM_BUCKETS - 1; b >= 0; b--) {
-        const bkt = buckets[b];
-        if (!bkt.length) continue;
-        ctx.globalAlpha = (b + 0.5) / NUM_BUCKETS;
-        for (let k = 0; k < bkt.length; k++) {
-            const i = bkt[k];
-            ctx.fillStyle = COLOR_LUT[(pAge[i] / pMaxAge[i] * 255) | 0];
-            ctx.fillText(CHAR_TABLE[pCharN[i]], pX[i], pY[i]);
+        s.left -= s.burnRate * dt;
+        if (Math.random() < dt * 0.25) {   // a flake of ash drops
+            const [x, y] = stickTip(s);
+            ashes.push({ x, y, vy: 0, life: 0 });
         }
-    }
-    ctx.globalAlpha = 1;
-}
-
-// emitters: [{x, y, alpha, stickIdx}]
-function spawnSmoke(dt, emitters) {
-    const lifespanScale = Math.sqrt(P_SMOKE_LIFESPAN);
-    const baseRate = (4.0 * P_SMOKE_DENSITY * (1.0 + P_SMOKE_DENSITY * 0.5)) / lifespanScale;
-    spawnAccum += baseRate * dt / 16.67;
-    while (spawnAccum >= 1.0) {
-        spawnAccum -= 1.0;
-        const e = emitters[Math.floor(Math.random() * emitters.length)];
-        if (Math.random() < e.alpha) spawnParticle(e.x, e.y, e.stickIdx);
-    }
-}
-
-// ─── Incense stick definitions ─────────────────────────────────────────────────
-let STICK_HEIGHT_ROWS = 18; // recomputed in computeAllStickGeometry from rows
-// lean: horizontal dx per dy (positive = leans right)
-// burnOffset: initial burnProgress (staggers burn stages visually)
-// burnRate: speed multiplier relative to center stick
-const STICK_DEFS = [
-    { lean: -0.12, burnOffset: 0.70, burnRate: 1.05 }, // left
-    { lean:  0.00, burnOffset: 0.25, burnRate: 1.00 }, // center
-    { lean: +0.10, burnOffset: 0.50, burnRate: 0.95 }, // right
-];
-
-// For stickCount=1 show center; stickCount=2 → left+center; stickCount=3 → all
-const STICK_IDX_MAP = { 1: [1], 2: [0, 1], 3: [0, 1, 2] };
-const selectedDefs = STICK_IDX_MAP[P_STICK_COUNT].map(i => STICK_DEFS[i]);
-
-const sticks = selectedDefs.map((def, i) => ({
-    lean:           def.lean,
-    burnRate:       def.burnRate,
-    burnProgress:   def.burnOffset,
-    burnTimer:      def.burnOffset * (60000 * STICK_HEIGHT_ROWS),
-    pulse:          0.8,
-    pulse2:         0.5,
-    emberX:         0,
-    emberY:         0,
-    stickTopRow:    0,
-    stickBaseRow:   0,
-    baseX:          0,
-    alpha:          1.0,
-    lastBurnedRows: -1,
-    ashes:          [],
-    stickIdx:       i,
-}));
-
-// Altar dish geometry constants
-let DISH_ROW      = 0;
-let dishCenterCol = 0;
-const DISH_HALF     = 12; // chars from centre to rim edge
-const STICK_SPACING = 7;  // col gap between sticks
-
-// Pre-generated sand pattern (fixed per session, redrawn each frame)
-let sandPattern = [];
-function regenerateSandPattern() {
-    sandPattern = [];
-    const sandChars = ['.', ',', '`', '.', ',', '`', '.', ','];
-    for (let c = dishCenterCol - DISH_HALF + 1; c < dishCenterCol + DISH_HALF; c++) {
-        if (Math.random() < 0.45)
-            sandPattern.push({ c, char: sandChars[Math.floor(Math.random() * sandChars.length)] });
-    }
-}
-
-// ─── computeAllStickGeometry ────────────────────────────────────────────────────
-function computeAllStickGeometry(t) {
-    // Sticks reach ~half the screen height from the dish base
-    STICK_HEIGHT_ROWS = Math.max(10, Math.round((rows - 4) / 2));
-    DISH_ROW      = rows - 4;
-    dishCenterCol = Math.floor(cols / 2);
-
-    // Column positions centred in the dish
-    const allColOffsets    = [-STICK_SPACING, 0, STICK_SPACING];
-    const colIdxMap        = { 1: [1], 2: [0,1], 3: [0,1,2] };
-    const activeColOffsets = colIdxMap[P_STICK_COUNT].map(i => allColOffsets[i]);
-
-    for (let si = 0; si < sticks.length; si++) {
-        const st       = sticks[si];
-        const stickCol = dishCenterCol + activeColOffsets[si];
-
-        st.stickBaseRow = DISH_ROW;
-        st.baseX        = stickCol * CHAR_W + CHAR_W * 0.5;
-
-        const rawBurned       = st.burnProgress * STICK_HEIGHT_ROWS;
-        const stickBurnedRows = Math.min(STICK_HEIGHT_ROWS - 2, Math.floor(rawBurned));
-        st.stickTopRow        = st.stickBaseRow - (STICK_HEIGHT_ROWS - stickBurnedRows);
-
-        // Ember sits 1 row below stick top, offset by lean
-        const emberRow = st.stickTopRow + 1;
-        const dyEmber  = (st.stickBaseRow - emberRow) * CHAR_H;
-        st.emberX      = st.baseX - dyEmber * st.lean;
-        st.emberY      = emberRow * CHAR_H;
-
-        // Spawn ash when a row burns off
-        if (st.lastBurnedRows !== -1 && stickBurnedRows > st.lastBurnedRows) {
-            st.ashes.push({
-                x: st.emberX, y: st.emberY,
-                vx: (Math.random() - 0.5) * 0.02, vy: 0,
-                landed: false, char: '*',
-            });
-            if (st.ashes.length > 40) st.ashes.shift();
+        if (Math.random() < dt * 0.4) {
+            const [x, y] = stickTip(s);
+            sparks.push({ x, y, vx: rand(-15, 15), vy: rand(-30, -10), life: 0 });
         }
-        st.lastBurnedRows = stickBurnedRows;
-
-        // Ember pulse for animation
-        st.pulse  = 0.6 + 0.4 * Math.sin(t * 3.5 + si * 1.1);
-        st.pulse2 = 0.5 + 0.5 * Math.sin(t * 5.2 + si * 0.7 + 1.3);
-
-        // Dim as stick burns low (starts at 80% progress)
-        const dimStart = 0.8;
-        st.alpha = st.burnProgress < dimStart
-            ? 1.0
-            : 1.0 - ((st.burnProgress - dimStart) / (1.0 - dimStart)) * 0.7;
+        if (s.left < s.len * 0.08) s.relight = rand(3, 6);   // spent: a pause, then relit
     }
-}
-
-// ─── drawAltarDish ──────────────────────────────────────────────────────────────
-function drawAltarDish() {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    const cx = dishCenterCol;
-    const y0 = DISH_ROW * CHAR_H;
-    const y1 = (DISH_ROW + 1) * CHAR_H;
-    const y2 = (DISH_ROW + 2) * CHAR_H;
-
-    // Decorative end caps
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = '#7a6030';
-    ctx.fillText('◆', (cx - DISH_HALF - 1) * CHAR_W, y0);
-    ctx.fillText('◆', (cx + DISH_HALF + 1) * CHAR_W, y0);
-
-    // Rim
-    ctx.fillStyle = '#5a4820';
-    for (let c = cx - DISH_HALF; c <= cx + DISH_HALF; c++)
-        ctx.fillText('═', c * CHAR_W, y0);
-
-    // Sand texture (pre-generated, stable)
-    ctx.globalAlpha = 0.2;
-    ctx.fillStyle = '#a08040';
-    for (const sp of sandPattern)
-        ctx.fillText(sp.char, sp.c * CHAR_W, y0 + CHAR_H * 0.1);
-    ctx.globalAlpha = 1;
-
-    // Solid base row
-    ctx.fillStyle = '#3a2010';
-    ctx.fillText('▐', (cx - DISH_HALF - 1) * CHAR_W, y1);
-    ctx.fillText('▌', (cx + DISH_HALF + 1) * CHAR_W, y1);
-    ctx.fillStyle = '#2a1808';
-    for (let c = cx - DISH_HALF; c <= cx + DISH_HALF; c++)
-        ctx.fillText('█', c * CHAR_W, y1);
-
-    // Pedestal
-    ctx.fillStyle = '#1a1008';
-    for (let c = cx - DISH_HALF + 2; c <= cx + DISH_HALF - 2; c++)
-        ctx.fillText('▀', c * CHAR_W, y2);
-}
-
-// ─── updateAndDrawAshes ─────────────────────────────────────────────────────────
-function updateAndDrawAshes(dt) {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    const floorY    = DISH_ROW * CHAR_H + CHAR_H * 0.05;
-    const dishLeft  = (dishCenterCol - DISH_HALF + 1) * CHAR_W;
-    const dishRight = (dishCenterCol + DISH_HALF - 1) * CHAR_W;
-
-    for (const st of sticks) {
-        for (const ash of st.ashes) {
-            if (!ash.landed) {
-                ash.vy += 0.001 * dt;
-                ash.x  += ash.vx * dt;
-                ash.y  += ash.vy * dt;
-                const r = Math.random();
-                ash.char = r < 0.33 ? '*' : r < 0.66 ? '^' : '%';
-                if (ash.y >= floorY) {
-                    ash.y    = floorY;
-                    ash.x    = Math.max(dishLeft, Math.min(dishRight, ash.x));
-                    ash.landed = true;
-                    ash.char = ['.', ',', '_', '-', '`'][Math.floor(Math.random() * 5)];
-                }
-            }
-            ctx.globalAlpha = ash.landed ? 0.6 : 0.7;
-            ctx.fillStyle   = ash.landed ? '#666655' : '#999988';
-            ctx.fillText(ash.char, ash.x, ash.y);
-        }
+    for (let i = ashes.length - 1; i >= 0; i--) {
+        const a = ashes[i];
+        a.life += dt; a.vy += 40 * dt; a.y += a.vy * dt; a.x += Math.sin(a.life * 3) * 4 * dt;
+        if (a.y > L.bowlY - CH * 0.4) { a.y = L.bowlY - CH * 0.4; if (a.life > 8) ashes.splice(i, 1); }
     }
-    ctx.globalAlpha = 1;
-}
-
-// ─── drawSticks ─────────────────────────────────────────────────────────────────
-function drawSticks(t) {
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-
-    for (const st of sticks) {
-        // Stick body
-        for (let row = st.stickTopRow; row <= st.stickBaseRow; row++) {
-            const rowNorm = (row - st.stickTopRow) / Math.max(1, st.stickBaseRow - st.stickTopRow);
-            const r = Math.round(140 - rowNorm * 40);
-            const g = Math.round(120 - rowNorm * 40);
-            const b = Math.round(100 - rowNorm * 40);
-            ctx.globalAlpha = 0.9 * st.alpha;
-            ctx.fillStyle   = `rgb(${r},${g},${b})`;
-            const dy        = (st.stickBaseRow - row) * CHAR_H;
-            const x         = st.baseX - dy * st.lean;
-            const ch        = st.lean < -0.05 ? '/' : st.lean > 0.05 ? '\\' : '|';
-            ctx.fillText(ch, x, row * CHAR_H);
-        }
-
-        // Ember — orange pass
-        ctx.globalAlpha = st.pulse * st.alpha;
-        ctx.fillStyle   = `rgb(${Math.round(255*st.pulse)},${Math.round(120+80*st.pulse2)},30)`;
-        ctx.fillText('*', st.emberX - CHAR_W*0.5, st.emberY);
-
-        // Ember — hot-core white pass
-        ctx.globalAlpha = 0.3 * st.alpha;
-        ctx.fillStyle   = 'rgba(255,240,200,1)';
-        ctx.fillText('*', st.emberX - CHAR_W*0.5, st.emberY);
-
-        // Radial glow chars
-        const glowOffsets = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
-        const glowChars   = ['.', ',', '.', ',', ',', '.', ',', '.'];
-        for (let i = 0; i < glowOffsets.length; i++) {
-            const [ox, oy] = glowOffsets[i];
-            const dist = Math.sqrt(ox*ox + oy*oy);
-            const ga   = (st.pulse * 0.25 / dist) * st.alpha;
-            if (ga < 0.02) continue;
-            ctx.globalAlpha = ga;
-            ctx.fillStyle   = `rgb(${Math.round(200+55*st.pulse2)},${Math.round(80+60*st.pulse)},20)`;
-            ctx.fillText(glowChars[i], st.emberX - CHAR_W*0.5 + ox*CHAR_W, st.emberY + oy*CHAR_H);
-        }
-    }
-    ctx.globalAlpha = 1;
-}
-
-// ─── updateBurnTimers ───────────────────────────────────────────────────────────
-function updateBurnTimers(scaledDt) {
-    for (const st of sticks) {
-        st.burnTimer   += scaledDt * st.burnRate;
-        st.burnProgress = st.burnTimer / (60000 * STICK_HEIGHT_ROWS);
-        if (st.burnProgress >= 1.0) {
-            st.burnTimer       = 0;
-            st.burnProgress    = 0;
-            st.lastBurnedRows  = -1;
-            st.ashes.length    = 0;
-        }
-    }
-}
-
-// ─── Background vignette ───────────────────────────────────────────────────────
-function drawBackground() {
-    ctx.clearRect(0, 0, W, H);
-    const avgPulse = sticks.length
-        ? sticks.reduce((s, st) => s + st.pulse, 0) / sticks.length
-        : 0.8;
-    const gx = W * 0.5;
-    const gy = DISH_ROW * CHAR_H;
-    const r1 = Math.min(W, H) * 0.55 * (1 + avgPulse * 0.04);
-    const grad = ctx.createRadialGradient(gx, gy, 0, gx, gy, r1);
-    grad.addColorStop(0,   `rgba(26,10,0,${0.92 * P_GLOW})`);
-    grad.addColorStop(0.5, `rgba(14,5,0,${0.5  * P_GLOW})`);
-    grad.addColorStop(1,   'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-}
-
-// Shared diffuse amber glow around the altar
-function drawAltarGlow() {
-    const avgPulse = sticks.reduce((s, st) => s + st.pulse, 0) / Math.max(1, sticks.length);
-    const gx = W * 0.5;
-    const gy = (DISH_ROW - 3) * CHAR_H;
-    const r  = Math.min(W, H) * 0.32;
-    const grad = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
-    grad.addColorStop(0, `rgba(180,80,10,${0.13 * avgPulse * P_GLOW})`);
-    grad.addColorStop(1, 'rgba(180,80,10,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(gx - r, gy - r, r * 2, r * 2);
-}
-
-// Per-ember soft orange halos drawn BEFORE stick chars
-function drawEmberGlows() {
-    for (const st of sticks) {
-        const r    = CHAR_W * 2.5;
-        const ex   = st.emberX;
-        const ey   = st.emberY + CHAR_H * 0.5;
-        const a    = 0.18 * st.pulse * st.alpha * P_GLOW;
-        const grad = ctx.createRadialGradient(ex, ey, 0, ex, ey, r);
-        grad.addColorStop(0, `rgba(255,140,20,${a})`);
-        grad.addColorStop(1, 'rgba(255,100,0,0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(ex - r, ey - r, r * 2, r * 2);
-    }
-}
-
-// ─── updateAndDrawSparks ───────────────────────────────────────────────────────
-function updateAndDrawSparks(dt) {
-    if (!SPARKS_ON) return;
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
     for (let i = sparks.length - 1; i >= 0; i--) {
         const s = sparks[i];
-        s.age += dt;
-        if (s.age >= s.maxAge || s.y < -CHAR_H) { sparks.splice(i, 1); continue; }
-        s.x  += s.vx * dt * 0.06;
-        s.y  += s.vy * dt * 0.06;
-        s.vy += 0.003 * dt;
-        const life = 1.0 - s.age / s.maxAge;
-        ctx.globalAlpha = life * life;
-        ctx.fillStyle   = `rgb(255,${Math.round(200*life + 60)},40)`;
-        ctx.fillText(s.char, s.x, s.y);
+        s.life += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 30 * dt;
+        if (s.life > 0.6) sparks.splice(i, 1);
     }
-    ctx.globalAlpha = 1;
+    if (match) { match.t += dt; if (match.t > 2.5) match = null; }
 }
 
-// ─── spawnSparks ───────────────────────────────────────────────────────────────
-function spawnSparks(scaledDt) {
-    if (!SPARKS_ON || P_SPARK_RATE <= 0) return;
-    for (let si = 0; si < sticks.length; si++) {
-        const st = sticks[si];
-        sparkTimers[si] -= scaledDt * st.alpha;
-        if (sparkTimers[si] <= 0) {
-            sparkTimers[si] = (6000 + Math.random() * 4000) / P_SPARK_RATE;
-            if (sparks.length < MAX_SPARKS) {
-                sparks.push({
-                    x: st.emberX, y: st.emberY,
-                    vx: (Math.random() - 0.5) * 2.5,
-                    vy: -(1.5 + Math.random() * 2.0),
-                    age: 0,
-                    maxAge: 400 + Math.random() * 400,
-                    char: ['·', '*', '+'][Math.floor(Math.random() * 3)],
-                });
+// ─── The room ────────────────────────────────────────────────────────────────
+let breeze = 0, breezeT = 0, untilBreeze = 8;
+let bell = null, untilBell = rand(15, 30);
+const motes = Array.from({ length: 40 }, () => ({ u: Math.random(), v: Math.random(), s: rand(0.2, 0.6), p: rand(0, 6) }));
+const petals = [];
+let untilPetal = rand(10, 25);
+
+function updateRoom(dt, t) {
+    untilBreeze -= dt;
+    if (untilBreeze <= 0) { breezeT = rand(-1, 1); untilBreeze = rand(8, 18); }
+    breezeT *= Math.exp(-dt * 0.2);
+    breeze += (breezeT - breeze) * Math.min(1, dt * 0.5);
+    untilBell -= dt;
+    if (untilBell <= 0) { bell = { t: 0 }; untilBell = rand(25, 55); }
+    if (bell) { bell.t += dt; if (bell.t > 9) bell = null; }
+    untilPetal -= dt;
+    if (untilPetal <= 0) {
+        untilPetal = rand(12, 30);
+        petals.push({ x: L.offeringX + rand(-1, 1) * CW * 2, y: L.altarY - CH * 2.2, life: 0, spin: rand(0, 6) });
+    }
+    for (let i = petals.length - 1; i >= 0; i--) {
+        const p = petals[i];
+        p.life += dt; p.y += CH * 0.6 * dt; p.x += Math.sin(p.life * 1.5 + p.spin) * CW * 0.6 * dt;
+        if (p.y > L.altarY + CH * 0.4) { p.y = L.altarY + CH * 0.4; if (p.life > 12) petals.splice(i, 1); }
+    }
+}
+
+// The breath: in for 4 s, hold for 2, out for 6, rest for 2.
+function breathAt(t) {
+    const c = t % 14;
+    if (c < 4) return smoothstep(0, 4, c);
+    if (c < 6) return 1;
+    if (c < 12) return 1 - smoothstep(6, 12, c);
+    return 0;
+}
+
+// ─── Backdrop: wall, niche, window, altar, statue ───────────────────────────
+let backdropDirty = true;
+const WALL = [22, 16, 18], WOOD = [70, 38, 26], CLOTH = [120, 30, 34], GOLD = [210, 170, 90], STONE = [80, 74, 70];
+
+function paintBackdrop() {
+    const g = bctx;
+    g.globalAlpha = 1;
+    const wall = g.createLinearGradient(0, 0, 0, H);
+    wall.addColorStop(0, css(scale(WALL, 0.5)));
+    wall.addColorStop(1, css(WALL));
+    g.fillStyle = wall;
+    g.fillRect(0, 0, W, H);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `700 ${FS}px "JetBrains Mono", monospace`;
+    // Wall texture: faint plaster.
+    g.fillStyle = css(scale(WALL, 1.6), 0.35);
+    for (let y = 0; y < L.altarY; y += CH * 1.4) for (let x = 0; x < W; x += CW * 3) if (hash(x * 0.3 + y) < 0.12) g.fillText('.', x, y);
+
+    // The niche: an arch.
+    const nx = L.cx, top = L.nicheY, w = L.nicheW, h = L.nicheH;
+    g.fillStyle = css(scale(WALL, 0.55));
+    g.beginPath();
+    g.moveTo(nx - w / 2, top + h); g.lineTo(nx - w / 2, top + w / 2);
+    g.arc(nx, top + w / 2, w / 2, Math.PI, 0);
+    g.lineTo(nx + w / 2, top + h); g.closePath(); g.fill();
+    g.fillStyle = css(scale(STONE, 0.8));
+    for (let a = Math.PI; a <= Math.PI * 2 + 0.01; a += CW / (w / 2)) g.fillText('=', nx + Math.cos(a) * w / 2, top + w / 2 + Math.sin(a) * w / 2);
+    for (let y = top + w / 2; y < top + h; y += CH) { g.fillText('|', nx - w / 2, y); g.fillText('|', nx + w / 2, y); }
+
+    // The high window, moonlit.
+    const wx = L.window.x, wy = L.window.y;
+    g.fillStyle = css([140, 150, 190], 0.5);
+    ['.-""-.', '|  | |', '|--+-|', '|  | |', "'----'"].forEach((line, i) => {
+        for (let j = 0; j < line.length; j++) if (line[j] !== ' ') g.fillText(line[j], wx + (j - 3) * CW, wy + i * CH);
+    });
+
+    // The seated figure, raised on a pedestal above the incense, in stillness.
+    const FZ = Math.round(FS * 1.5), FW_ = FZ * 0.6 * 1.3, FH_ = FZ * 1.25;
+    const sy = L.mandalaY + FH_ * 2.4;
+    g.font = `700 ${FZ}px "JetBrains Mono", monospace`;
+    const statue = [
+        '    _    ',
+        '   (_)   ',
+        '  _/ \\_  ',
+        ' / \\_/ \\ ',
+        '(_______)',
+    ];
+    g.fillStyle = css(mix(STONE, GOLD, 0.6));
+    statue.forEach((line, i) => {
+        for (let j = 0; j < line.length; j++) if (line[j] !== ' ') g.fillText(line[j], nx + (j - 4) * FW_, sy - (statue.length - 1 - i) * FH_);
+    });
+    g.fillStyle = css(scale(STONE, 0.9));
+    g.fillText('[=========]', nx, sy + FH_ * 0.9);
+    g.font = `700 ${FS}px "JetBrains Mono", monospace`;
+
+    // The altar: a table draped in cloth with a fringe.
+    const ax0 = W * 0.12, ax1 = W * 0.88;
+    g.fillStyle = css(WOOD);
+    g.fillRect(ax0, L.altarY, ax1 - ax0, CH * 0.5);
+    g.fillStyle = css(CLOTH);
+    g.fillRect(W * 0.3, L.altarY, W * 0.4, H * 0.14);
+    g.fillStyle = css(mix(CLOTH, GOLD, 0.5));
+    for (let x = W * 0.3; x <= W * 0.7; x += CW) {
+        g.fillText('=', x, L.altarY + CH * 0.3);
+        g.fillText(hash(x) < 0.5 ? '|' : ':', x, L.altarY + H * 0.14 + CH * 0.3);
+    }
+    g.fillStyle = css(mix(CLOTH, GOLD, 0.35));
+    const cy = L.altarY + H * 0.07;
+    for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; g.fillText('o', W / 2 + Math.cos(a) * CW * 5, cy + Math.sin(a) * CH * 1.4); }   // embroidered circle
+    g.fillText('*', W / 2, cy);
+    // Table legs and the floor.
+    g.fillStyle = css(scale(WOOD, 0.8));
+    for (let y = L.altarY + CH; y < H; y += CH) { g.fillText('|', ax0 + CW, y); g.fillText('|', ax1 - CW, y); }
+
+    // The incense bowl (sand), the offering bowl, the singing bowl, the mala.
+    g.fillStyle = css(mix(STONE, GOLD, 0.3));
+    g.fillText('\\______/', L.cx, L.bowlY);
+    g.fillStyle = css([150, 130, 100]);
+    g.fillText('.:.:.:', L.cx, L.bowlY - CH * 0.45);
+    g.fillStyle = css(mix(STONE, GOLD, 0.2));
+    g.fillText('\\____/', L.offeringX, L.altarY - CH * 0.6);
+    g.fillStyle = css(GOLD);
+    g.fillText('\\___/', L.singingX, L.altarY - CH * 0.6);
+    g.fillStyle = css(CLOTH);
+    g.fillText('(___)', L.singingX, L.altarY - CH * 0.05);
+    g.fillStyle = css([150, 100, 70]);
+    g.fillText('o-o-o-o-o-O', W * 0.36, L.altarY - CH * 0.1);
+}
+
+// ─── Drawing ─────────────────────────────────────────────────────────────────
+function candle(x, t, g) {
+    const f = 0.85 + 0.1 * Math.sin(t * 11 + x) * Math.sin(t * 5.3) + 0.05 * Math.random();
+    const y = L.altarY;
+    for (let k = 1; k <= 4; k++) stamp('[ ]', x, y - CH * k, [220, 210, 190], 0.9);
+    stamp('|', x, y - CH * 4.9, [60, 50, 40], 1);
+    const sway = breeze * CW * 0.4;
+    stamp('(', x + sway * 0.5, y - CH * 5.6, [255, 170, 60], f);
+    stamp(')', x + sway * 0.5 + CW * 0.3, y - CH * 5.6, [255, 170, 60], f);
+    stamp('^', x + sway, y - CH * 6.4, [255, 230, 150], f);
+    const glow = g.createRadialGradient(x, y - CH * 5.8, 0, x, y - CH * 5.8, H * 0.35 * P_GLOW);
+    glow.addColorStop(0, css([255, 170, 80], 0.22 * f));
+    glow.addColorStop(1, css([255, 170, 80], 0));
+    g.globalAlpha = 1;
+    g.fillStyle = glow;
+    g.fillRect(x - H * 0.35, y - CH * 5.8 - H * 0.35, H * 0.7, H * 0.7);
+    return f;
+}
+
+function draw(t, dtMs) {
+    const g = ctx;
+    g.globalAlpha = 1;
+    g.clearRect(0, 0, W, H);
+
+    // The mandala behind the figure, breathing.
+    const b = P_BREATH ? breathAt(t) : 0.5;
+    const mx = L.cx, my = L.mandalaY, R = L.mandalaR * (0.92 + 0.08 * b);
+    const halo = g.createRadialGradient(mx, my, 0, mx, my, R * 1.6);
+    halo.addColorStop(0, css(GOLD, 0.1 + 0.12 * b));
+    halo.addColorStop(1, css(GOLD, 0));
+    g.fillStyle = halo;
+    g.fillRect(mx - R * 1.6, my - R * 1.6, R * 3.2, R * 3.2);
+    const rot = t * 0.02;
+    for (let ring = 1; ring <= 4; ring++) {
+        const rr = R * ring / 4;
+        const petals = 6 + ring * 4;
+        for (let k = 0; k < petals; k++) {
+            const a = rot * (ring % 2 ? 1 : -1) + k / petals * Math.PI * 2;
+            const bulge = 1 + 0.1 * Math.cos(a * 0 + k);
+            stamp(ring === 4 ? '*' : ring === 1 ? '@' : 'o', mx + Math.cos(a) * rr * bulge, my + Math.sin(a) * rr * bulge * 0.95, mix(GOLD, [255, 230, 180], b * 0.4), (0.18 + 0.25 * b) * (1.2 - ring * 0.15));
+            if (ring > 1) stamp('.', mx + Math.cos(a + Math.PI / petals) * rr * 0.86, my + Math.sin(a + Math.PI / petals) * rr * 0.82, GOLD, 0.15 + 0.15 * b);
+        }
+    }
+
+    // Moonbeam through the high window, dust turning in it.
+    const bx = L.window.x, by = L.window.y + CH * 4;
+    const beam = g.createLinearGradient(bx, by, bx - W * 0.35, H * 0.8);
+    beam.addColorStop(0, 'rgba(160, 175, 220, 0.1)');
+    beam.addColorStop(1, 'rgba(160, 175, 220, 0)');
+    g.fillStyle = beam;
+    g.beginPath(); g.moveTo(bx - CW * 3, by); g.lineTo(bx + CW * 3, by); g.lineTo(bx - W * 0.25, H * 0.8); g.lineTo(bx - W * 0.42, H * 0.8); g.closePath(); g.fill();
+    for (const m of motes) {
+        m.v = (m.v + 0.0004 * m.s) % 1;
+        const along = m.v, across = m.u;
+        const x = lerp(bx, bx - W * 0.33, along) + (across - 0.5) * lerp(CW * 5, W * 0.16, along) + Math.sin(t * m.s + m.p) * CW;
+        const y = lerp(by, H * 0.8, along);
+        stamp('.', x, y, [200, 210, 240], 0.35 * Math.sin(along * Math.PI));
+    }
+
+    // Candles.
+    const fl = (candle(L.candleL, t, g) + candle(L.candleR, t, g)) / 2;
+
+    // Sticks: a thin stick, a glowing ember at its tip, smoke from the tip.
+    for (const s of sticks) {
+        if (s.relight > 0) continue;
+        const [tx, ty] = stickTip(s);
+        const n = Math.floor(s.left / (CH * 0.9));
+        for (let k = 1; k <= n; k++) stamp(s.lean < -0.05 ? '\\' : s.lean > 0.05 ? '/' : '|', lerp(s.base[0], tx, k / (n + 1)), lerp(s.base[1], ty, k / (n + 1)), [120, 70, 50], 0.95);
+        const pulse = 0.75 + 0.25 * Math.sin(t * 4 + s.i * 2);
+        stamp('*', tx, ty, [255, 120, 40], pulse);
+        const eg = g.createRadialGradient(tx, ty, 0, tx, ty, CW * 3);
+        eg.addColorStop(0, css([255, 110, 40], 0.4 * pulse)); eg.addColorStop(1, css([255, 110, 40], 0));
+        g.globalAlpha = 1; g.fillStyle = eg; g.fillRect(tx - CW * 3, ty - CW * 3, CW * 6, CW * 6);
+    }
+    for (const a of ashes) stamp(',', a.x, a.y, [150, 140, 130], 0.7);
+    for (const s of sparks) stamp('.', s.x, s.y, [255, 170, 80], 1 - s.life / 0.6);
+    if (match) {
+        const k = match.t < 0.3 ? match.t / 0.3 : 1 - smoothstep(1.5, 2.5, match.t);
+        stamp('~', match.x, match.y - CH * 0.3, [255, 200, 90], k);
+        stamp('-', match.x + CW * 1.5, match.y, [180, 140, 90], k);
+        const mg = g.createRadialGradient(match.x, match.y, 0, match.x, match.y, H * 0.12);
+        mg.addColorStop(0, css([255, 180, 80], 0.3 * k)); mg.addColorStop(1, css([255, 180, 80], 0));
+        g.globalAlpha = 1; g.fillStyle = mg; g.fillRect(match.x - H * 0.12, match.y - H * 0.12, H * 0.24, H * 0.24);
+    }
+
+    // The smoke.
+    const lens = Math.sqrt(P_SMOKE_LIFESPAN);
+    // Fewer, slightly longer-lived particles than the original: the same look
+    // for a fraction of the drawing.
+    spawnAcc += (2.2 * P_SMOKE_DENSITY * (1 + P_SMOKE_DENSITY * 0.5)) / lens * dtMs / 16.67;
+    const burning = sticks.filter(s => s.relight <= 0);
+    while (spawnAcc >= 1) {
+        spawnAcc -= 1;
+        if (!burning.length) break;
+        const s = pick(burning);
+        const [tx, ty] = stickTip(s);
+        spawnParticle(tx, ty - CH * 0.4, s.lean);
+    }
+    smoke(t, dtMs / 16.67, fl);
+
+    // Offering: flowers, and the petals that have fallen.
+    for (let k = -2; k <= 2; k++) stamp(k % 2 ? '@' : '*', L.offeringX + k * CW, L.altarY - CH * 1.4 - Math.abs(k) * CH * -0.2, k % 2 ? [240, 150, 180] : [250, 240, 230], 0.95);
+    for (const p of petals) stamp(Math.sin(p.life * 3 + p.spin) > 0 ? '*' : '.', p.x, p.y, [240, 170, 190], 0.9);
+
+    // The singing bowl's sound, made visible as rings.
+    if (bell) {
+        for (let k = 0; k < 3; k++) {
+            const age = bell.t - k * 0.8;
+            if (age < 0) continue;
+            const r = age * W * 0.06;
+            const a = Math.max(0, 0.5 - age * 0.06);
+            for (let an = Math.PI * 1.05; an < Math.PI * 1.95; an += CW / Math.max(r, 1)) {
+                stamp('~', L.singingX + Math.cos(an) * r, L.altarY - CH * 0.9 + Math.sin(an) * r * 0.6, GOLD, a);
             }
         }
+        stamp('!', L.singingX, L.altarY - CH * 1.1, [255, 240, 200], Math.max(0, 1 - bell.t));
     }
+    g.globalAlpha = 1;
 }
 
-// ─── Render loop ───────────────────────────────────────────────────────────────
-let animTime      = 0;
-let lastTimestamp = 0;
-
-function render(t) {
-    const dt       = lastTimestamp === 0 ? 16.67 : Math.min(t - lastTimestamp, 50);
-    lastTimestamp  = t;
-    const scaledDt = dt * P_SPEED;
-    animTime      += scaledDt * 0.001;
-
-    updateBurnTimers(scaledDt);
-    computeAllStickGeometry(animTime);
-
-    // 1. Clear + background vignette (replaces ctx.clearRect)
-    drawBackground();
-    // 2. Altar glow (behind smoke)
-    drawAltarGlow();
-    // 3. Per-ember canvas halos (behind stick chars)
-    drawEmberGlows();
-    // 4. Smoke
-    ctx.font = `${FONT_SIZE}px 'JetBrains Mono', 'Courier New', monospace`;
-    ctx.textBaseline = 'top';
-    updateAndDrawSmoke(animTime, scaledDt / 16.67);
-    // 4.5. Sparks above smoke, below dish
-    updateAndDrawSparks(scaledDt);
-    // 5. Altar dish
-    drawAltarDish();
-    // 6. Ashes on top of dish
-    updateAndDrawAshes(dt);
-    // 7. Sticks + ember chars
-    drawSticks(animTime);
-
-    const emitters = sticks.map(st => ({ x: st.emberX, y: st.emberY, alpha: st.alpha, stickIdx: st.stickIdx }));
-    spawnSmoke(scaledDt, emitters);
-    spawnSparks(scaledDt);
-
-    requestAnimationFrame(render);
+// ─── Main loop ───────────────────────────────────────────────────────────────
+let clock = 0, lastTs = 0;
+function frame(ts) {
+    requestAnimationFrame(frame);
+    if (window.innerWidth !== W || window.innerHeight !== H) resize();
+    if (W === 0 || H === 0) return;
+    if (lastTs && ts - lastTs < 40) return;   // ~24 fps
+    const dtS = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 1 / 30) * P_SPEED;
+    lastTs = ts;
+    clock += dtS;
+    updateRoom(dtS, clock);
+    updateSticks(dtS);
+    if (backdropDirty) { paintBackdrop(); backdropDirty = false; }
+    draw(clock, dtS * 1000);
 }
 
-function startAnimation() {
-    canvas.style.opacity = '1';
-    document.fonts.ready.then(() => {
-        resize(); // sets rows → computeAllStickGeometry → STICK_HEIGHT_ROWS
-        // Re-sync burn timers now that STICK_HEIGHT_ROWS reflects actual screen size
-        for (const st of sticks) {
-            st.burnTimer = st.burnProgress * (60000 * STICK_HEIGHT_ROWS);
-        }
-        bakeNoiseTex();
-        computeAllStickGeometry(0);
-        regenerateSandPattern();
-        requestAnimationFrame(render);
-    });
+function start() {
+    backdrop.style.opacity = 1;
+    canvas.style.opacity = 1;
+    requestAnimationFrame(frame);
 }
 
-if (START_AT > 0) setTimeout(startAnimation, Math.max(100, START_AT - Date.now()));
-else if (DELAYED_START) setTimeout(startAnimation, 4000);
-else setTimeout(startAnimation, 500);
+window.addEventListener('resize', resize);
+resize();
+// Let the smoke rise before the room appears: run the real physics for a
+// while without drawing.
+for (let i = 0; i < 400; i++) {
+    for (let k = 0; k < 2; k++) { const st = pick(sticks), [tx, ty] = stickTip(st); spawnParticle(tx, ty - CH * 0.4, st.lean); }
+    smoke(i / 30, 2, 1, false);
+}
+
+if (START_AT > 0) setTimeout(start, Math.max(100, START_AT - Date.now()));
+else if (DELAYED_START) setTimeout(start, 4000);
+else setTimeout(start, 500);
 </script>
 </body>
 </html>
