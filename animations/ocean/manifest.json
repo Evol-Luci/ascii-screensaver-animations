@@ -1,9 +1,9 @@
 {
   "id": "ocean",
   "name": "Ocean Waves",
-  "description": "Rolling ASCII ocean waves.",
-  "author": "Luci Evol",
-  "version": "1.0.0",
+  "description": "An ASCII seascape: rows of waves roll in from the horizon, growing as they near, with whitecaps, a glittering path under the sun or moon, drifting clouds, twinkling stars and the odd passing gull.",
+  "author": "Luci Evol - www.evoldigitalproductions.com",
+  "version": "1.1.0",
   "preview": "preview.gif",
   "params": [
     {
@@ -37,7 +37,8 @@
       "options": [
         "deepblue",
         "sunset",
-        "stormy"
+        "stormy",
+        "moonlit"
       ]
     }
   ]
