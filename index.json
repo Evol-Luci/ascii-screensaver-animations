@@ -170,9 +170,9 @@
     {
       "id": "aurora",
       "name": "Aurora",
-      "description": "Procedural aurora borealis ribbons dancing gracefully across a twinkling star field. The simulation uses noise functions to create organic, shifting curtains of light that mimic the natural phenomena of the northern lights in a purely text-based format.",
+      "description": "A northern night: curtains of aurora with running rays, green at their feet and crimson at their crowns, cycle from quiet arcs through a substorm \u2014 flaring, racing, a corona overhead \u2014 to slow pulsing, over snowy peaks and a frozen lake that mirrors them. A cabin glows and smokes; a lone watcher stands on the shore.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.jpg",
       "params": [
         {
@@ -227,11 +227,22 @@
           "max": 400,
           "step": 10,
           "integer": true
+        },
+        {
+          "key": "activity",
+          "type": "range",
+          "label": "Activity",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
         }
       ],
       "files": [
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/index.html",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.gif",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/aurora/preview.jpg"
       ]
     },
@@ -486,9 +497,9 @@
     {
       "id": "campfire",
       "name": "Campfire",
-      "description": "A cozy, layered noise-driven simulation of flame tongues crackling in the dark. It comes complete with rising embers, a subtle dark forest silhouette in the background, and a drifting firefly that occasionally wanders through the warm glow of the fire.",
+      "description": "A fire in a clearing: flames from a small heat simulation over crossed logs in a ring of stones, crackles throwing sparks, embers rising toward stars glimpsed through the canopy. The firelight breathes on the trunks around it; someone sits in stillness; an owl watches, a deer steps to the edge of the light, moths circle.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/campfire/preview.gif",
       "params": [
         {
@@ -553,6 +564,16 @@
             0,
             1
           ]
+        },
+        {
+          "key": "wildlife",
+          "type": "range",
+          "label": "Wildlife",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
         }
       ],
       "files": [
@@ -1144,9 +1165,9 @@
     {
       "id": "incense",
       "name": "Incense",
-      "description": "A relaxing smoke particle simulation rising from a burning incense stick. It features fully adjustable wind and turbulence controls, allowing the wispy ASCII smoke to gently curl and dissipate into the surrounding digital air.",
+      "description": "An altar at night: incense burns in a bowl of sand between two candles, its smoke curling up before a seated figure and a lotus mandala that swells and settles with a slow breath. Sticks burn down and are relit, the singing bowl sounds in rings, a moonbeam slants through, and petals fall from the offering.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/incense/preview.gif",
       "params": [
         {
@@ -1222,6 +1243,36 @@
           "max": 2,
           "step": 0.05,
           "integer": false
+        },
+        {
+          "key": "stickCount",
+          "type": "range",
+          "label": "Stick Count",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "glowIntensity",
+          "type": "range",
+          "label": "Glow Intensity",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
+        },
+        {
+          "key": "breath",
+          "type": "select",
+          "label": "Breath",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
         }
       ],
       "files": [
@@ -1420,9 +1471,9 @@
     {
       "id": "moon",
       "name": "Moon",
-      "description": "A tranquil orbital ASCII scene featuring a large, cratered moon. The simulation includes a customizable star count, floating space debris, atmospheric glow, and various color palettes to set the perfect nighttime mood.",
+      "description": "Our heavenly moon: tonight's real phase and its place among the zodiac constellations, then its month unfolding \u2014 the terminator sweeping the maria and craters, earthshine on the dark limb, a slow libration \u2014 over a still lake that holds its reflection. Owls and geese cross the disc, meteors fall, and a caption names the phase with a thought for it.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/moon/preview.gif",
       "params": [
         {
@@ -1477,6 +1528,36 @@
           "max": 2,
           "step": 0.05,
           "integer": false
+        },
+        {
+          "key": "cycleTime",
+          "type": "range",
+          "label": "Cycle Time",
+          "defaultValue": 12,
+          "min": 0,
+          "max": 60,
+          "step": 1,
+          "integer": true
+        },
+        {
+          "key": "constellations",
+          "type": "select",
+          "label": "Constellations",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
+        },
+        {
+          "key": "captions",
+          "type": "select",
+          "label": "Captions",
+          "defaultValue": 1,
+          "options": [
+            0,
+            1
+          ]
         }
       ],
       "files": [
@@ -1783,9 +1864,9 @@
     {
       "id": "pipes",
       "name": "Pipes",
-      "description": "A classic 3D pipe network generator using Unicode box-drawing characters. The procedural network grows in real-time, twisting and turning in 3D space with customizable palettes, adjustable density, and spawn rate controls.",
+      "description": "Glossy 3D pipes grow through a lattice, turning at elbows and ball joints \u2014 shaded like real lit metal tubes, then rendered as ASCII by brightness \u2014 dissolving and rebuilding from a fresh angle each time.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/pipes/preview.gif",
       "params": [
         {
@@ -2036,9 +2117,9 @@
     {
       "id": "spiderweb",
       "name": "Spider Web",
-      "description": "A fascinating ecosystem simulation where a spider builds its web strand by strand. It hunts drifting prey, flees from simulated wasp raids and bird strikes, and diligently repairs any damage\u2014all under a soft, atmospheric moonlight glow.",
+      "description": "An orb weaver's night: she spins a real orb web \u2014 frame, radii, then the capture spiral from outside in \u2014 between garden twigs, silk swaying and beaded with moonlit dew. Moths blunder in and she runs out to wrap them; wasps send her to her leaf hide; birds tear through and she mends the damage thread by thread.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/spiderweb/preview.gif",
       "params": [
         {
@@ -2244,9 +2325,9 @@
     {
       "id": "thunderstorm",
       "name": "Thunderstorm",
-      "description": "A dramatic, atmospheric simulation of dynamic rain, striking lightning bolts, and heavy storm clouds. It features multiple color palettes and fully adjustable wind and lightning intensity to let you weather the perfect ASCII storm.",
+      "description": "A storm with a life: it gathers, breaks, peaks and clears. Rain drives in gusts, branching bolts strike and crawl the cloud base, each flash silhouetting the land, the sky rumbles, and a rainbow follows. Each palette is its own place: plains with a farmhouse, a tropical coast, desert mesas, or arctic thundersnow.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/thunderstorm/preview.gif",
       "params": [
         {
@@ -2291,6 +2372,16 @@
             "arctic",
             "mono"
           ]
+        },
+        {
+          "key": "cycleTime",
+          "type": "range",
+          "label": "Cycle Time",
+          "defaultValue": 4,
+          "min": 0,
+          "max": 20,
+          "step": 0.5,
+          "integer": false
         }
       ],
       "files": [
@@ -2428,9 +2519,9 @@
     {
       "id": "waterfall",
       "name": "Waterfall",
-      "description": "A peaceful cascading waterfall flowing through a mossy rock channel. The simulation includes a turbulent base mist and spray burst, crowned by an optional, faint rainbow arc that appears in the ambient light.",
+      "description": "A living gorge: a river pours over the lip as a particle simulation, breaking into spray and churning foam that drifts downstream; the flow swells with rain; mist holds a rainbow. Dippers bob on stones, swifts nest behind the fall, trout leap at dusk, a kingfisher darts past and a deer comes down to drink, under a day and night.",
       "author": "Luci Evol - www.evoldigitalproductions.com",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "preview": "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.jpg",
       "params": [
         {
@@ -2485,11 +2576,32 @@
             0,
             1
           ]
+        },
+        {
+          "key": "cycleTime",
+          "type": "range",
+          "label": "Cycle Time",
+          "defaultValue": 8,
+          "min": 0,
+          "max": 30,
+          "step": 0.5,
+          "integer": false
+        },
+        {
+          "key": "wildlife",
+          "type": "range",
+          "label": "Wildlife",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 2,
+          "step": 0.1,
+          "integer": false
         }
       ],
       "files": [
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/index.html",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/manifest.json",
+        "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.gif",
         "https://raw.githubusercontent.com/Evol-Luci/ascii-screensaver-animations/refs/heads/main/animations/waterfall/preview.jpg"
       ]
     },
