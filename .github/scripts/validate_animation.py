@@ -276,6 +276,17 @@ def main():
     if problem:
         fail(problem)
 
+    # 5c. Nothing else in the folder: a leftover file (like an old preview the
+    # manifest no longer names, or vice versa) is dead weight at best and a
+    # stale marketplace preview at worst.
+    allowed = {"index.html", "manifest.json", preview}
+    extra = sorted(f for f in os.listdir(folder) if f not in allowed)
+    if extra:
+        fail(
+            f"Unexpected file(s) in {name}/: {', '.join(extra)}. An animation folder "
+            "holds only index.html, manifest.json and the preview it names."
+        )
+
     # 6. Total folder size
     total_size = 0
     for dirpath, _, filenames in os.walk(folder):
